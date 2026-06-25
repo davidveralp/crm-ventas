@@ -7,6 +7,7 @@ const NAV = [
   { to: '/pipeline',  label: 'Pipeline',    icon: 'M4 6h16M4 12h10M4 18h6' },
   { to: '/agenda',    label: 'Agenda',      icon: 'M8 7V3m8 4V3M4 11h16M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' },
   { to: '/campanas',  label: 'Campañas',    icon: 'M3 11l18-5v12L3 14v-3zM11.6 16.8a3 3 0 11-5.8-1.6' },
+  { to: '/presupuestos', label: 'Presupuestos', icon: 'M9 7h6m-6 4h6m-6 4h4M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z' },
   { to: '/datos',     label: 'Importar / Exportar', icon: 'M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3' }
 ]
 

@@ -12,7 +12,7 @@ export default defineConfig({
         name: 'DIDIAL CRM',
         short_name: 'DIDIAL',
         description: 'Gestión comercial · Servicio Automotriz Didial',
-        theme_color: '#1C4357',
+        theme_color: '#E73C32',
         background_color: '#0A0B0C',
         display: 'standalone',
         start_url: '/',

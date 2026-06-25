@@ -48,3 +48,12 @@ export const RESULTADOS = {
 
 export const segLabel = (s) => SEGMENTOS[s]?.label || '—'
 export const segColor = (s) => SEGMENTOS[s]?.color || '#73726c'
+
+export const ESTADOS_PRESUPUESTO = {
+  borrador:        { label: 'Borrador',        color: '#73726c' },
+  enviado:         { label: 'Enviado',         color: '#185FA5' },
+  en_seguimiento:  { label: 'En seguimiento',  color: '#C98A1B' },
+  aprobado:        { label: 'Aprobado',        color: '#1D9E75' },
+  rechazado:       { label: 'Rechazado',       color: '#A32D2D' },
+  vencido:         { label: 'Vencido',         color: '#94a3b8' }
+}

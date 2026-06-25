@@ -7,7 +7,7 @@ import { SEGMENTOS, segLabel, segColor, fmtCLP, fmtFecha } from '../lib/helpers'
 
 const VACIO = {
   nombre: '', email: '', telefono: '', ciudad: 'La Serena',
-  tipo: 'PARTICULAR', segmento: 'prometedor', vendedor_id: ''
+  tipo: 'PARTICULAR', segmento: 'prometedor', marca_principal: '', vendedor_id: ''
 }
 
 export default function Clientes() {
@@ -17,6 +17,8 @@ export default function Clientes() {
   const [vendedores, setVendedores] = useState([])
   const [busca, setBusca]   = useState('')
   const [segFiltro, setSegFiltro] = useState('')
+  const [marcaFiltro, setMarcaFiltro] = useState('')
+  const [vendFiltro, setVendFiltro] = useState('')
   const [modal, setModal]   = useState(false)
   const [form, setForm]     = useState(VACIO)
   const [guardando, setGuardando] = useState(false)
@@ -29,29 +31,33 @@ export default function Clientes() {
       .select('*, usuarios(nombre)')
       .order('facturacion_total', { ascending: false })
     setLista(data || [])
-    if (esAdmin) {
-      const { data: v } = await supabase.from('usuarios')
-        .select('id,nombre').eq('rol', 'vendedor').eq('activo', true)
-      setVendedores(v || [])
-    }
+    const { data: v } = await supabase.from('usuarios')
+      .select('id,nombre').eq('rol', 'vendedor').eq('activo', true)
+    setVendedores(v || [])
   }
+
+  const marcas = useMemo(() => {
+    const set = new Set(lista.map((c) => c.marca_principal).filter(Boolean))
+    return [...set].sort()
+  }, [lista])
 
   const filtrada = useMemo(() => {
     const q = busca.toLowerCase()
     return lista.filter((c) =>
       (!segFiltro || c.segmento === segFiltro) &&
+      (!marcaFiltro || c.marca_principal === marcaFiltro) &&
+      (!vendFiltro || c.vendedor_id === vendFiltro) &&
       (!q || c.nombre?.toLowerCase().includes(q) ||
              c.telefono?.includes(q) ||
              c.email?.toLowerCase().includes(q))
     )
-  }, [lista, busca, segFiltro])
+  }, [lista, busca, segFiltro, marcaFiltro, vendFiltro])
 
   async function guardar(e) {
     e.preventDefault()
     setGuardando(true)
     const payload = {
-      ...form,
-      empresa_id: perfil.empresa_id,
+      ...form, empresa_id: perfil.empresa_id,
       vendedor_id: form.vendedor_id || (esAdmin ? null : perfil.id)
     }
     const { error } = await supabase.from('clientes').insert(payload)
@@ -70,29 +76,38 @@ export default function Clientes() {
         <button className="btn-primary" onClick={() => setModal(true)}>+ Nuevo cliente</button>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3">
-        <input className="input sm:max-w-xs" placeholder="Buscar por nombre, teléfono o correo…"
+      <div className="grid grid-cols-2 md:flex md:flex-wrap gap-3">
+        <input className="input md:max-w-xs col-span-2" placeholder="Buscar por nombre, teléfono o correo…"
                value={busca} onChange={(e) => setBusca(e.target.value)} />
-        <select className="input sm:max-w-xs" value={segFiltro}
-                onChange={(e) => setSegFiltro(e.target.value)}>
+        <select className="input md:max-w-[180px]" value={segFiltro} onChange={(e) => setSegFiltro(e.target.value)}>
           <option value="">Todos los segmentos</option>
-          {Object.entries(SEGMENTOS).map(([k, v]) =>
-            <option key={k} value={k}>{v.label}</option>)}
+          {Object.entries(SEGMENTOS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </select>
+        <select className="input md:max-w-[160px]" value={marcaFiltro} onChange={(e) => setMarcaFiltro(e.target.value)}>
+          <option value="">Todas las marcas</option>
+          {marcas.map((m) => <option key={m} value={m}>{m}</option>)}
+        </select>
+        {esAdmin && (
+          <select className="input md:max-w-[180px]" value={vendFiltro} onChange={(e) => setVendFiltro(e.target.value)}>
+            <option value="">Todos los vendedores</option>
+            {vendedores.map((v) => <option key={v.id} value={v.id}>{v.nombre}</option>)}
+          </select>
+        )}
       </div>
 
       {filtrada.length === 0 ? (
         <EmptyState titulo="Sin clientes que coincidan"
-                    mensaje="Ajusta la búsqueda o carga tu base desde Importar / Exportar." />
+                    mensaje="Ajusta la búsqueda o los filtros." />
       ) : (
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-paper text-slate-500 text-xs uppercase">
               <tr>
                 <th className="text-left font-medium px-4 py-3">Cliente</th>
+                <th className="text-left font-medium px-4 py-3 hidden sm:table-cell">Marca</th>
                 <th className="text-left font-medium px-4 py-3">Segmento</th>
                 <th className="text-right font-medium px-4 py-3">Facturación</th>
-                <th className="text-left font-medium px-4 py-3 hidden md:table-cell">Últ. visita</th>
+                <th className="text-center font-medium px-4 py-3 hidden md:table-cell">Visitas</th>
                 <th className="text-left font-medium px-4 py-3 hidden lg:table-cell">Vendedor</th>
               </tr>
             </thead>
@@ -104,11 +119,12 @@ export default function Clientes() {
                     <div className="font-medium text-ink">{c.nombre}</div>
                     <div className="text-xs text-slate-400">{c.telefono || c.email || '—'}</div>
                   </td>
+                  <td className="px-4 py-3 hidden sm:table-cell text-slate-600">{c.marca_principal || '—'}</td>
                   <td className="px-4 py-3">
                     {c.segmento && <Pill color={segColor(c.segmento)}>{segLabel(c.segmento)}</Pill>}
                   </td>
                   <td className="px-4 py-3 text-right font-medium">{fmtCLP(c.facturacion_total)}</td>
-                  <td className="px-4 py-3 hidden md:table-cell text-slate-500">{fmtFecha(c.ultima_visita)}</td>
+                  <td className="px-4 py-3 text-center hidden md:table-cell text-slate-500">{c.num_ot || 0}</td>
                   <td className="px-4 py-3 hidden lg:table-cell text-slate-500">{c.usuarios?.nombre || '—'}</td>
                 </tr>
               ))}
@@ -146,24 +162,31 @@ export default function Clientes() {
               </select>
             </div>
             <div>
+              <label className="label">Marca principal</label>
+              <input className="input" value={form.marca_principal}
+                     onChange={(e) => setForm({ ...form, marca_principal: e.target.value })}
+                     placeholder="Ej: TOYOTA" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
               <label className="label">Segmento</label>
               <select className="input" value={form.segmento}
                       onChange={(e) => setForm({ ...form, segmento: e.target.value })}>
-                {Object.entries(SEGMENTOS).map(([k, v]) =>
-                  <option key={k} value={k}>{v.label}</option>)}
+                {Object.entries(SEGMENTOS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
               </select>
             </div>
+            {esAdmin && (
+              <div>
+                <label className="label">Vendedor</label>
+                <select className="input" value={form.vendedor_id}
+                        onChange={(e) => setForm({ ...form, vendedor_id: e.target.value })}>
+                  <option value="">Sin asignar</option>
+                  {vendedores.map((v) => <option key={v.id} value={v.id}>{v.nombre}</option>)}
+                </select>
+              </div>
+            )}
           </div>
-          {esAdmin && (
-            <div>
-              <label className="label">Vendedor asignado</label>
-              <select className="input" value={form.vendedor_id}
-                      onChange={(e) => setForm({ ...form, vendedor_id: e.target.value })}>
-                <option value="">Sin asignar</option>
-                {vendedores.map((v) => <option key={v.id} value={v.id}>{v.nombre}</option>)}
-              </select>
-            </div>
-          )}
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" className="btn-soft" onClick={() => setModal(false)}>Cancelar</button>
             <button className="btn-primary" disabled={guardando}>

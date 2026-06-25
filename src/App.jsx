@@ -8,6 +8,7 @@ import ClienteDetalle from './pages/ClienteDetalle'
 import Pipeline from './pages/Pipeline'
 import Agenda from './pages/Agenda'
 import Campanas from './pages/Campanas'
+import Presupuestos from './pages/Presupuestos'
 import Datos from './pages/Datos'
 import Usuarios from './pages/Usuarios'
 
@@ -25,6 +26,7 @@ export default function App() {
       <Route path="/pipeline"    element={conLayout(<Pipeline />)} />
       <Route path="/agenda"      element={conLayout(<Agenda />)} />
       <Route path="/campanas"    element={conLayout(<Campanas />)} />
+      <Route path="/presupuestos" element={conLayout(<Presupuestos />)} />
       <Route path="/datos"       element={conLayout(<Datos />)} />
       <Route path="/usuarios"    element={
         <ProtectedRoute soloAdmin><Layout><Usuarios /></Layout></ProtectedRoute>

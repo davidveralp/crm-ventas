@@ -107,3 +107,15 @@ Para que el equipo entre desde el celular sin tu computador encendido, sigue **[
 4. Despliega otra instancia del frontend en Vercel con las credenciales del nuevo proyecto.
 
 El código fuente es exactamente el mismo. Cada empresa queda aislada en su propia base de datos.
+
+---
+
+## Actualización v2 (clientes completos + presupuestos)
+
+Si ya tenías la versión inicial funcionando y vas a cargar la base completa:
+
+1. En el **SQL Editor**, corre `database/05_actualizacion_v2.sql` (agrega marca y presupuestos). Botón **"Ejecutar sin RLS"** si aparece el aviso.
+2. Luego corre `database/06_carga_clientes.sql` (carga los 1.045 clientes con vehículos y reparto por vendedor). Este **borra los 384 anteriores** y los reemplaza por la base completa.
+3. Sube el código actualizado a GitHub (Vercel redespliega solo).
+
+Reparto automático aplicado: Diego = Toyota, David Rivera = otras marcas de empresa, Ángel = el resto. Puedes reasignar manualmente desde la ficha de cada cliente (siendo admin).
