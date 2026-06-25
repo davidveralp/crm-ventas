@@ -17,6 +17,7 @@ export async function fetchAllRows(table, select = '*', modify = (q) => q) {
   let all = []
   for (;;) {
     const { data, error } = await modify(supabase.from(table).select(select))
+      .order('id', { ascending: true })
       .range(from, from + PAGE - 1)
     if (error || !data) break
     all = all.concat(data)

@@ -14,6 +14,8 @@ export default function Campanas() {
   const [campanas, setCampanas] = useState([])
   const [sel, setSel] = useState(null)
   const [coincidencias, setCoincidencias] = useState([])
+  const [enviando, setEnviando] = useState(false)
+  const [resultadoEnvio, setResultadoEnvio] = useState('')
 
   useEffect(() => { cargar() }, [])
 
@@ -37,6 +39,22 @@ export default function Campanas() {
   async function cambiarEstado(id, estado) {
     await supabase.from('campanas').update({ estado }).eq('id', id)
     cargar(); if (sel?.id === id) setSel({ ...sel, estado })
+  }
+
+  async function enviarEmail() {
+    if (!confirm(`¿Enviar esta campaña por email a los clientes del segmento con correo registrado?`)) return
+    setEnviando(true); setResultadoEnvio('')
+    const { data, error } = await supabase.functions.invoke('enviar-campana', {
+      body: { campana_id: sel.id }
+    })
+    setEnviando(false)
+    if (error || data?.error) {
+      setResultadoEnvio('Error: ' + (data?.error || error.message) +
+        '. Verifica que la función y la clave de Brevo estén configuradas.')
+      return
+    }
+    setResultadoEnvio(`Enviados: ${data.enviados} de ${data.total || data.enviados} correos.`)
+    cargar()
   }
 
   return (
@@ -71,7 +89,7 @@ export default function Campanas() {
         ))}
       </div>
 
-      <Modal abierto={!!sel} onClose={() => setSel(null)} titulo={sel?.nombre} ancho="max-w-2xl">
+      <Modal abierto={!!sel} onClose={() => { setSel(null); setResultadoEnvio('') }} titulo={sel?.nombre} ancho="max-w-2xl">
         {sel && (
           <div className="space-y-4">
             <div className="flex flex-wrap gap-2">
@@ -102,9 +120,14 @@ export default function Campanas() {
             </div>
 
             {esAdmin && (
-              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <div className="flex flex-wrap justify-end gap-2 pt-2 border-t border-slate-100">
+                {sel.canal === 'email' && (
+                  <button className="btn-primary" onClick={enviarEmail} disabled={enviando}>
+                    {enviando ? 'Enviando…' : 'Enviar por email (Brevo)'}
+                  </button>
+                )}
                 {sel.estado !== 'activa' && (
-                  <button className="btn-primary" onClick={() => cambiarEstado(sel.id, 'activa')}>
+                  <button className="btn-soft" onClick={() => cambiarEstado(sel.id, 'activa')}>
                     Activar campaña
                   </button>
                 )}
@@ -114,6 +137,10 @@ export default function Campanas() {
                   </button>
                 )}
               </div>
+            )}
+
+            {resultadoEnvio && (
+              <div className="rounded-lg bg-sky/10 px-3 py-2 text-sm text-deep">{resultadoEnvio}</div>
             )}
 
             <p className="text-[11px] text-slate-400">
