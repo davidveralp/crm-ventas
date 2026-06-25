@@ -37,13 +37,18 @@ export const TIPOS_ACTIVIDAD = {
 }
 
 export const RESULTADOS = {
-  pendiente:     'Pendiente',
-  exitosa:       'Exitosa',
-  no_contesta:   'No contesta',
-  interesado:    'Interesado',
-  no_interesado: 'No interesado',
-  agendado:      'Agendó',
-  reagendar:     'Reagendar'
+  pendiente:         'Pendiente de contacto',
+  no_contesta:       'No contesta',
+  numero_erroneo:    'Número erróneo',
+  interesado:        'Interesado',
+  cotizacion_enviada:'Cotización enviada',
+  compromiso:        'Comprometió visita',
+  agendado:          'Agendó hora',
+  fidelizado:        'Cliente conforme (postventa)',
+  reagendar:         'Reagendar / volver a llamar',
+  no_interesado:     'No interesado por ahora',
+  no_desea_contacto: 'No desea ser contactado',
+  exitosa:           'Cerrada / vendida'
 }
 
 export const segLabel = (s) => SEGMENTOS[s]?.label || '—'

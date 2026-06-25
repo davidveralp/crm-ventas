@@ -13,14 +13,14 @@ export default function Agenda() {
     const hoy = new Date().toISOString().slice(0, 10)
     const { data } = await supabase.from('actividades')
       .select('*, clientes(nombre,telefono)')
-      .gte('fecha', hoy)
-      .order('fecha').order('hora')
+      .gte('proxima_fecha', hoy)
+      .order('proxima_fecha').order('hora')
     setCitas(data || [])
   }
 
   const grupos = useMemo(() => {
     const g = {}
-    citas.forEach((c) => { (g[c.fecha] ||= []).push(c) })
+    citas.forEach((c) => { (g[c.proxima_fecha] ||= []).push(c) })
     return g
   }, [citas])
 
@@ -28,7 +28,7 @@ export default function Agenda() {
     const pad = (n) => String(n).padStart(2, '0')
     let ics = 'BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//DIDIAL CRM//ES\n'
     citas.forEach((c) => {
-      const f = c.fecha.replace(/-/g, '')
+      const f = c.proxima_fecha.replace(/-/g, '')
       const h = (c.hora || '09:00').slice(0, 5).replace(':', '') + '00'
       ics += 'BEGIN:VEVENT\n'
       ics += `UID:${c.id}@didial\n`

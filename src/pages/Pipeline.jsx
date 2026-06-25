@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { supabase, fetchAllRows } from '../lib/supabase'
 import { fmtCLP } from '../lib/helpers'
 
 export default function Pipeline() {
@@ -12,9 +12,9 @@ export default function Pipeline() {
   useEffect(() => { cargar() }, [])
 
   async function cargar() {
-    const [{ data: e }, { data: c }] = await Promise.all([
+    const [{ data: e }, c] = await Promise.all([
       supabase.from('pipeline_estados').select('*').order('orden'),
-      supabase.from('clientes').select('id,nombre,facturacion_total,estado_id,segmento')
+      fetchAllRows('clientes', 'id,nombre,facturacion_total,estado_id,segmento')
     ])
     setEstados(e || []); setClientes(c || [])
   }

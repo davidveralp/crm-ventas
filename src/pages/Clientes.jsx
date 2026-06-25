@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { Pill, Modal, EmptyState } from '../components/UI'
 import { SEGMENTOS, segLabel, segColor, fmtCLP, fmtFecha } from '../lib/helpers'
@@ -26,10 +26,8 @@ export default function Clientes() {
   useEffect(() => { cargar() }, [])
 
   async function cargar() {
-    const { data } = await supabase
-      .from('clientes')
-      .select('*, usuarios(nombre)')
-      .order('facturacion_total', { ascending: false })
+    const data = await fetchAllRows('clientes', '*, usuarios(nombre)',
+      (q) => q.order('facturacion_total', { ascending: false }))
     setLista(data || [])
     const { data: v } = await supabase.from('usuarios')
       .select('id,nombre').eq('rol', 'vendedor').eq('activo', true)

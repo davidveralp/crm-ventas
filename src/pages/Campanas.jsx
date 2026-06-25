@@ -24,8 +24,12 @@ export default function Campanas() {
 
   async function abrir(c) {
     setSel(c)
-    let q = supabase.from('clientes').select('id,nombre,telefono,segmento')
+    let q = supabase.from('clientes').select('id,nombre,telefono,segmento,creado_en')
     if (c.segmento) q = q.eq('segmento', c.segmento)
+    if (c.dias_recientes) {
+      const desde = new Date(Date.now() - c.dias_recientes * 864e5).toISOString()
+      q = q.gte('creado_en', desde).order('creado_en', { ascending: false })
+    }
     const { data } = await q.limit(500)
     setCoincidencias(data || [])
   }

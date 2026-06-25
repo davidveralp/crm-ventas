@@ -8,3 +8,20 @@ if (!url || !key) {
 }
 
 export const supabase = createClient(url, key)
+
+// Trae TODAS las filas paginando de a 1000 (Supabase limita a 1000 por consulta).
+// modify recibe el query y puede aplicar filtros/orden antes de paginar.
+export async function fetchAllRows(table, select = '*', modify = (q) => q) {
+  const PAGE = 1000
+  let from = 0
+  let all = []
+  for (;;) {
+    const { data, error } = await modify(supabase.from(table).select(select))
+      .range(from, from + PAGE - 1)
+    if (error || !data) break
+    all = all.concat(data)
+    if (data.length < PAGE) break
+    from += PAGE
+  }
+  return all
+}

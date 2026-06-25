@@ -11,7 +11,7 @@ import {
 const ACT_VACIA = {
   tipo: 'llamada', resultado: 'pendiente',
   fecha: new Date().toISOString().slice(0, 10),
-  hora: '', descripcion: '', proxima_accion: ''
+  hora: '', descripcion: '', proxima_accion: '', proxima_fecha: ''
 }
 const PRESUP_VACIO = {
   numero: '', descripcion: '', monto: '', estado: 'borrador',
@@ -66,7 +66,8 @@ export default function ClienteDetalle() {
     e.preventDefault()
     const { error } = await supabase.from('actividades').insert({
       ...act, cliente_id: id, empresa_id: cliente.empresa_id,
-      vendedor_id: cliente.vendedor_id, hora: act.hora || null
+      vendedor_id: cliente.vendedor_id, hora: act.hora || null,
+      proxima_fecha: act.proxima_fecha || null
     })
     if (error) { alert('Error: ' + error.message); return }
     setModal(false); setAct(ACT_VACIA); cargar()
@@ -254,37 +255,46 @@ export default function ClienteDetalle() {
         <form onSubmit={guardarActividad} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="label">Tipo</label>
+              <label className="label">Tipo de contacto</label>
               <select className="input" value={act.tipo} onChange={(e) => setAct({ ...act, tipo: e.target.value })}>
                 {Object.entries(TIPOS_ACTIVIDAD).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </div>
             <div>
-              <label className="label">Resultado</label>
-              <select className="input" value={act.resultado} onChange={(e) => setAct({ ...act, resultado: e.target.value })}>
-                {Object.entries(RESULTADOS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-              </select>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
               <label className="label">Fecha</label>
               <input className="input" type="date" value={act.fecha} onChange={(e) => setAct({ ...act, fecha: e.target.value })} />
             </div>
+          </div>
+
+          <div>
+            <label className="label">Resultado / estado del cliente *</label>
+            <select className="input" value={act.resultado} required
+                    onChange={(e) => setAct({ ...act, resultado: e.target.value })}>
+              {Object.entries(RESULTADOS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="label">Observaciones</label>
+            <textarea className="input" rows="3" value={act.descripcion}
+                      onChange={(e) => setAct({ ...act, descripcion: e.target.value })}
+                      placeholder="¿Qué dijo el cliente? Detalles relevantes de la conversación." />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="label">Hora</label>
-              <input className="input" type="time" value={act.hora} onChange={(e) => setAct({ ...act, hora: e.target.value })} />
+              <label className="label">Próxima acción</label>
+              <input className="input" value={act.proxima_accion}
+                     onChange={(e) => setAct({ ...act, proxima_accion: e.target.value })}
+                     placeholder="Ej: confirmar hora" />
+            </div>
+            <div>
+              <label className="label">¿Cuándo? (va a tu Agenda)</label>
+              <input className="input" type="date" value={act.proxima_fecha}
+                     onChange={(e) => setAct({ ...act, proxima_fecha: e.target.value })} />
             </div>
           </div>
-          <div>
-            <label className="label">Descripción</label>
-            <textarea className="input" rows="2" value={act.descripcion} onChange={(e) => setAct({ ...act, descripcion: e.target.value })} />
-          </div>
-          <div>
-            <label className="label">Próxima acción</label>
-            <input className="input" value={act.proxima_accion} onChange={(e) => setAct({ ...act, proxima_accion: e.target.value })}
-                   placeholder="Ej: llamar el lunes para confirmar hora" />
-          </div>
+
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" className="btn-soft" onClick={() => setModal(false)}>Cancelar</button>
             <button className="btn-primary">Guardar</button>

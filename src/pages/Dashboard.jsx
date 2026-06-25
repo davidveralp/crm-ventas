@@ -3,7 +3,7 @@ import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell,
   PieChart, Pie, FunnelChart, Funnel, LabelList
 } from 'recharts'
-import { supabase } from '../lib/supabase'
+import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { StatCard } from '../components/UI'
 import { SEGMENTOS, fmtCLP, fmtFecha, TIPOS_ACTIVIDAD } from '../lib/helpers'
@@ -16,7 +16,7 @@ export default function Dashboard() {
 
   async function cargar() {
     const [clientes, estados, actividades] = await Promise.all([
-      supabase.from('clientes').select('id,segmento,facturacion_total,estado_id,ultima_visita'),
+      fetchAllRows('clientes', 'id,segmento,facturacion_total,estado_id,ultima_visita').then((d) => ({ data: d })),
       supabase.from('pipeline_estados').select('id,nombre,orden,color').order('orden'),
       supabase.from('actividades')
         .select('id,tipo,fecha,resultado,clientes(nombre)')
