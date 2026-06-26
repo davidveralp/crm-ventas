@@ -10,17 +10,18 @@ export default function Informes() {
   useEffect(() => { cargar() }, [])
 
   async function cargar() {
-    const [clientes, { data: usuarios }, { data: estados }, { data: act }, { data: camp }, { data: presup }] =
+    const [clientes, { data: usuarios }, { data: estados }, { data: act }, { data: camp }, { data: presup }, { data: srv }] =
       await Promise.all([
         fetchAllRows('clientes', 'id,segmento,estado_id,vendedor_id,facturacion_total'),
         supabase.from('usuarios').select('id,nombre').eq('rol', 'vendedor').eq('activo', true),
         supabase.from('pipeline_estados').select('*').order('orden'),
         supabase.from('actividades').select('cliente_id,vendedor_id,resultado,campana_id,tipo_servicio').limit(8000),
         supabase.from('campanas').select('id,nombre,segmento').order('prioridad'),
-        supabase.from('presupuestos').select('estado,monto,tipo_servicio').limit(5000)
+        supabase.from('presupuestos').select('estado,monto,tipo_servicio').limit(5000),
+        supabase.from('servicios').select('tipo_servicio,tipo_servicio_2').limit(20000)
       ])
     setD({ clientes: clientes || [], usuarios: usuarios || [], estados: estados || [],
-           act: act || [], camp: camp || [], presup: presup || [] })
+           act: act || [], camp: camp || [], presup: presup || [], servicios: srv || [] })
   }
 
   const r = useMemo(() => {
@@ -60,14 +61,24 @@ export default function Informes() {
     const facturacion = d.clientes.reduce((a, c) => a + Number(c.facturacion_total || 0), 0)
     const convTotal = wonId ? d.clientes.filter((c) => c.estado_id === wonId).length : 0
 
-    // Servicios más solicitados (desde actividades + presupuestos)
+    // Servicios más solicitados (actividades + presupuestos + historial de OT)
     const conteoServ = {}
     const sumar = (arr) => arr.forEach((x) => {
-      if (x.tipo_servicio) conteoServ[x.tipo_servicio] = (conteoServ[x.tipo_servicio] || 0) + 1
+      if (x.tipo_servicio) {
+        const etiqueta = TIPOS_SERVICIO[x.tipo_servicio] || x.tipo_servicio
+        conteoServ[etiqueta] = (conteoServ[etiqueta] || 0) + 1
+      }
     })
-    sumar(d.act); sumar(d.presup)
+    sumar(d.act); sumar(d.presup); sumar(d.servicios)
+    // El segundo servicio de cada OT también suma
+    d.servicios.forEach((x) => {
+      if (x.tipo_servicio_2) {
+        const etiqueta = TIPOS_SERVICIO[x.tipo_servicio_2] || x.tipo_servicio_2
+        conteoServ[etiqueta] = (conteoServ[etiqueta] || 0) + 1
+      }
+    })
     const servicios = Object.entries(conteoServ)
-      .map(([k, v]) => ({ name: TIPOS_SERVICIO[k] || k, value: v }))
+      .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
 
     return { embudo, segs, porVendedor, porCampana, servicios, enJuego, ganado, facturacion,

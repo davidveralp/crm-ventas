@@ -59,8 +59,7 @@ export default function Login() {
             Gestión <span className="text-didial-amber">Comercial</span>
           </h1>
           <p className="mt-3 text-slate-300 text-base lg:text-lg">
-            CRM de ventas y postventa del taller. Clientes, vehículos,
-            seguimiento y campañas, conectados a tu base de OT.
+            CRM de ventas y postventa del taller.
           </p>
           <div className="mt-6 flex items-center gap-2 justify-center lg:justify-start">
             <span className="h-1 w-10 rounded-full bg-didial-red" />

@@ -10,6 +10,7 @@ export const fmtFecha = (d) => {
 }
 
 export const SEGMENTOS = {
+  nuevo:               { label: 'Nuevo cliente',        color: '#0E7490' },
   flota_empresa:       { label: 'Flota / Empresa',      color: '#1C4357' },
   vip_activo:          { label: 'VIP Activo',           color: '#1D9E75' },
   alto_valor_riesgo:   { label: 'Alto Valor en Riesgo', color: '#A32D2D' },
@@ -172,7 +173,7 @@ export const TIPOS_SERVICIO = {
   revision_tecnica:      'Revisión técnica',
   otro:                  'Otro'
 }
-export const tipoServicioLabel = (t) => TIPOS_SERVICIO[t] || '—'
+export const tipoServicioLabel = (t) => t ? (TIPOS_SERVICIO[t] || t) : '—'
 
 // ---- v6: Mapa resultado de actividad -> etapa de gestión (clave) ----
 // Al registrar una actividad, el estado del cliente avanza a esta etapa

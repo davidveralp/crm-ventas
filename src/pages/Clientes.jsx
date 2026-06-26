@@ -7,7 +7,8 @@ import { SEGMENTOS, TIPOS_CLIENTE, segLabel, segColor, fmtCLP, formatRut, format
 
 const VACIO = {
   nombre: '', rut: '', email: '', telefono: '', ciudad: 'La Serena',
-  tipo: 'PERSONA', segmento: 'prometedor', marca_principal: '', vendedor_id: '',
+  direccion: '', comuna: '',
+  tipo: 'PERSONA', segmento: 'nuevo', marca_principal: '', vendedor_id: '',
   // datos del primer vehículo (opcionales)
   v_marca: '', v_modelo: '', v_anio: '', v_patente: '', v_km: ''
 }
@@ -70,6 +71,7 @@ export default function Clientes() {
       nombre: form.nombre, email: form.email,
       telefono: form.telefono ? formatTelefono(form.telefono) : null,
       ciudad: form.ciudad, tipo: form.tipo, segmento: form.segmento,
+      direccion: form.direccion || null, comuna: form.comuna || null,
       rut: form.rut ? formatRut(form.rut) : null,
       marca_principal: form.marca_principal || form.v_marca || null,
       estado_id: asignado ? asignado.id : null,
@@ -234,6 +236,26 @@ export default function Clientes() {
               </select>
             </div>
           )}
+
+          <div className="border-t border-slate-100 pt-3">
+            <div className="text-xs font-semibold text-slate-500 mb-2">Dirección (opcional)</div>
+            <div className="space-y-3">
+              <input className="input" placeholder="Calle y número" value={form.direccion}
+                     onChange={(e) => setForm({ ...form, direccion: e.target.value })} />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Comuna</label>
+                  <input className="input" value={form.comuna}
+                         onChange={(e) => setForm({ ...form, comuna: e.target.value })} />
+                </div>
+                <div>
+                  <label className="label">Ciudad</label>
+                  <input className="input" value={form.ciudad}
+                         onChange={(e) => setForm({ ...form, ciudad: e.target.value })} />
+                </div>
+              </div>
+            </div>
+          </div>
 
           {/* Vehículo inicial */}
           <div className="border-t border-slate-100 pt-3">

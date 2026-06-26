@@ -37,16 +37,18 @@ export default function ClienteDetalle() {
   const [estados, setEstados] = useState([])
   const [actividades, setActividades] = useState([])
   const [presupuestos, setPresupuestos] = useState([])
+  const [servicios, setServicios] = useState([])
   const [vendedores, setVendedores] = useState([])
   const [tab, setTab] = useState('actividades')
   const [modal, setModal] = useState(false)
-  const [modalP, setModalP] = useState(false)
   const [modalC, setModalC] = useState(false)
   const [modalV, setModalV] = useState(false)
   const [act, setAct] = useState(ACT_VACIA)
+  const [conPresup, setConPresup] = useState(false)
   const [presup, setPresup] = useState(PRESUP_VACIO)
   const [contacto, setContacto] = useState(null)
   const [veh, setVeh] = useState(VEH_VACIO)
+  const [detalle, setDetalle] = useState(null) // {tipo:'act'|'presup', data}
 
   useEffect(() => { cargar() }, [id])
 
@@ -54,14 +56,16 @@ export default function ClienteDetalle() {
     const { data: c } = await supabase.from('clientes')
       .select('*, usuarios(nombre)').eq('id', id).single()
     setCliente(c)
-    const [vh, est, actv, pre] = await Promise.all([
+    const [vh, est, actv, pre, srv] = await Promise.all([
       supabase.from('vehiculos').select('*').eq('cliente_id', id).order('creado_en'),
       supabase.from('pipeline_estados').select('*').order('orden'),
       supabase.from('actividades').select('*').eq('cliente_id', id).order('fecha', { ascending: false }),
-      supabase.from('presupuestos').select('*').eq('cliente_id', id).order('fecha_emision', { ascending: false })
+      supabase.from('presupuestos').select('*').eq('cliente_id', id).order('fecha_emision', { ascending: false }),
+      supabase.from('servicios').select('*').eq('cliente_id', id).order('fecha', { ascending: false })
     ])
     setVehiculos(vh.data || []); setEstados(est.data || [])
     setActividades(actv.data || []); setPresupuestos(pre.data || [])
+    setServicios(srv.data || [])
     if (esAdmin) {
       const { data: v } = await supabase.from('usuarios')
         .select('id,nombre').eq('rol', 'vendedor').eq('activo', true)
@@ -100,7 +104,9 @@ export default function ClienteDetalle() {
     await supabase.from('clientes').update({ estado_id: destino.id }).eq('id', id)
   }
 
-  async function guardarActividad(e) {
+  // Registro unificado: siempre crea el seguimiento; si se marcó
+  // "agregar presupuesto", crea también el presupuesto (mismo tipo de servicio).
+  async function guardarRegistro(e) {
     e.preventDefault()
     const { error } = await supabase.from('actividades').insert({
       ...act, cliente_id: id, empresa_id: cliente.empresa_id,
@@ -109,25 +115,33 @@ export default function ClienteDetalle() {
       tipo_servicio: act.tipo_servicio || null
     })
     if (error) { alert('Error: ' + error.message); return }
-    await avanzarEstadoPorResultado(act.resultado)
-    setModal(false); setAct(ACT_VACIA); cargar()
-  }
 
-  async function guardarPresupuesto(e) {
-    e.preventDefault()
-    const { error } = await supabase.from('presupuestos').insert({
-      ...presup, cliente_id: id, empresa_id: cliente.empresa_id,
-      vendedor_id: cliente.vendedor_id, monto: Number(presup.monto) || 0,
-      fecha_validez: presup.fecha_validez || null,
-      proxima_gestion: presup.proxima_gestion || null,
-      tipo_servicio: presup.tipo_servicio || null
-    })
-    if (error) { alert('Error: ' + error.message); return }
-    setModalP(false); setPresup(PRESUP_VACIO); cargar()
+    if (conPresup && (presup.monto || presup.descripcion || presup.numero)) {
+      const { error: e2 } = await supabase.from('presupuestos').insert({
+        ...presup, cliente_id: id, empresa_id: cliente.empresa_id,
+        vendedor_id: cliente.vendedor_id, monto: Number(presup.monto) || 0,
+        fecha_validez: presup.fecha_validez || null,
+        proxima_gestion: presup.proxima_gestion || null,
+        tipo_servicio: presup.tipo_servicio || act.tipo_servicio || null
+      })
+      if (e2) { alert('Seguimiento guardado, pero el presupuesto falló: ' + e2.message) }
+    }
+    await avanzarEstadoPorResultado(act.resultado)
+    setModal(false); setAct(ACT_VACIA); setPresup(PRESUP_VACIO); setConPresup(false); cargar()
   }
 
   async function cambiarEstadoPresup(pid, estado) {
-    await supabase.from('presupuestos').update({ estado }).eq('id', pid); cargar()
+    await supabase.from('presupuestos').update({ estado }).eq('id', pid)
+    setDetalle((d) => d && d.tipo === 'presup' && d.data.id === pid
+      ? { ...d, data: { ...d.data, estado } } : d)
+    cargar()
+  }
+
+  async function eliminarCliente() {
+    if (!confirm(`¿Eliminar al cliente "${cliente.nombre}" y todos sus vehículos, actividades y presupuestos? Esta acción no se puede deshacer.`)) return
+    const { error } = await supabase.from('clientes').delete().eq('id', id)
+    if (error) { alert('No se pudo eliminar: ' + error.message); return }
+    navigate('/clientes')
   }
 
   async function guardarContacto(e) {
@@ -136,6 +150,7 @@ export default function ClienteDetalle() {
       nombre: contacto.nombre, email: contacto.email,
       telefono: contacto.telefono ? formatTelefono(contacto.telefono) : null,
       ciudad: contacto.ciudad, tipo: contacto.tipo, marca_principal: contacto.marca_principal,
+      direccion: contacto.direccion || null, comuna: contacto.comuna || null,
       rut: contacto.rut ? formatRut(contacto.rut) : null
     }).eq('id', id)
     if (error) { alert('Error: ' + error.message); return }
@@ -227,10 +242,17 @@ export default function ClienteDetalle() {
                       onClick={() => { setContacto({
                         nombre: cliente.nombre, email: cliente.email || '', telefono: cliente.telefono || '',
                         ciudad: cliente.ciudad || '', tipo: cliente.tipo || 'PERSONA',
-                        marca_principal: cliente.marca_principal || '', rut: cliente.rut || ''
+                        marca_principal: cliente.marca_principal || '', rut: cliente.rut || '',
+                        direccion: cliente.direccion || '', comuna: cliente.comuna || ''
                       }); setModalC(true) }}>
                 Editar
               </button>
+              {esAdmin && (
+                <button className="text-xs py-1.5 text-red-500 hover:text-red-600 hover:underline"
+                        onClick={eliminarCliente}>
+                  Eliminar
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -249,6 +271,8 @@ export default function ClienteDetalle() {
           <div><div className="text-xs text-slate-400">Teléfono</div>{cliente.telefono ? formatTelefono(cliente.telefono) : '—'}</div>
           <div><div className="text-xs text-slate-400">Correo</div>{cliente.email || '—'}</div>
           <div><div className="text-xs text-slate-400">Ciudad</div>{cliente.ciudad || '—'}</div>
+          <div className="col-span-2"><div className="text-xs text-slate-400">Dirección</div>{cliente.direccion || '—'}</div>
+          <div><div className="text-xs text-slate-400">Comuna</div>{cliente.comuna || '—'}</div>
         </div>
 
         {/* Asignación de vendedor */}
@@ -353,6 +377,32 @@ export default function ClienteDetalle() {
                     <div><span className="text-slate-400">Próx. servicio:</span> {v.proximo_servicio_km ? v.proximo_servicio_km.toLocaleString('es-CL') + ' km' : '—'}</div>
                     <div><span className="text-slate-400">Mantención:</span> {MANT[v.tipo_mantencion] || '—'}</div>
                   </div>
+                  {(() => {
+                    const hist = servicios.filter((s) =>
+                      s.vehiculo_id === v.id ||
+                      (s.patente && v.patente && patenteLimpia(s.patente) === patenteLimpia(v.patente)))
+                    if (!hist.length) return null
+                    return (
+                      <div className="mt-3 border-t border-slate-100 pt-2">
+                        <div className="text-[11px] font-semibold text-slate-400 mb-1">Historial de servicios ({hist.length})</div>
+                        <div className="space-y-1 max-h-40 overflow-y-auto">
+                          {hist.map((s) => (
+                            <div key={s.id} className="flex items-center justify-between gap-2 text-xs">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="text-slate-400 w-20 shrink-0">{s.fecha ? fmtFecha(s.fecha) : '—'}</span>
+                                <span className="text-ink truncate">
+                                  {tipoServicioLabel(s.tipo_servicio)}
+                                  {s.tipo_servicio_2 ? ` + ${tipoServicioLabel(s.tipo_servicio_2)}` : ''}
+                                  {s.descripcion ? ` · ${s.descripcion}` : ''}
+                                </span>
+                              </div>
+                              <span className="text-slate-500 shrink-0">{s.monto ? fmtCLP(s.monto) : ''}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })()}
                 </div>
               )
             })}
@@ -378,9 +428,7 @@ export default function ClienteDetalle() {
                 Presupuestos ({presupuestos.length})
               </button>
             </div>
-            {tab === 'actividades'
-              ? <button className="btn-primary text-xs py-1.5" onClick={() => setModal(true)}>+ Registrar</button>
-              : <button className="btn-primary text-xs py-1.5" onClick={() => setModalP(true)}>+ Presupuesto</button>}
+            <button className="btn-primary text-xs py-1.5" onClick={() => { setAct(ACT_VACIA); setPresup(PRESUP_VACIO); setConPresup(false); setModal(true) }}>+ Registrar</button>
           </div>
         </div>
 
@@ -388,7 +436,8 @@ export default function ClienteDetalle() {
           actividades.length ? (
             <div className="space-y-3">
               {actividades.map((a) => (
-                <div key={a.id} className="border-l-2 border-sky pl-3 py-1">
+                <div key={a.id} onClick={() => setDetalle({ tipo: 'act', data: a })}
+                     className="border-l-2 border-sky pl-3 py-1 cursor-pointer hover:bg-paper rounded-r">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-ink">{TIPOS_ACTIVIDAD[a.tipo]}</span>
                     <span className="text-xs text-slate-400">{fmtFecha(a.fecha)}{a.hora ? ` · ${a.hora.slice(0,5)}` : ''}</span>
@@ -399,10 +448,11 @@ export default function ClienteDetalle() {
                       <span className="pill bg-mist text-deep">{tipoServicioLabel(a.tipo_servicio)}</span>
                     )}
                   </div>
-                  {a.descripcion && <p className="text-sm text-slate-600 mt-1">{a.descripcion}</p>}
+                  {a.descripcion && <p className="text-sm text-slate-600 mt-1 line-clamp-2">{a.descripcion}</p>}
                   {a.proxima_accion && (
                     <p className="text-xs text-deep mt-1">→ {a.proxima_accion}{a.proxima_fecha ? ` · ${fmtFecha(a.proxima_fecha)}` : ''}</p>
                   )}
+                  <span className="text-[11px] text-slate-400 underline">Ver detalle</span>
                 </div>
               ))}
             </div>
@@ -411,7 +461,8 @@ export default function ClienteDetalle() {
           presupuestos.length ? (
             <div className="space-y-2">
               {presupuestos.map((p) => (
-                <div key={p.id} className="border border-slate-200 rounded-lg p-3">
+                <div key={p.id} onClick={() => setDetalle({ tipo: 'presup', data: p })}
+                     className="border border-slate-200 rounded-lg p-3 cursor-pointer hover:border-sky">
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-ink">{p.numero ? `N° ${p.numero}` : 'Presupuesto'}</span>
@@ -419,12 +470,13 @@ export default function ClienteDetalle() {
                       {p.tipo_servicio && <span className="pill bg-mist text-deep">{tipoServicioLabel(p.tipo_servicio)}</span>}
                     </div>
                     <select className="text-xs rounded-md border border-slate-200 px-2 py-1"
-                            value={p.estado} onChange={(e) => cambiarEstadoPresup(p.id, e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            value={p.estado} onChange={(e) => { e.stopPropagation(); cambiarEstadoPresup(p.id, e.target.value) }}
                             style={{ color: ESTADOS_PRESUPUESTO[p.estado]?.color }}>
                       {Object.entries(ESTADOS_PRESUPUESTO).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                     </select>
                   </div>
-                  {p.descripcion && <p className="text-sm text-slate-600 mt-1">{p.descripcion}</p>}
+                  {p.descripcion && <p className="text-sm text-slate-600 mt-1 line-clamp-2">{p.descripcion}</p>}
                   <div className="flex gap-4 text-xs text-slate-400 mt-2">
                     <span>Emitido {fmtFecha(p.fecha_emision)}</span>
                     {p.proxima_gestion && <span className="text-deep">Gestionar: {fmtFecha(p.proxima_gestion)}</span>}
@@ -436,9 +488,9 @@ export default function ClienteDetalle() {
         )}
       </div>
 
-      {/* Modal actividad */}
-      <Modal abierto={modal} onClose={() => setModal(false)} titulo="Registrar seguimiento">
-        <form onSubmit={guardarActividad} className="space-y-4">
+      {/* Modal registrar (seguimiento + presupuesto opcional) */}
+      <Modal abierto={modal} onClose={() => setModal(false)} titulo="Registrar gestión" ancho="max-w-xl">
+        <form onSubmit={guardarRegistro} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label">Tipo de contacto</label>
@@ -485,56 +537,81 @@ export default function ClienteDetalle() {
                      onChange={(e) => setAct({ ...act, proxima_fecha: e.target.value })} />
             </div>
           </div>
+          {/* Presupuesto opcional, en el mismo registro */}
+          <div className="border border-slate-200 rounded-lg">
+            <label className="flex items-center gap-2 px-3 py-2 cursor-pointer">
+              <input type="checkbox" checked={conPresup} onChange={(e) => setConPresup(e.target.checked)} />
+              <span className="text-sm font-medium text-ink">Agregar presupuesto a esta gestión</span>
+            </label>
+            {conPresup && (
+              <div className="px-3 pb-3 space-y-3 border-t border-slate-100 pt-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label">N° presupuesto</label>
+                    <input className="input" value={presup.numero} onChange={(e) => setPresup({ ...presup, numero: e.target.value })} placeholder="Opcional" />
+                  </div>
+                  <div>
+                    <label className="label">Monto (CLP)</label>
+                    <input className="input" type="number" value={presup.monto} onChange={(e) => setPresup({ ...presup, monto: e.target.value })} />
+                  </div>
+                </div>
+                <div>
+                  <label className="label">Detalle del trabajo</label>
+                  <textarea className="input" rows="2" value={presup.descripcion} onChange={(e) => setPresup({ ...presup, descripcion: e.target.value })}
+                            placeholder="Ej: cambio de embrague + revisión frenos" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label">Estado</label>
+                    <select className="input" value={presup.estado} onChange={(e) => setPresup({ ...presup, estado: e.target.value })}>
+                      {Object.entries(ESTADOS_PRESUPUESTO).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label">Próxima gestión</label>
+                    <input className="input" type="date" value={presup.proxima_gestion} onChange={(e) => setPresup({ ...presup, proxima_gestion: e.target.value })} />
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-400">El tipo de servicio del seguimiento se aplica también al presupuesto.</p>
+              </div>
+            )}
+          </div>
+
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" className="btn-soft" onClick={() => setModal(false)}>Cancelar</button>
-            <button className="btn-primary">Guardar</button>
+            <button className="btn-primary">Guardar gestión</button>
           </div>
         </form>
       </Modal>
 
-      {/* Modal presupuesto */}
-      <Modal abierto={modalP} onClose={() => setModalP(false)} titulo="Nuevo presupuesto">
-        <form onSubmit={guardarPresupuesto} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label">N° presupuesto</label>
-              <input className="input" value={presup.numero} onChange={(e) => setPresup({ ...presup, numero: e.target.value })} placeholder="Opcional" />
-            </div>
-            <div>
-              <label className="label">Monto (CLP)</label>
-              <input className="input" type="number" value={presup.monto} onChange={(e) => setPresup({ ...presup, monto: e.target.value })} />
-            </div>
+      {/* Modal detalle de registro (solo lectura) */}
+      <Modal abierto={!!detalle} onClose={() => setDetalle(null)}
+             titulo={detalle?.tipo === 'presup' ? 'Detalle del presupuesto' : 'Detalle del seguimiento'}>
+        {detalle?.tipo === 'act' && (
+          <div className="space-y-2 text-sm">
+            <Campo k="Tipo de contacto" v={TIPOS_ACTIVIDAD[detalle.data.tipo]} />
+            <Campo k="Fecha" v={`${fmtFecha(detalle.data.fecha)}${detalle.data.hora ? ' · ' + detalle.data.hora.slice(0,5) : ''}`} />
+            <Campo k="Resultado / estado" v={RESULTADOS[detalle.data.resultado]} />
+            <Campo k="Tipo de servicio" v={tipoServicioLabel(detalle.data.tipo_servicio)} />
+            <Campo k="Observaciones" v={detalle.data.descripcion || '—'} />
+            <Campo k="Próxima acción" v={detalle.data.proxima_accion
+              ? `${detalle.data.proxima_accion}${detalle.data.proxima_fecha ? ' · ' + fmtFecha(detalle.data.proxima_fecha) : ''}` : '—'} />
+            {detalle.data.monto_recuperado ? <Campo k="Monto recuperado" v={fmtCLP(detalle.data.monto_recuperado)} /> : null}
           </div>
-          <div>
-            <label className="label">Tipo de servicio</label>
-            <select className="input" value={presup.tipo_servicio}
-                    onChange={(e) => setPresup({ ...presup, tipo_servicio: e.target.value })}>
-              <option value="">— Sin especificar —</option>
-              {Object.entries(TIPOS_SERVICIO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
+        )}
+        {detalle?.tipo === 'presup' && (
+          <div className="space-y-2 text-sm">
+            <Campo k="N° presupuesto" v={detalle.data.numero || '—'} />
+            <Campo k="Monto" v={fmtCLP(detalle.data.monto)} />
+            <Campo k="Estado" v={ESTADOS_PRESUPUESTO[detalle.data.estado]?.label} />
+            <Campo k="Tipo de servicio" v={tipoServicioLabel(detalle.data.tipo_servicio)} />
+            <Campo k="Detalle" v={detalle.data.descripcion || '—'} />
+            <Campo k="Emitido" v={fmtFecha(detalle.data.fecha_emision)} />
+            <Campo k="Validez" v={detalle.data.fecha_validez ? fmtFecha(detalle.data.fecha_validez) : '—'} />
+            <Campo k="Próxima gestión" v={detalle.data.proxima_gestion ? fmtFecha(detalle.data.proxima_gestion) : '—'} />
+            {detalle.data.notas ? <Campo k="Notas" v={detalle.data.notas} /> : null}
           </div>
-          <div>
-            <label className="label">Detalle del trabajo</label>
-            <textarea className="input" rows="2" value={presup.descripcion} onChange={(e) => setPresup({ ...presup, descripcion: e.target.value })}
-                      placeholder="Ej: cambio de embrague + revisión frenos" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label">Estado</label>
-              <select className="input" value={presup.estado} onChange={(e) => setPresup({ ...presup, estado: e.target.value })}>
-                {Object.entries(ESTADOS_PRESUPUESTO).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="label">Próxima gestión</label>
-              <input className="input" type="date" value={presup.proxima_gestion} onChange={(e) => setPresup({ ...presup, proxima_gestion: e.target.value })} />
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <button type="button" className="btn-soft" onClick={() => setModalP(false)}>Cancelar</button>
-            <button className="btn-primary">Guardar presupuesto</button>
-          </div>
-        </form>
+        )}
       </Modal>
 
       {/* Modal editar contacto */}
@@ -585,6 +662,16 @@ export default function ClienteDetalle() {
                 <input className="input" value={contacto.marca_principal}
                        onChange={(e) => setContacto({ ...contacto, marca_principal: e.target.value.toUpperCase() })} />
               </div>
+            </div>
+            <div>
+              <label className="label">Dirección</label>
+              <input className="input" value={contacto.direccion} placeholder="Calle y número"
+                     onChange={(e) => setContacto({ ...contacto, direccion: e.target.value })} />
+            </div>
+            <div>
+              <label className="label">Comuna</label>
+              <input className="input" value={contacto.comuna}
+                     onChange={(e) => setContacto({ ...contacto, comuna: e.target.value })} />
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" className="btn-soft" onClick={() => setModalC(false)}>Cancelar</button>
@@ -645,6 +732,15 @@ export default function ClienteDetalle() {
           </div>
         </form>
       </Modal>
+    </div>
+  )
+}
+
+function Campo({ k, v }) {
+  return (
+    <div className="flex gap-2">
+      <span className="text-slate-400 w-36 shrink-0">{k}</span>
+      <span className="text-ink whitespace-pre-wrap">{v || '—'}</span>
     </div>
   )
 }
