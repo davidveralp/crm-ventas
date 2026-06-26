@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
-  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell,
-  PieChart, Pie, FunnelChart, Funnel, LabelList
+  ResponsiveContainer, PieChart, Pie, Tooltip, Cell
 } from 'recharts'
 import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
@@ -76,15 +75,22 @@ export default function Dashboard() {
         <div className="card p-5">
           <h3 className="font-semibold text-ink mb-4">Embudo de ventas</h3>
           {m.embudo.some((e) => e.value > 0) ? (
-            <ResponsiveContainer width="100%" height={260}>
-              <FunnelChart>
-                <Tooltip />
-                <Funnel dataKey="value" data={m.embudo} isAnimationActive>
-                  <LabelList position="right" fill="#0A0B0C" stroke="none"
-                             dataKey="name" className="text-xs" />
-                </Funnel>
-              </FunnelChart>
-            </ResponsiveContainer>
+            <div className="space-y-2.5">
+              {m.embudo.filter((e) => e.name !== 'Perdido').map((e) => {
+                const max = Math.max(1, ...m.embudo.map((x) => x.value))
+                const pct = e.value > 0 ? Math.max(6, Math.round((e.value / max) * 100)) : 0
+                return (
+                  <div key={e.name} className="flex items-center gap-3">
+                    <div className="w-32 shrink-0 text-xs text-slate-500 text-right truncate">{e.name}</div>
+                    <div className="flex-1 h-5 rounded-full bg-slate-100 overflow-hidden">
+                      <div className="h-full rounded-full transition-all"
+                           style={{ width: `${pct}%`, background: e.fill }} />
+                    </div>
+                    <div className="w-7 shrink-0 text-sm font-semibold text-ink text-right tabular-nums">{e.value}</div>
+                  </div>
+                )
+              })}
+            </div>
           ) : <p className="text-sm text-slate-400">Sin clientes en el pipeline aún.</p>}
         </div>
 

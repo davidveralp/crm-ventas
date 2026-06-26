@@ -10,7 +10,6 @@ const ESTADO_COLOR = {
 const CANALES = { whatsapp: 'WhatsApp', llamada: 'Llamada', email: 'Email', sms: 'SMS' }
 // Canal de campaña -> tipo_actividad válido del enum
 const CANAL_A_TIPO = { whatsapp: 'whatsapp', llamada: 'llamada', email: 'email', sms: 'llamada' }
-const OT_URL = import.meta.env.VITE_REGISTRO_OT_URL || ''
 
 export default function Campanas() {
   const { esAdmin, perfil } = useAuth()
@@ -91,22 +90,11 @@ export default function Campanas() {
     cargar()
   }
 
-  function agregarOT() {
-    if (!OT_URL) {
-      alert('Configura la URL del registro de OT en la variable VITE_REGISTRO_OT_URL (.env) para habilitar este botón.')
-      return
-    }
-    window.open(OT_URL, '_blank', 'noopener')
-  }
-
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-xl font-bold text-ink">Campañas</h1>
-          <p className="text-sm text-slate-500">Oportunidades por segmento · ordenadas por prioridad</p>
-        </div>
-        <button className="btn-soft" onClick={agregarOT}>+ Agregar OT</button>
+      <div>
+        <h1 className="text-xl font-bold text-ink">Campañas</h1>
+        <p className="text-sm text-slate-500">Oportunidades por segmento · ordenadas por prioridad</p>
       </div>
 
       <div className="grid md:grid-cols-2 gap-4">

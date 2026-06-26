@@ -3,10 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { Pill, Modal, EmptyState } from '../components/UI'
-import { SEGMENTOS, TIPOS_CLIENTE, segLabel, segColor, fmtCLP } from '../lib/helpers'
+import { SEGMENTOS, TIPOS_CLIENTE, segLabel, segColor, fmtCLP, formatRut } from '../lib/helpers'
 
 const VACIO = {
-  nombre: '', email: '', telefono: '', ciudad: 'La Serena',
+  nombre: '', rut: '', email: '', telefono: '', ciudad: 'La Serena',
   tipo: 'PERSONA', segmento: 'prometedor', marca_principal: '', vendedor_id: '',
   // datos del primer vehículo (opcionales)
   v_marca: '', v_modelo: '', v_anio: '', v_patente: '', v_km: ''
@@ -68,6 +68,7 @@ export default function Clientes() {
     const payload = {
       nombre: form.nombre, email: form.email, telefono: form.telefono,
       ciudad: form.ciudad, tipo: form.tipo, segmento: form.segmento,
+      rut: form.rut ? formatRut(form.rut) : null,
       marca_principal: form.marca_principal || form.v_marca || null,
       empresa_id: perfil.empresa_id,
       vendedor_id: form.vendedor_id || (esAdmin ? null : perfil.id)
@@ -175,10 +176,19 @@ export default function Clientes() {
 
       <Modal abierto={modal} onClose={() => setModal(false)} titulo="Nuevo cliente" ancho="max-w-xl">
         <form onSubmit={guardar} className="space-y-4">
-          <div>
-            <label className="label">Nombre *</label>
-            <input className="input" required value={form.nombre}
-                   onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Nombre *</label>
+              <input className="input" required value={form.nombre}
+                     onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
+            </div>
+            <div>
+              <label className="label">RUT</label>
+              <input className="input" value={form.rut}
+                     onChange={(e) => setForm({ ...form, rut: e.target.value })}
+                     onBlur={(e) => setForm({ ...form, rut: formatRut(e.target.value) })}
+                     placeholder="12.345.678-9" />
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>

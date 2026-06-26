@@ -5,8 +5,10 @@ import { useAuth } from '../context/AuthContext'
 import { Pill, Modal, StatCard } from '../components/UI'
 import {
   segLabel, segColor, fmtCLP, fmtFecha, tipoClienteLabel, TIPOS_CLIENTE,
-  TIPOS_ACTIVIDAD, RESULTADOS, VENTANAS, ESTADOS_PRESUPUESTO, ETAPAS_OPCIONALES
+  TIPOS_ACTIVIDAD, RESULTADOS, VENTANAS, ESTADOS_PRESUPUESTO, ETAPAS_OPCIONALES, buildOtUrl, formatRut
 } from '../lib/helpers'
+
+const OT_URL = import.meta.env.VITE_REGISTRO_OT_URL || ''
 
 const ACT_VACIA = {
   tipo: 'llamada', resultado: 'pendiente',
@@ -113,7 +115,8 @@ export default function ClienteDetalle() {
     e.preventDefault()
     const { error } = await supabase.from('clientes').update({
       nombre: contacto.nombre, email: contacto.email, telefono: contacto.telefono,
-      ciudad: contacto.ciudad, tipo: contacto.tipo, marca_principal: contacto.marca_principal
+      ciudad: contacto.ciudad, tipo: contacto.tipo, marca_principal: contacto.marca_principal,
+      rut: contacto.rut ? formatRut(contacto.rut) : null
     }).eq('id', id)
     if (error) { alert('Error: ' + error.message); return }
     setModalC(false); cargar()
@@ -140,6 +143,24 @@ export default function ClienteDetalle() {
   async function borrarVehiculo(vid) {
     if (!confirm('¿Eliminar este vehículo?')) return
     await supabase.from('vehiculos').delete().eq('id', vid); cargar()
+  }
+
+  // Deriva a una nueva OT en el formulario externo, prellenando datos.
+  function nuevaOT(vehiculo) {
+    if (!OT_URL) {
+      alert('Configura la URL del registro de OT en VITE_REGISTRO_OT_URL (Vercel) para habilitar este botón.')
+      return
+    }
+    const params = {
+      nombre: cliente.nombre, telefono: cliente.telefono, email: cliente.email,
+      ciudad: cliente.ciudad, documento: cliente.rut,
+      marca: vehiculo?.marca || cliente.marca_principal,
+      modelo: vehiculo?.modelo || '',
+      anio: vehiculo?.anio || '',
+      patente: vehiculo?.patente || '',
+      km: vehiculo?.km_actual_estimado || vehiculo?.km_ultimo || ''
+    }
+    window.open(buildOtUrl(OT_URL, params), '_blank', 'noopener')
   }
 
   function abrirEditarVehiculo(v) {
@@ -178,14 +199,19 @@ export default function ClienteDetalle() {
               <div className="text-xs text-slate-400">Facturación histórica</div>
               <div className="text-xl font-bold text-ink">{fmtCLP(cliente.facturacion_total)}</div>
             </div>
-            <button className="btn-soft text-xs py-1.5"
-                    onClick={() => { setContacto({
-                      nombre: cliente.nombre, email: cliente.email || '', telefono: cliente.telefono || '',
-                      ciudad: cliente.ciudad || '', tipo: cliente.tipo || 'PERSONA',
-                      marca_principal: cliente.marca_principal || ''
-                    }); setModalC(true) }}>
-              Editar
-            </button>
+            <div className="flex flex-col gap-2">
+              <button className="btn-primary text-xs py-1.5" onClick={() => nuevaOT(vehiculos[0])}>
+                + Nueva OT
+              </button>
+              <button className="btn-soft text-xs py-1.5"
+                      onClick={() => { setContacto({
+                        nombre: cliente.nombre, email: cliente.email || '', telefono: cliente.telefono || '',
+                        ciudad: cliente.ciudad || '', tipo: cliente.tipo || 'PERSONA',
+                        marca_principal: cliente.marca_principal || '', rut: cliente.rut || ''
+                      }); setModalC(true) }}>
+                Editar
+              </button>
+            </div>
           </div>
         </div>
 
@@ -198,7 +224,8 @@ export default function ClienteDetalle() {
           <StatCard titulo="Vehículos" valor={vehiculos.length} />
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-5 text-sm border-t border-slate-100 pt-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-5 text-sm border-t border-slate-100 pt-4">
+          <div><div className="text-xs text-slate-400">RUT</div>{cliente.rut || '—'}</div>
           <div><div className="text-xs text-slate-400">Teléfono</div>{cliente.telefono || '—'}</div>
           <div><div className="text-xs text-slate-400">Correo</div>{cliente.email || '—'}</div>
           <div><div className="text-xs text-slate-400">Ciudad</div>{cliente.ciudad || '—'}</div>
@@ -296,6 +323,7 @@ export default function ClienteDetalle() {
                     </div>
                     <div className="flex items-center gap-2">
                       {v.ventana && <Pill color={VENTANAS[v.ventana]?.color}>{VENTANAS[v.ventana]?.label}</Pill>}
+                      <button onClick={() => nuevaOT(v)} className="text-xs text-didial-red font-medium hover:underline">Nueva OT</button>
                       <button onClick={() => abrirEditarVehiculo(v)} className="text-xs text-deep hover:underline">Editar</button>
                       <button onClick={() => borrarVehiculo(v.id)} className="text-xs text-slate-300 hover:text-red-500">✕</button>
                     </div>
@@ -471,10 +499,19 @@ export default function ClienteDetalle() {
       <Modal abierto={modalC} onClose={() => setModalC(false)} titulo="Editar datos de contacto">
         {contacto && (
           <form onSubmit={guardarContacto} className="space-y-4">
-            <div>
-              <label className="label">Nombre *</label>
-              <input className="input" required value={contacto.nombre}
-                     onChange={(e) => setContacto({ ...contacto, nombre: e.target.value })} />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label">Nombre *</label>
+                <input className="input" required value={contacto.nombre}
+                       onChange={(e) => setContacto({ ...contacto, nombre: e.target.value })} />
+              </div>
+              <div>
+                <label className="label">RUT</label>
+                <input className="input" value={contacto.rut}
+                       onChange={(e) => setContacto({ ...contacto, rut: e.target.value })}
+                       onBlur={(e) => setContacto({ ...contacto, rut: formatRut(e.target.value) })}
+                       placeholder="12.345.678-9" />
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>

@@ -85,3 +85,30 @@ export const ETAPAS_ORDEN = [
 ]
 // Etapas marcadas como opcionales en la línea de tiempo
 export const ETAPAS_OPCIONALES = ['cotizacion']
+
+// ---- v5: Construye la URL del Registro de OT con datos prellenados ---
+// - Normaliza el esquema (si falta https://, lo antepone).
+// - Agrega los datos del cliente/vehículo como parámetros de consulta.
+export function buildOtUrl(base, params = {}) {
+  if (!base) return ''
+  let url = String(base).trim()
+  if (!/^https?:\/\//i.test(url)) url = 'https://' + url
+  const qs = Object.entries(params)
+    .filter(([, v]) => v != null && v !== '')
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    .join('&')
+  return qs ? `${url}${url.includes('?') ? '&' : '?'}${qs}` : url
+}
+
+// ---- v5: Formatea un RUT chileno -> 12.345.678-9 --------------------
+// Limpia, agrupa miles con punto y antepone el dígito verificador con guion.
+// No valida el DV; solo homologa el formato al del formulario de OT.
+export function formatRut(rut) {
+  if (!rut) return ''
+  const limpio = String(rut).replace(/[^0-9kK]/g, '').toUpperCase()
+  if (limpio.length < 2) return limpio
+  const cuerpo = limpio.slice(0, -1)
+  const dv = limpio.slice(-1)
+  const conPuntos = cuerpo.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  return `${conPuntos}-${dv}`
+}
