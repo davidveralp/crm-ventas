@@ -2,21 +2,23 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { Pill, Modal, StatCard } from '../components/UI'
+import { Pill, Modal, StatCard, SelectMarca } from '../components/UI'
 import {
   segLabel, segColor, fmtCLP, fmtFecha, tipoClienteLabel, TIPOS_CLIENTE,
-  TIPOS_ACTIVIDAD, RESULTADOS, VENTANAS, ESTADOS_PRESUPUESTO, ETAPAS_OPCIONALES, buildOtUrl, formatRut
+  TIPOS_ACTIVIDAD, RESULTADOS, VENTANAS, ESTADOS_PRESUPUESTO, ETAPAS_OPCIONALES,
+  buildOtUrl, formatRut, formatTelefono, formatPatente, patenteLimpia,
+  TIPOS_SERVICIO, tipoServicioLabel, RESULTADO_A_ETAPA
 } from '../lib/helpers'
 
 const OT_URL = import.meta.env.VITE_REGISTRO_OT_URL || ''
 
 const ACT_VACIA = {
-  tipo: 'llamada', resultado: 'pendiente',
+  tipo: 'llamada', resultado: 'pendiente', tipo_servicio: '',
   fecha: new Date().toISOString().slice(0, 10),
   hora: '', descripcion: '', proxima_accion: '', proxima_fecha: ''
 }
 const PRESUP_VACIO = {
-  numero: '', descripcion: '', monto: '', estado: 'borrador',
+  numero: '', descripcion: '', monto: '', estado: 'borrador', tipo_servicio: '',
   fecha_emision: new Date().toISOString().slice(0, 10),
   fecha_validez: '', proxima_gestion: '', notas: ''
 }
@@ -84,14 +86,30 @@ export default function ClienteDetalle() {
   }
 
   // --- Guardados ------------------------------------------------------
+  // Avanza el estado del cliente según el resultado de la actividad.
+  // No retrocede (salvo que el destino sea "Perdido").
+  async function avanzarEstadoPorResultado(resultado) {
+    const clave = RESULTADO_A_ETAPA[resultado]
+    if (!clave) return
+    const destino = estados.find((e) => e.clave === clave) ||
+                    estados.find((e) => e.nombre.toLowerCase() === clave)
+    if (!destino) return
+    const actual = estados.find((e) => e.id === cliente.estado_id)
+    const esPerdido = destino.clave === 'perdido' || destino.nombre === 'Perdido'
+    if (!esPerdido && actual && destino.orden <= actual.orden) return
+    await supabase.from('clientes').update({ estado_id: destino.id }).eq('id', id)
+  }
+
   async function guardarActividad(e) {
     e.preventDefault()
     const { error } = await supabase.from('actividades').insert({
       ...act, cliente_id: id, empresa_id: cliente.empresa_id,
       vendedor_id: cliente.vendedor_id, hora: act.hora || null,
-      proxima_fecha: act.proxima_fecha || null
+      proxima_fecha: act.proxima_fecha || null,
+      tipo_servicio: act.tipo_servicio || null
     })
     if (error) { alert('Error: ' + error.message); return }
+    await avanzarEstadoPorResultado(act.resultado)
     setModal(false); setAct(ACT_VACIA); cargar()
   }
 
@@ -101,7 +119,8 @@ export default function ClienteDetalle() {
       ...presup, cliente_id: id, empresa_id: cliente.empresa_id,
       vendedor_id: cliente.vendedor_id, monto: Number(presup.monto) || 0,
       fecha_validez: presup.fecha_validez || null,
-      proxima_gestion: presup.proxima_gestion || null
+      proxima_gestion: presup.proxima_gestion || null,
+      tipo_servicio: presup.tipo_servicio || null
     })
     if (error) { alert('Error: ' + error.message); return }
     setModalP(false); setPresup(PRESUP_VACIO); cargar()
@@ -114,7 +133,8 @@ export default function ClienteDetalle() {
   async function guardarContacto(e) {
     e.preventDefault()
     const { error } = await supabase.from('clientes').update({
-      nombre: contacto.nombre, email: contacto.email, telefono: contacto.telefono,
+      nombre: contacto.nombre, email: contacto.email,
+      telefono: contacto.telefono ? formatTelefono(contacto.telefono) : null,
       ciudad: contacto.ciudad, tipo: contacto.tipo, marca_principal: contacto.marca_principal,
       rut: contacto.rut ? formatRut(contacto.rut) : null
     }).eq('id', id)
@@ -127,7 +147,7 @@ export default function ClienteDetalle() {
     const km = Number(veh.km) || null
     const payload = {
       cliente_id: id, empresa_id: cliente.empresa_id,
-      patente: veh.patente || null, marca: veh.marca || null,
+      patente: veh.patente ? formatPatente(veh.patente) : null, marca: veh.marca || null,
       modelo: veh.modelo || null, anio: Number(veh.anio) || null,
       km_ultimo: km, km_actual_estimado: km,
       proximo_servicio_km: Number(veh.proximo_servicio_km) || null,
@@ -157,7 +177,7 @@ export default function ClienteDetalle() {
       marca: vehiculo?.marca || cliente.marca_principal,
       modelo: vehiculo?.modelo || '',
       anio: vehiculo?.anio || '',
-      patente: vehiculo?.patente || '',
+      patente: patenteLimpia(vehiculo?.patente),
       km: vehiculo?.km_actual_estimado || vehiculo?.km_ultimo || ''
     }
     window.open(buildOtUrl(OT_URL, params), '_blank', 'noopener')
@@ -226,7 +246,7 @@ export default function ClienteDetalle() {
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-5 text-sm border-t border-slate-100 pt-4">
           <div><div className="text-xs text-slate-400">RUT</div>{cliente.rut || '—'}</div>
-          <div><div className="text-xs text-slate-400">Teléfono</div>{cliente.telefono || '—'}</div>
+          <div><div className="text-xs text-slate-400">Teléfono</div>{cliente.telefono ? formatTelefono(cliente.telefono) : '—'}</div>
           <div><div className="text-xs text-slate-400">Correo</div>{cliente.email || '—'}</div>
           <div><div className="text-xs text-slate-400">Ciudad</div>{cliente.ciudad || '—'}</div>
         </div>
@@ -319,7 +339,7 @@ export default function ClienteDetalle() {
                       <div className="font-medium text-ink">
                         {v.marca} {v.modelo}{v.anio ? <span className="text-slate-400"> · {v.anio}</span> : null}
                       </div>
-                      <div className="text-xs text-slate-400 mt-0.5">Patente {v.patente || '—'}</div>
+                      <div className="text-xs text-slate-400 mt-0.5">Patente {v.patente ? formatPatente(v.patente) : '—'}</div>
                     </div>
                     <div className="flex items-center gap-2">
                       {v.ventana && <Pill color={VENTANAS[v.ventana]?.color}>{VENTANAS[v.ventana]?.label}</Pill>}
@@ -373,7 +393,12 @@ export default function ClienteDetalle() {
                     <span className="text-sm font-medium text-ink">{TIPOS_ACTIVIDAD[a.tipo]}</span>
                     <span className="text-xs text-slate-400">{fmtFecha(a.fecha)}{a.hora ? ` · ${a.hora.slice(0,5)}` : ''}</span>
                   </div>
-                  <div className="text-xs text-slate-500 mt-0.5">{RESULTADOS[a.resultado]}</div>
+                  <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-2 flex-wrap">
+                    <span>{RESULTADOS[a.resultado]}</span>
+                    {a.tipo_servicio && (
+                      <span className="pill bg-mist text-deep">{tipoServicioLabel(a.tipo_servicio)}</span>
+                    )}
+                  </div>
                   {a.descripcion && <p className="text-sm text-slate-600 mt-1">{a.descripcion}</p>}
                   {a.proxima_accion && (
                     <p className="text-xs text-deep mt-1">→ {a.proxima_accion}{a.proxima_fecha ? ` · ${fmtFecha(a.proxima_fecha)}` : ''}</p>
@@ -391,6 +416,7 @@ export default function ClienteDetalle() {
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-ink">{p.numero ? `N° ${p.numero}` : 'Presupuesto'}</span>
                       <span className="text-sm text-slate-500">· {fmtCLP(p.monto)}</span>
+                      {p.tipo_servicio && <span className="pill bg-mist text-deep">{tipoServicioLabel(p.tipo_servicio)}</span>}
                     </div>
                     <select className="text-xs rounded-md border border-slate-200 px-2 py-1"
                             value={p.estado} onChange={(e) => cambiarEstadoPresup(p.id, e.target.value)}
@@ -433,6 +459,14 @@ export default function ClienteDetalle() {
             </select>
           </div>
           <div>
+            <label className="label">Tipo de servicio solicitado</label>
+            <select className="input" value={act.tipo_servicio}
+                    onChange={(e) => setAct({ ...act, tipo_servicio: e.target.value })}>
+              <option value="">— Sin especificar —</option>
+              {Object.entries(TIPOS_SERVICIO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+          </div>
+          <div>
             <label className="label">Observaciones</label>
             <textarea className="input" rows="3" value={act.descripcion}
                       onChange={(e) => setAct({ ...act, descripcion: e.target.value })}
@@ -470,6 +504,14 @@ export default function ClienteDetalle() {
               <label className="label">Monto (CLP)</label>
               <input className="input" type="number" value={presup.monto} onChange={(e) => setPresup({ ...presup, monto: e.target.value })} />
             </div>
+          </div>
+          <div>
+            <label className="label">Tipo de servicio</label>
+            <select className="input" value={presup.tipo_servicio}
+                    onChange={(e) => setPresup({ ...presup, tipo_servicio: e.target.value })}>
+              <option value="">— Sin especificar —</option>
+              {Object.entries(TIPOS_SERVICIO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
           </div>
           <div>
             <label className="label">Detalle del trabajo</label>
@@ -559,8 +601,7 @@ export default function ClienteDetalle() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label">Marca</label>
-              <input className="input" value={veh.marca} placeholder="Ej: TOYOTA"
-                     onChange={(e) => setVeh({ ...veh, marca: e.target.value.toUpperCase() })} />
+              <SelectMarca value={veh.marca} onChange={(v) => setVeh({ ...veh, marca: v })} />
             </div>
             <div>
               <label className="label">Modelo</label>
@@ -575,7 +616,9 @@ export default function ClienteDetalle() {
             <div>
               <label className="label">Patente</label>
               <input className="input" value={veh.patente}
-                     onChange={(e) => setVeh({ ...veh, patente: e.target.value.toUpperCase() })} />
+                     onChange={(e) => setVeh({ ...veh, patente: e.target.value.toUpperCase() })}
+                     onBlur={(e) => setVeh({ ...veh, patente: formatPatente(e.target.value) })}
+                     placeholder="XX XX XX" />
             </div>
             <div>
               <label className="label">Kilometraje</label>

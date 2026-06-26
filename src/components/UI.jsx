@@ -1,3 +1,6 @@
+import { useState, useEffect } from 'react'
+import { MARCAS_VEHICULO } from '../lib/helpers'
+
 export function Pill({ children, color }) {
   return (
     <span className="pill" style={{ background: `${color}1A`, color }}>
@@ -40,5 +43,30 @@ export function Modal({ abierto, onClose, titulo, children, ancho = 'max-w-lg' }
         <div className="p-5">{children}</div>
       </div>
     </div>
+  )
+}
+
+// Selector de marca con catálogo + opción "Otra…" (texto libre)
+export function SelectMarca({ value, onChange }) {
+  const enLista = (v) => MARCAS_VEHICULO.includes(v)
+  const [otra, setOtra] = useState(false)
+  useEffect(() => { if (value && !enLista(value)) setOtra(true) }, [value])
+  const selVal = otra ? '__OTRA__' : (enLista(value) ? value : '')
+  return (
+    <>
+      <select className="input" value={selVal}
+              onChange={(e) => {
+                if (e.target.value === '__OTRA__') { setOtra(true); onChange('') }
+                else { setOtra(false); onChange(e.target.value) }
+              }}>
+        <option value="">— Selecciona —</option>
+        {MARCAS_VEHICULO.map((m) => <option key={m} value={m}>{m}</option>)}
+        <option value="__OTRA__">Otra…</option>
+      </select>
+      {otra && (
+        <input className="input mt-2" placeholder="Escribe la marca"
+               value={value} onChange={(e) => onChange(e.target.value.toUpperCase())} />
+      )}
+    </>
   )
 }

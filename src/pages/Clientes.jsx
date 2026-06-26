@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { Pill, Modal, EmptyState } from '../components/UI'
-import { SEGMENTOS, TIPOS_CLIENTE, segLabel, segColor, fmtCLP, formatRut } from '../lib/helpers'
+import { Pill, Modal, EmptyState, SelectMarca } from '../components/UI'
+import { SEGMENTOS, TIPOS_CLIENTE, segLabel, segColor, fmtCLP, formatRut, formatTelefono, formatPatente } from '../lib/helpers'
 
 const VACIO = {
   nombre: '', rut: '', email: '', telefono: '', ciudad: 'La Serena',
@@ -65,11 +65,14 @@ export default function Clientes() {
   async function guardar(e) {
     e.preventDefault()
     setGuardando(true)
+    const asignado = estados.find((e) => e.clave === 'asignado' || e.nombre === 'Asignado')
     const payload = {
-      nombre: form.nombre, email: form.email, telefono: form.telefono,
+      nombre: form.nombre, email: form.email,
+      telefono: form.telefono ? formatTelefono(form.telefono) : null,
       ciudad: form.ciudad, tipo: form.tipo, segmento: form.segmento,
       rut: form.rut ? formatRut(form.rut) : null,
       marca_principal: form.marca_principal || form.v_marca || null,
+      estado_id: asignado ? asignado.id : null,
       empresa_id: perfil.empresa_id,
       vendedor_id: form.vendedor_id || (esAdmin ? null : perfil.id)
     }
@@ -82,7 +85,8 @@ export default function Clientes() {
       const km = Number(form.v_km) || null
       await supabase.from('vehiculos').insert({
         cliente_id: nuevo.id, empresa_id: perfil.empresa_id,
-        patente: form.v_patente || null, marca: form.v_marca || null,
+        patente: form.v_patente ? formatPatente(form.v_patente) : null,
+        marca: form.v_marca || null,
         modelo: form.v_modelo || null, anio: Number(form.v_anio) || null,
         km_ultimo: km, km_actual_estimado: km
       })
@@ -152,7 +156,7 @@ export default function Clientes() {
                       onClick={() => navigate(`/clientes/${c.id}`)}>
                     <td className="px-4 py-3">
                       <div className="font-medium text-ink">{c.nombre}</div>
-                      <div className="text-xs text-slate-400">{c.telefono || c.email || '—'}</div>
+                      <div className="text-xs text-slate-400">{c.telefono ? formatTelefono(c.telefono) : (c.email || '—')}</div>
                     </td>
                     <td className="px-4 py-3 hidden sm:table-cell text-slate-600">{c.marca_principal || '—'}</td>
                     <td className="px-4 py-3">
@@ -194,7 +198,9 @@ export default function Clientes() {
             <div>
               <label className="label">Teléfono</label>
               <input className="input" value={form.telefono}
-                     onChange={(e) => setForm({ ...form, telefono: e.target.value })} />
+                     onChange={(e) => setForm({ ...form, telefono: e.target.value })}
+                     onBlur={(e) => setForm({ ...form, telefono: formatTelefono(e.target.value) })}
+                     placeholder="+56 9 XXXX XXXX" />
             </div>
             <div>
               <label className="label">Correo</label>
@@ -235,8 +241,7 @@ export default function Clientes() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="label">Marca</label>
-                <input className="input" value={form.v_marca} placeholder="Ej: TOYOTA"
-                       onChange={(e) => setForm({ ...form, v_marca: e.target.value.toUpperCase() })} />
+                <SelectMarca value={form.v_marca} onChange={(v) => setForm({ ...form, v_marca: v })} />
               </div>
               <div>
                 <label className="label">Modelo</label>
@@ -251,7 +256,9 @@ export default function Clientes() {
               <div>
                 <label className="label">Patente</label>
                 <input className="input" value={form.v_patente}
-                       onChange={(e) => setForm({ ...form, v_patente: e.target.value.toUpperCase() })} />
+                       onChange={(e) => setForm({ ...form, v_patente: e.target.value.toUpperCase() })}
+                       onBlur={(e) => setForm({ ...form, v_patente: formatPatente(e.target.value) })}
+                       placeholder="XX XX XX" />
               </div>
               <div className="col-span-2">
                 <label className="label">Kilometraje</label>

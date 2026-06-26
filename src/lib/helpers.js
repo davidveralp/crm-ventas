@@ -112,3 +112,82 @@ export function formatRut(rut) {
   const conPuntos = cuerpo.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
   return `${conPuntos}-${dv}`
 }
+
+// ---- v6: Formato de teléfono (+56 9 XXXX XXXX / +54 …) ---------------
+// Detecta código país (56 Chile, 54 Argentina; por defecto 56) y agrupa.
+export function formatTelefono(raw) {
+  if (!raw) return ''
+  let d = String(raw).replace(/\D/g, '')
+  if (!d) return String(raw).trim()
+  if (d.startsWith('00')) d = d.slice(2)
+  let cc = ''
+  if (d.startsWith('56')) { cc = '56'; d = d.slice(2) }
+  else if (d.startsWith('54')) { cc = '54'; d = d.slice(2) }
+  else cc = '56'
+  d = d.replace(/^0+/, '')               // quita ceros de larga distancia
+  let movil = ''
+  if (d.startsWith('9') && d.length >= 9) { movil = '9'; d = d.slice(1) }
+  else if (cc === '56' && d.length === 8) { movil = '9' } // celular sin el 9
+  const grupos = []
+  let resto = d
+  while (resto.length > 4) { grupos.push(resto.slice(0, 4)); resto = resto.slice(4) }
+  if (resto) grupos.push(resto)
+  const num = [movil, ...grupos].filter(Boolean).join(' ')
+  return `+${cc} ${num}`.trim()
+}
+
+// ---- v6: Formato de patente (XX XX XX) ------------------------------
+export function formatPatente(raw) {
+  if (!raw) return ''
+  const limpio = String(raw).replace(/[^A-Za-z0-9]/g, '').toUpperCase()
+  return limpio.replace(/(.{2})(?=.)/g, '$1 ').trim()
+}
+export const patenteLimpia = (p) => String(p || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase()
+
+// ---- v6: Catálogo de marcas de vehículos ----------------------------
+export const MARCAS_VEHICULO = [
+  'TOYOTA', 'CHEVROLET', 'HYUNDAI', 'KIA', 'NISSAN', 'SUZUKI', 'MAZDA',
+  'MITSUBISHI', 'FORD', 'VOLKSWAGEN', 'PEUGEOT', 'RENAULT', 'HONDA',
+  'SUBARU', 'CHERY', 'GREAT WALL', 'HAVAL', 'MG', 'JAC', 'CHANGAN',
+  'CITROEN', 'FIAT', 'JEEP', 'BMW', 'MERCEDES-BENZ', 'AUDI', 'VOLVO',
+  'DODGE', 'RAM', 'SSANGYONG', 'ISUZU', 'BYD', 'DFSK', 'MAXUS', 'FOTON',
+  'BAIC', 'GEELY', 'DONGFENG', 'JETOUR'
+]
+
+// ---- v6: Tipo de servicio solicitado (catálogo) ---------------------
+export const TIPOS_SERVICIO = {
+  mantencion_basica:     'Mantención básica',
+  mantencion_intermedia: 'Mantención intermedia',
+  mantencion_mayor:      'Mantención mayor',
+  frenos:                'Frenos',
+  embrague:              'Embrague',
+  suspension:            'Suspensión / dirección',
+  distribucion:          'Distribución / correa',
+  motor:                 'Motor',
+  diagnostico:           'Diagnóstico / escáner',
+  electrico:             'Sistema eléctrico',
+  aire:                  'Aire acondicionado',
+  neumaticos:            'Neumáticos / alineación',
+  dyp:                   'Desabolladura y pintura',
+  revision_tecnica:      'Revisión técnica',
+  otro:                  'Otro'
+}
+export const tipoServicioLabel = (t) => TIPOS_SERVICIO[t] || '—'
+
+// ---- v6: Mapa resultado de actividad -> etapa de gestión (clave) ----
+// Al registrar una actividad, el estado del cliente avanza a esta etapa
+// (nunca retrocede, salvo 'perdido'). null = no cambia el estado.
+export const RESULTADO_A_ETAPA = {
+  pendiente:          'pendiente',
+  no_contesta:        'pendiente',
+  numero_erroneo:     null,
+  interesado:         'interesado',
+  cotizacion_enviada: 'cotizacion',
+  compromiso:         'interesado',
+  agendado:           'agendado',
+  fidelizado:         'seguimiento',
+  reagendar:          'contactado',
+  no_interesado:      'contactado',
+  no_desea_contacto:  'perdido',
+  exitosa:            'servicio'
+}

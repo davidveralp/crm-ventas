@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from 'recharts'
 import { supabase, fetchAllRows } from '../lib/supabase'
 import { StatCard } from '../components/UI'
-import { SEGMENTOS, segLabel, fmtCLP } from '../lib/helpers'
+import { SEGMENTOS, segLabel, fmtCLP, TIPOS_SERVICIO } from '../lib/helpers'
 
 export default function Informes() {
   const [d, setD] = useState(null)
@@ -15,9 +15,9 @@ export default function Informes() {
         fetchAllRows('clientes', 'id,segmento,estado_id,vendedor_id,facturacion_total'),
         supabase.from('usuarios').select('id,nombre').eq('rol', 'vendedor').eq('activo', true),
         supabase.from('pipeline_estados').select('*').order('orden'),
-        supabase.from('actividades').select('cliente_id,vendedor_id,resultado,campana_id').limit(8000),
+        supabase.from('actividades').select('cliente_id,vendedor_id,resultado,campana_id,tipo_servicio').limit(8000),
         supabase.from('campanas').select('id,nombre,segmento').order('prioridad'),
-        supabase.from('presupuestos').select('estado,monto').limit(5000)
+        supabase.from('presupuestos').select('estado,monto,tipo_servicio').limit(5000)
       ])
     setD({ clientes: clientes || [], usuarios: usuarios || [], estados: estados || [],
            act: act || [], camp: camp || [], presup: presup || [] })
@@ -60,7 +60,17 @@ export default function Informes() {
     const facturacion = d.clientes.reduce((a, c) => a + Number(c.facturacion_total || 0), 0)
     const convTotal = wonId ? d.clientes.filter((c) => c.estado_id === wonId).length : 0
 
-    return { embudo, segs, porVendedor, porCampana, enJuego, ganado, facturacion,
+    // Servicios más solicitados (desde actividades + presupuestos)
+    const conteoServ = {}
+    const sumar = (arr) => arr.forEach((x) => {
+      if (x.tipo_servicio) conteoServ[x.tipo_servicio] = (conteoServ[x.tipo_servicio] || 0) + 1
+    })
+    sumar(d.act); sumar(d.presup)
+    const servicios = Object.entries(conteoServ)
+      .map(([k, v]) => ({ name: TIPOS_SERVICIO[k] || k, value: v }))
+      .sort((a, b) => b.value - a.value)
+
+    return { embudo, segs, porVendedor, porCampana, servicios, enJuego, ganado, facturacion,
              totalClientes: d.clientes.length,
              conversionGlobal: d.clientes.length ? Math.round((convTotal / d.clientes.length) * 100) : 0 }
   }, [d])
@@ -104,6 +114,25 @@ export default function Informes() {
             </BarChart>
           </ResponsiveContainer>
         </div>
+      </div>
+
+      <div className="card p-5">
+        <h3 className="font-semibold text-ink mb-3">Servicios más solicitados</h3>
+        {r.servicios.length ? (
+          <ResponsiveContainer width="100%" height={Math.max(180, r.servicios.length * 32)}>
+            <BarChart data={r.servicios} layout="vertical">
+              <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
+              <YAxis type="category" dataKey="name" width={150} tick={{ fontSize: 10 }} />
+              <Tooltip />
+              <Bar dataKey="value" fill="#2C5A72" radius={[0, 4, 4, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        ) : (
+          <p className="text-sm text-slate-400">
+            Aún no hay servicios registrados. Empieza a etiquetar el "Tipo de servicio" en cada
+            seguimiento o presupuesto para alimentar este análisis.
+          </p>
+        )}
       </div>
 
       <div className="card p-5">
