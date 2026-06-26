@@ -40,7 +40,7 @@ export default function Dashboard() {
       fill: SEGMENTOS[k].color
     })).filter((s) => s.value > 0)
 
-    const vendido = es.find((e) => e.nombre === 'Vendido')
+    const vendido = es.find((e) => e.clave === 'servicio' || e.nombre === 'Servicio realizado' || e.nombre === 'Vendido')
     const cerrados = vendido ? cs.filter((c) => c.estado_id === vendido.id).length : 0
     const conversion = cs.length ? Math.round((cerrados / cs.length) * 100) : 0
 

@@ -24,9 +24,10 @@ export default function Login() {
       {/* PANEL DE MARCA (automotriz) */}
       <div className="relative lg:w-3/5 overflow-hidden flex items-center justify-center
                       px-8 py-14 lg:py-0 min-h-[300px]">
-        {/* Fondo: degradado carbón */}
+        {/* Fondo: carbón sutil con juego de sombras */}
+        <div className="absolute inset-0 carbon" />
         <div className="absolute inset-0"
-             style={{ background: 'radial-gradient(120% 120% at 20% 10%, #1d2026 0%, #0E0F12 55%, #070809 100%)' }} />
+             style={{ boxShadow: 'inset 0 0 160px 40px rgba(0,0,0,0.6)' }} />
 
         {/* Líneas de velocidad diagonales */}
         <svg className="absolute inset-0 w-full h-full opacity-[0.08]" preserveAspectRatio="none">
@@ -58,8 +59,8 @@ export default function Login() {
             Gestión <span className="text-didial-amber">Comercial</span>
           </h1>
           <p className="mt-3 text-slate-300 text-base lg:text-lg">
-            Tu taller, tus clientes y tus ventas en un solo lugar.
-            Más seguimiento, más agendamientos, más motores en marcha.
+            CRM de ventas y postventa del taller. Clientes, vehículos,
+            seguimiento y campañas, conectados a tu base de OT.
           </p>
           <div className="mt-6 flex items-center gap-2 justify-center lg:justify-start">
             <span className="h-1 w-10 rounded-full bg-didial-red" />

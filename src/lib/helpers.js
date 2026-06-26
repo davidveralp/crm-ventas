@@ -62,3 +62,26 @@ export const ESTADOS_PRESUPUESTO = {
   rechazado:       { label: 'Rechazado',       color: '#A32D2D' },
   vencido:         { label: 'Vencido',         color: '#94a3b8' }
 }
+
+// ---- v4: Tipo de cliente (Empresa / Persona / Interno) --------------
+export const TIPOS_CLIENTE = {
+  EMPRESA: 'Empresa',
+  PERSONA: 'Persona',
+  INTERNO: 'Interno'
+}
+// Mapea valores antiguos ('PARTICULAR') al nuevo etiquetado.
+export const tipoClienteLabel = (t) => {
+  if (!t) return '—'
+  if (t === 'PARTICULAR') return 'Persona'
+  return TIPOS_CLIENTE[t] || t
+}
+
+// ---- v4: Orden canónico de la línea de tiempo de gestión ------------
+// Se usa para resaltar el avance del cliente en su ficha. Si la BD tiene
+// la columna 'clave' (migración 08), se respeta; si no, se cae al 'orden'.
+export const ETAPAS_ORDEN = [
+  'asignado', 'pendiente', 'contactado', 'interesado',
+  'cotizacion', 'agendado', 'servicio', 'seguimiento'
+]
+// Etapas marcadas como opcionales en la línea de tiempo
+export const ETAPAS_OPCIONALES = ['cotizacion']

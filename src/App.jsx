@@ -7,6 +7,8 @@ import Clientes from './pages/Clientes'
 import ClienteDetalle from './pages/ClienteDetalle'
 import Pipeline from './pages/Pipeline'
 import Agenda from './pages/Agenda'
+import Calendario from './pages/Calendario'
+import Informes from './pages/Informes'
 import Campanas from './pages/Campanas'
 import Presupuestos from './pages/Presupuestos'
 import Datos from './pages/Datos'
@@ -25,6 +27,10 @@ export default function App() {
       <Route path="/clientes/:id" element={conLayout(<ClienteDetalle />)} />
       <Route path="/pipeline"    element={conLayout(<Pipeline />)} />
       <Route path="/agenda"      element={conLayout(<Agenda />)} />
+      <Route path="/calendario"  element={conLayout(<Calendario />)} />
+      <Route path="/informes"    element={
+        <ProtectedRoute soloAdmin><Layout><Informes /></Layout></ProtectedRoute>
+      } />
       <Route path="/campanas"    element={conLayout(<Campanas />)} />
       <Route path="/presupuestos" element={conLayout(<Presupuestos />)} />
       <Route path="/datos"       element={conLayout(<Datos />)} />
