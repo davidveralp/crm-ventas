@@ -1,60 +1,52 @@
-# Publicar en internet — DIDIAL CRM
+-- =====================================================================
+-- DIDIAL CRM · ACTUALIZACIÓN v4
+-- 1) Línea de tiempo de gestión: estados de pipeline con clave + activo
+-- 2) Normaliza tipo de cliente (PARTICULAR -> PERSONA)
+-- 3) Índice para filtrar actividades por campaña (métricas de Pipeline)
+-- Ejecutar en el SQL Editor de Supabase. Es seguro re-ejecutarlo.
+-- =====================================================================
 
-## Frontend en Vercel (gratis)
+-- empresa DIDIAL (constante usada abajo)
+-- '00000000-0000-0000-0000-000000000001'
 
-1. Entra a [vercel.com](https://vercel.com) y conéctate con tu cuenta de GitHub.
-2. **Add New → Project** → elige el repo `didial-crm`.
-3. Vercel detecta Vite automáticamente. En **Environment Variables** agrega:
-   - `VITE_SUPABASE_URL` = tu Project URL de Supabase
-   - `VITE_SUPABASE_ANON_KEY` = tu anon key
-4. **Deploy**. En ~1 minuto tendrás una URL pública (ej: `didial-crm.vercel.app`).
+-- ---- 1. Estados de pipeline: clave estable + activar/ocultar --------
+alter table pipeline_estados add column if not exists clave  text;
+alter table pipeline_estados add column if not exists activo boolean default true;
 
-Cada vez que hagas `git push`, Vercel actualiza la app sola.
+-- Re-mapea los estados existentes al nuevo flujo de gestión.
+-- (Conserva los estado_id ya asignados a clientes: solo renombra.)
+update pipeline_estados set nombre='Asignado',           clave='asignado',   orden=1, color='#7FB3C7', es_final=false
+  where empresa_id='00000000-0000-0000-0000-000000000001' and nombre='Lead';
+update pipeline_estados set                              clave='contactado', orden=3, color='#5B9BB5', es_final=false
+  where empresa_id='00000000-0000-0000-0000-000000000001' and nombre='Contactado';
+update pipeline_estados set nombre='Cotización enviada', clave='cotizacion', orden=5, color='#185FA5', es_final=false
+  where empresa_id='00000000-0000-0000-0000-000000000001' and nombre='Propuesta';
+update pipeline_estados set                              clave='agendado',   orden=6, color='#C98A1B', es_final=false
+  where empresa_id='00000000-0000-0000-0000-000000000001' and nombre='Agendado';
+update pipeline_estados set nombre='Servicio realizado', clave='servicio',   orden=7, color='#1D9E75', es_final=true
+  where empresa_id='00000000-0000-0000-0000-000000000001' and nombre='Vendido';
+update pipeline_estados set                              clave='perdido',    orden=9, color='#A32D2D', es_final=true
+  where empresa_id='00000000-0000-0000-0000-000000000001' and nombre='Perdido';
 
-### Instalar como app en el celular
-
-Abre la URL en el navegador del teléfono → menú → **"Agregar a pantalla de inicio"**.
-Queda como una app nativa y funciona offline (los datos vistos quedan en caché).
-
----
-
-## Reporte diario automático (8:00 hrs)
-
-El reporte vive en `supabase/functions/reporte-diario`. Para activarlo:
-
-### 1. Crear cuenta Brevo (envío de correos, gratis hasta 300/día)
-- Regístrate en [brevo.com](https://www.brevo.com), ve a **SMTP & API → API Keys** y crea una clave.
-- Verifica el remitente `administracion@didial.cl` en **Senders**.
-
-### 2. Cargar las variables en Supabase
-En **Project Settings → Edge Functions → Secrets**, agrega:
-```
-BREVO_API_KEY=xkeysib-...
-REPORTE_DESTINATARIOS=administracion@didial.cl,gerencia@didial.cl
-```
-
-### 3. Desplegar la función
-Instala el CLI de Supabase y ejecuta:
-```bash
-npm install -g supabase
-supabase login
-supabase link --project-ref TU-PROJECT-REF
-supabase functions deploy reporte-diario
-```
-
-### 4. Programar a las 8:00 (UTC-4 = 12:00 UTC)
-En el **SQL Editor** de Supabase:
-```sql
-select cron.schedule(
-  'reporte-diario-didial',
-  '0 12 * * *',   -- 12:00 UTC = 08:00 La Serena
-  $$ select net.http_post(
-       url := 'https://TU-PROJECT-REF.supabase.co/functions/v1/reporte-diario',
-       headers := '{"Authorization": "Bearer TU-ANON-KEY"}'::jsonb
-     ); $$
+-- Inserta las etapas nuevas que falten (idempotente por clave).
+insert into pipeline_estados (empresa_id, nombre, clave, color, orden, es_final, activo)
+select '00000000-0000-0000-0000-000000000001', x.nombre, x.clave, x.color, x.orden, x.es_final, true
+from (values
+  ('Pendiente de contacto', 'pendiente',   '#94a3b8', 2, false),
+  ('Interesado',            'interesado',  '#534AB7', 4, false),
+  ('Seguimiento',           'seguimiento', '#0E7490', 8, false)
+) as x(nombre, clave, color, orden, es_final)
+where not exists (
+  select 1 from pipeline_estados p
+  where p.empresa_id='00000000-0000-0000-0000-000000000001' and p.clave=x.clave
 );
-```
 
-> Si tu zona pasa a horario de verano (UTC-3), ajusta a `'0 11 * * *'`.
+-- ---- 2. Tipo de cliente: normaliza PARTICULAR -> PERSONA ------------
+update clientes set tipo='PERSONA'
+  where empresa_id='00000000-0000-0000-0000-000000000001'
+    and (tipo is null or tipo='PARTICULAR' or tipo='');
 
-Listo: cada mañana a las 8:00 el administrador y gerencia reciben el resumen.
+-- ---- 3. Métricas de Pipeline por campaña ---------------------------
+create index if not exists idx_actividades_campana on actividades(campana_id);
+
+-- Listo. Refresca el CRM tras ejecutar.

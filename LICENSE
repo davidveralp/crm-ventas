@@ -1,154 +1,163 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { supabase, fetchAllRows } from '../lib/supabase'
-import { StatCard } from '../components/UI'
-import { fmtCLP } from '../lib/helpers'
+import { useState } from 'react'
+import Papa from 'papaparse'
+import * as XLSX from 'xlsx'
+import { supabase } from '../lib/supabase'
+import { useAuth } from '../context/AuthContext'
 
-export default function Pipeline() {
-  const navigate = useNavigate()
-  const [estados, setEstados] = useState([])
-  const [clientes, setClientes] = useState([])
-  const [campanas, setCampanas] = useState([])
-  const [actividades, setActividades] = useState([])
-  const [auditoria, setAuditoria] = useState([])
-  const [campFiltro, setCampFiltro] = useState('')
-  const [arrastrado, setArrastrado] = useState(null)
-
-  useEffect(() => { cargar() }, [])
-
-  async function cargar() {
-    const [{ data: e }, c, { data: camp }, { data: act }, { data: aud }] = await Promise.all([
-      supabase.from('pipeline_estados').select('*').order('orden'),
-      fetchAllRows('clientes', 'id,nombre,facturacion_total,estado_id,segmento,vendedor_id'),
-      supabase.from('campanas').select('id,nombre,segmento').order('prioridad'),
-      supabase.from('actividades').select('cliente_id,resultado,campana_id').limit(5000),
-      supabase.from('auditoria').select('entidad_id,ocurrido_en').eq('entidad', 'cliente').eq('campo', 'estado_id').limit(8000)
-    ])
-    setEstados(e || []); setClientes(c || [])
-    setCampanas(camp || []); setActividades(act || []); setAuditoria(aud || [])
-  }
-
-  async function soltar(estado_id) {
-    if (!arrastrado) return
-    setClientes((prev) => prev.map((c) => c.id === arrastrado ? { ...c, estado_id } : c))
-    await supabase.from('clientes').update({ estado_id }).eq('id', arrastrado)
-    setArrastrado(null)
-  }
-
-  // Cohorte según filtro de campaña
-  const campSel = campanas.find((c) => c.id === campFiltro)
-  const cohorteIds = useMemo(() => {
-    if (!campSel) return null
-    const porTarea = new Set(actividades.filter((a) => a.campana_id === campSel.id).map((a) => a.cliente_id))
-    if (porTarea.size) return porTarea
-    // Fallback: por segmento de la campaña
-    return new Set(clientes.filter((c) => campSel.segmento && c.segmento === campSel.segmento).map((c) => c.id))
-  }, [campSel, actividades, clientes])
-
-  const visibles = useMemo(
-    () => (cohorteIds ? clientes.filter((c) => cohorteIds.has(c.id)) : clientes),
-    [clientes, cohorteIds]
-  )
-
-  // Métricas
-  const m = useMemo(() => {
-    const cohorte = visibles
-    const total = cohorte.length
-    const ids = new Set(cohorte.map((c) => c.id))
-    const wonEstado = estados.find((e) => e.clave === 'servicio' || e.nombre === 'Servicio realizado' || e.nombre === 'Vendido')
-    const contactados = new Set(
-      actividades.filter((a) => ids.has(a.cliente_id) && a.resultado && a.resultado !== 'pendiente')
-                 .map((a) => a.cliente_id)
-    )
-    const convertidos = wonEstado ? cohorte.filter((c) => c.estado_id === wonEstado.id).length : 0
-
-    // Tiempo promedio entre etapas (días) desde auditoría
-    const porCliente = {}
-    auditoria.forEach((a) => {
-      if (!ids.has(a.entidad_id)) return
-      ;(porCliente[a.entidad_id] ||= []).push(new Date(a.ocurrido_en).getTime())
-    })
-    let suma = 0, n = 0
-    Object.values(porCliente).forEach((ts) => {
-      ts.sort((a, b) => a - b)
-      for (let i = 1; i < ts.length; i++) { suma += (ts[i] - ts[i - 1]); n++ }
-    })
-    const diasProm = n ? (suma / n) / 864e5 : null
-
-    return {
-      total,
-      tasaContacto: total ? Math.round((contactados.size / total) * 100) : 0,
-      tasaConversion: total ? Math.round((convertidos / total) * 100) : 0,
-      efectividad: contactados.size ? Math.round((convertidos / contactados.size) * 100) : 0,
-      diasProm
-    }
-  }, [visibles, actividades, auditoria, estados])
-
-  const sinEstado = visibles.filter((c) => !c.estado_id)
-
-  return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-xl font-bold text-ink">Pipeline</h1>
-          <p className="text-sm text-slate-500">Arrastra las tarjetas para cambiar de etapa</p>
-        </div>
-        <select className="input md:max-w-xs" value={campFiltro} onChange={(e) => setCampFiltro(e.target.value)}>
-          <option value="">Todas las campañas</option>
-          {campanas.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-        </select>
-      </div>
-
-      {/* Métricas */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <StatCard titulo="En cohorte" valor={m.total} sub={campSel ? campSel.nombre : 'Todos'} />
-        <StatCard titulo="Tasa de contacto" valor={`${m.tasaContacto}%`} />
-        <StatCard titulo="Tasa de conversión" valor={`${m.tasaConversion}%`} />
-        <StatCard titulo="Efectividad" valor={`${m.efectividad}%`} sub="cierre sobre contactados" />
-        <StatCard titulo="Tiempo entre etapas" valor={m.diasProm != null ? `${m.diasProm.toFixed(1)} d` : '—'} />
-      </div>
-
-      <div className="flex gap-4 overflow-x-auto pb-4">
-        {sinEstado.length > 0 && (
-          <Columna titulo="Sin clasificar" color="#94a3b8" clientes={sinEstado}
-                   onDragStart={setArrastrado} onDrop={() => soltar(null)} navigate={navigate} />
-        )}
-        {estados.map((e) => (
-          <Columna key={e.id} titulo={e.nombre} color={e.color}
-                   clientes={visibles.filter((c) => c.estado_id === e.id)}
-                   onDragStart={setArrastrado} onDrop={() => soltar(e.id)} navigate={navigate} />
-        ))}
-      </div>
-    </div>
-  )
+// Mapeo flexible de encabezados -> columnas de la tabla clientes
+const ALIAS = {
+  nombre: ['nombre', 'cliente', 'razon social', 'razón social'],
+  email: ['email', 'correo', 'e-mail'],
+  telefono: ['telefono', 'teléfono', 'fono', 'celular', 'whatsapp'],
+  ciudad: ['ciudad', 'comuna'],
+  tipo: ['tipo'],
+  facturacion_total: ['facturacion', 'facturación', 'total', 'total $', 'monto'],
+  ticket_promedio: ['ticket', 'ticket promedio', 'ticket $'],
+  num_ot: ['ot', 'ots', 'visitas', 'n ot'],
+  ultima_visita: ['ultima visita', 'última visita', 'ult. visita', 'últ. visita'],
+  accion_recomendada: ['accion recomendada', 'acción recomendada', 'accion']
 }
 
-function Columna({ titulo, color, clientes, onDragStart, onDrop, navigate }) {
-  const total = clientes.reduce((a, c) => a + Number(c.facturacion_total || 0), 0)
+const SEG_ALIAS = {
+  'flota / empresa': 'flota_empresa', 'flota': 'flota_empresa', 'empresa': 'flota_empresa',
+  'vip activo': 'vip_activo', 'vip': 'vip_activo',
+  'alto valor en riesgo': 'alto_valor_riesgo', 'en riesgo': 'alto_valor_riesgo',
+  'leal recurrente': 'leal_recurrente',
+  'prometedor': 'prometedor',
+  'dormido recuperable': 'dormido_recuperable', 'dormido': 'dormido_recuperable',
+  'ocasional': 'ocasional'
+}
+
+function detectar(encabezado) {
+  const h = encabezado.trim().toLowerCase()
+  for (const [col, alias] of Object.entries(ALIAS))
+    if (alias.includes(h)) return col
+  if (h === 'segmento') return 'segmento'
+  return null
+}
+
+function limpiarNumero(v) {
+  if (typeof v === 'number') return v
+  if (!v) return 0
+  return Number(String(v).replace(/[^0-9.-]/g, '')) || 0
+}
+
+export default function Datos() {
+  const { perfil, esAdmin } = useAuth()
+  const [preview, setPreview] = useState(null)
+  const [filas, setFilas] = useState([])
+  const [estado, setEstado] = useState('')
+
+  function procesarFilas(rows) {
+    if (!rows.length) return
+    const cols = Object.keys(rows[0])
+    const mapa = {}
+    cols.forEach((c) => { const d = detectar(c); if (d) mapa[c] = d })
+
+    const limpias = rows.map((r) => {
+      const o = { empresa_id: perfil.empresa_id }
+      for (const [orig, col] of Object.entries(mapa)) {
+        let val = r[orig]
+        if (['facturacion_total', 'ticket_promedio', 'num_ot'].includes(col))
+          val = limpiarNumero(val)
+        else if (col === 'segmento')
+          val = SEG_ALIAS[String(val || '').trim().toLowerCase()] || null
+        else val = val ? String(val).trim() : null
+        o[col] = val
+      }
+      if (!esAdmin) o.vendedor_id = perfil.id
+      return o
+    }).filter((o) => o.nombre)
+
+    setFilas(limpias)
+    setPreview({ total: rows.length, validas: limpias.length, columnas: Object.values(mapa) })
+  }
+
+  function onCSV(e) {
+    const file = e.target.files[0]; if (!file) return
+    Papa.parse(file, { header: true, skipEmptyLines: true,
+      complete: (res) => procesarFilas(res.data) })
+  }
+
+  function onXLSX(e) {
+    const file = e.target.files[0]; if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const wb = XLSX.read(ev.target.result, { type: 'array' })
+      const ws = wb.Sheets[wb.SheetNames[0]]
+      procesarFilas(XLSX.utils.sheet_to_json(ws, { defval: '' }))
+    }
+    reader.readAsArrayBuffer(file)
+  }
+
+  async function importar() {
+    setEstado('Importando…')
+    let ok = 0
+    for (let i = 0; i < filas.length; i += 100) {
+      const lote = filas.slice(i, i + 100)
+      const { error } = await supabase.from('clientes').insert(lote)
+      if (!error) ok += lote.length
+    }
+    setEstado(`Listo: ${ok} clientes importados.`)
+    setPreview(null); setFilas([])
+  }
+
+  async function exportar() {
+    setEstado('Generando archivo…')
+    const { data } = await supabase.from('clientes')
+      .select('nombre,email,telefono,ciudad,tipo,segmento,facturacion_total,ticket_promedio,num_ot,ultima_visita')
+    const ws = XLSX.utils.json_to_sheet(data || [])
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Clientes')
+    XLSX.writeFile(wb, `clientes-didial-${new Date().toISOString().slice(0,10)}.xlsx`)
+    setEstado('')
+  }
+
   return (
-    <div className="w-72 shrink-0" onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
-      <div className="flex items-center justify-between mb-2 px-1">
-        <div className="flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full" style={{ background: color }} />
-          <span className="text-sm font-semibold text-ink">{titulo}</span>
-          <span className="text-xs text-slate-400">{clientes.length}</span>
-        </div>
+    <div className="space-y-6 max-w-3xl">
+      <div>
+        <h1 className="text-xl font-bold text-ink">Importar / Exportar</h1>
+        <p className="text-sm text-slate-500">Carga tu base de Google Sheets (exportada a CSV o Excel) o descarga la cartera actual</p>
       </div>
-      <div className="text-[11px] text-slate-400 px-1 mb-2">{fmtCLP(total)}</div>
-      <div className="space-y-2 min-h-[120px] bg-paper rounded-xl p-2">
-        {clientes.map((c) => (
-          <div key={c.id} draggable
-               onDragStart={() => onDragStart(c.id)}
-               onClick={() => navigate(`/clientes/${c.id}`)}
-               className="card p-3 cursor-grab active:cursor-grabbing hover:border-sky">
-            <div className="text-sm font-medium text-ink truncate">{c.nombre}</div>
-            <div className="text-xs text-slate-400 mt-0.5">{fmtCLP(c.facturacion_total)}</div>
+
+      <div className="card p-6 space-y-4">
+        <h3 className="font-semibold text-ink">Importar clientes</h3>
+        <p className="text-sm text-slate-500">
+          Desde Google Sheets: <span className="font-medium">Archivo → Descargar → CSV o Excel</span>, luego súbelo aquí.
+          Detectamos automáticamente columnas como nombre, teléfono, correo, facturación y segmento.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <label className="btn-soft cursor-pointer">
+            Subir CSV
+            <input type="file" accept=".csv" className="hidden" onChange={onCSV} />
+          </label>
+          <label className="btn-soft cursor-pointer">
+            Subir Excel
+            <input type="file" accept=".xlsx,.xls" className="hidden" onChange={onXLSX} />
+          </label>
+        </div>
+
+        {preview && (
+          <div className="rounded-lg bg-paper p-4 text-sm space-y-2">
+            <div>Filas leídas: <span className="font-medium">{preview.total}</span></div>
+            <div>Clientes válidos (con nombre): <span className="font-medium">{preview.validas}</span></div>
+            <div className="text-xs text-slate-500">
+              Columnas detectadas: {preview.columnas.join(', ') || 'ninguna'}
+            </div>
+            <button className="btn-primary mt-2" onClick={importar}>
+              Importar {preview.validas} clientes
+            </button>
           </div>
-        ))}
-        {clientes.length === 0 && (
-          <div className="text-center text-xs text-slate-300 py-6">Vacío</div>
         )}
       </div>
+
+      <div className="card p-6 space-y-4">
+        <h3 className="font-semibold text-ink">Exportar cartera</h3>
+        <p className="text-sm text-slate-500">Descarga todos tus clientes en formato Excel.</p>
+        <button className="btn-soft" onClick={exportar}>Descargar Excel</button>
+      </div>
+
+      {estado && <p className="text-sm text-deep font-medium">{estado}</p>}
     </div>
   )
 }

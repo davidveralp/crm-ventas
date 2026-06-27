@@ -1,39 +1,140 @@
-# Botón "Enviar campaña por email" — activación
+-- =====================================================================
+-- DIDIAL CRM · POLÍTICAS DE SEGURIDAD POR FILAS (RLS)
+-- =====================================================================
+-- Regla general:
+--   · Cada usuario solo ve datos de SU empresa (aislamiento multi-empresa).
+--   · ADMIN ve y edita todo dentro de su empresa.
+--   · VENDEDOR ve y edita solo los clientes/actividades asignados a él.
+-- =====================================================================
 
-El CRM ahora tiene un botón para enviar una campaña por correo a todos los
-clientes de su segmento (con email registrado), directo desde la pantalla
-Campañas. Para activarlo hay que conectar Brevo una sola vez.
+-- Activar RLS en todas las tablas
+alter table empresas         enable row level security;
+alter table usuarios         enable row level security;
+alter table pipeline_estados enable row level security;
+alter table clientes         enable row level security;
+alter table vehiculos        enable row level security;
+alter table actividades      enable row level security;
+alter table campanas         enable row level security;
+alter table auditoria        enable row level security;
 
-## Requisitos previos (una vez)
-1. Cuenta Brevo + remitente `administracion@didial.cl` verificado.
-2. API Key de Brevo (SMTP & API → API Keys).
+-- ---------------------------------------------------------------------
+-- EMPRESAS
+-- ---------------------------------------------------------------------
+drop policy if exists empresas_select on empresas;
+create policy empresas_select on empresas
+  for select using (id = empresa_actual());
 
-## Paso 1 — Instalar el CLI de Supabase (en tu PC)
-```bash
-npm install -g supabase
-supabase login
-supabase link --project-ref ehpstxrzsjwcevcafxgk
-```
-(El project-ref es el código de tu URL de Supabase.)
+-- ---------------------------------------------------------------------
+-- USUARIOS
+-- ---------------------------------------------------------------------
+drop policy if exists usuarios_select on usuarios;
+create policy usuarios_select on usuarios
+  for select using (empresa_id = empresa_actual());
 
-## Paso 2 — Cargar los secrets
-```bash
-supabase secrets set BREVO_API_KEY=xkeysib-TU_CLAVE
-```
+drop policy if exists usuarios_admin_all on usuarios;
+create policy usuarios_admin_all on usuarios
+  for all using (empresa_id = empresa_actual() and es_admin())
+  with check (empresa_id = empresa_actual() and es_admin());
 
-## Paso 3 — Desplegar la función
-```bash
-supabase functions deploy enviar-campana
-```
+-- ---------------------------------------------------------------------
+-- PIPELINE_ESTADOS
+-- ---------------------------------------------------------------------
+drop policy if exists estados_select on pipeline_estados;
+create policy estados_select on pipeline_estados
+  for select using (empresa_id = empresa_actual());
 
-## Cómo se usa
-1. En el CRM → Campañas, abre una campaña cuyo canal sea **Email**.
-2. Revisa los clientes que coinciden.
-3. Botón **"Enviar por email (Brevo)"** → confirma. Se envían los correos y
-   te muestra cuántos salieron.
+drop policy if exists estados_admin on pipeline_estados;
+create policy estados_admin on pipeline_estados
+  for all using (empresa_id = empresa_actual() and es_admin())
+  with check (empresa_id = empresa_actual() and es_admin());
 
-## Importante
-- Solo envía a clientes con email válido en su ficha.
-- Los segmentos masivos (Ocasional, Dormido) son los ideales para email.
-- VIP y Alto Valor: contáctalos por llamada/WhatsApp personal, NO por correo masivo.
-- Brevo gratis: 300 correos/día. Si un segmento supera eso, divídelo en días.
+-- ---------------------------------------------------------------------
+-- CLIENTES
+--   Vendedor: solo los suyos.  Admin: todos los de la empresa.
+-- ---------------------------------------------------------------------
+drop policy if exists clientes_select on clientes;
+create policy clientes_select on clientes
+  for select using (
+    empresa_id = empresa_actual()
+    and (es_admin() or vendedor_id = auth.uid())
+  );
+
+drop policy if exists clientes_insert on clientes;
+create policy clientes_insert on clientes
+  for insert with check (empresa_id = empresa_actual());
+
+drop policy if exists clientes_update on clientes;
+create policy clientes_update on clientes
+  for update using (
+    empresa_id = empresa_actual()
+    and (es_admin() or vendedor_id = auth.uid())
+  );
+
+drop policy if exists clientes_delete on clientes;
+create policy clientes_delete on clientes
+  for delete using (empresa_id = empresa_actual() and es_admin());
+
+-- ---------------------------------------------------------------------
+-- VEHÍCULOS  (heredan el acceso del cliente vía empresa + admin/vendedor)
+-- ---------------------------------------------------------------------
+drop policy if exists vehiculos_select on vehiculos;
+create policy vehiculos_select on vehiculos
+  for select using (
+    empresa_id = empresa_actual()
+    and (es_admin() or exists (
+      select 1 from clientes c
+      where c.id = vehiculos.cliente_id and c.vendedor_id = auth.uid()
+    ))
+  );
+
+drop policy if exists vehiculos_write on vehiculos;
+create policy vehiculos_write on vehiculos
+  for all using (empresa_id = empresa_actual())
+  with check (empresa_id = empresa_actual());
+
+-- ---------------------------------------------------------------------
+-- ACTIVIDADES
+-- ---------------------------------------------------------------------
+drop policy if exists actividades_select on actividades;
+create policy actividades_select on actividades
+  for select using (
+    empresa_id = empresa_actual()
+    and (es_admin() or vendedor_id = auth.uid())
+  );
+
+drop policy if exists actividades_insert on actividades;
+create policy actividades_insert on actividades
+  for insert with check (empresa_id = empresa_actual());
+
+drop policy if exists actividades_update on actividades;
+create policy actividades_update on actividades
+  for update using (
+    empresa_id = empresa_actual()
+    and (es_admin() or vendedor_id = auth.uid())
+  );
+
+drop policy if exists actividades_delete on actividades;
+create policy actividades_delete on actividades
+  for delete using (
+    empresa_id = empresa_actual()
+    and (es_admin() or vendedor_id = auth.uid())
+  );
+
+-- ---------------------------------------------------------------------
+-- CAMPAÑAS  (toda la empresa las ve; admin las gestiona)
+-- ---------------------------------------------------------------------
+drop policy if exists campanas_select on campanas;
+create policy campanas_select on campanas
+  for select using (empresa_id = empresa_actual());
+
+drop policy if exists campanas_admin on campanas;
+create policy campanas_admin on campanas
+  for all using (empresa_id = empresa_actual() and es_admin())
+  with check (empresa_id = empresa_actual() and es_admin());
+
+-- ---------------------------------------------------------------------
+-- AUDITORÍA  (solo lectura; la escribe el trigger)
+-- ---------------------------------------------------------------------
+drop policy if exists auditoria_select on auditoria;
+create policy auditoria_select on auditoria
+  for select using (empresa_id = empresa_actual());

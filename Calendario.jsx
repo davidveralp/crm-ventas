@@ -1,194 +1,212 @@
-export const CLP = new Intl.NumberFormat('es-CL', {
-  style: 'currency', currency: 'CLP', maximumFractionDigits: 0
-})
+import { useEffect, useMemo, useState } from 'react'
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from 'recharts'
+import { supabase, fetchAllRows } from '../lib/supabase'
+import { StatCard } from '../components/UI'
+import { SEGMENTOS, segLabel, fmtCLP, TIPOS_SERVICIO } from '../lib/helpers'
 
-export const fmtCLP = (n) => CLP.format(Number(n) || 0)
+export default function Informes() {
+  const [d, setD] = useState(null)
 
-export const fmtFecha = (d) => {
-  if (!d) return '—'
-  try { return new Date(d).toLocaleDateString('es-CL') } catch { return d }
-}
+  useEffect(() => { cargar() }, [])
 
-export const SEGMENTOS = {
-  nuevo:               { label: 'Nuevo cliente',        color: '#0E7490' },
-  flota_empresa:       { label: 'Flota / Empresa',      color: '#1C4357' },
-  vip_activo:          { label: 'VIP Activo',           color: '#1D9E75' },
-  alto_valor_riesgo:   { label: 'Alto Valor en Riesgo', color: '#A32D2D' },
-  leal_recurrente:     { label: 'Leal Recurrente',      color: '#534AB7' },
-  prometedor:          { label: 'Prometedor',           color: '#185FA5' },
-  dormido_recuperable: { label: 'Dormido Recuperable',  color: '#C98A1B' },
-  ocasional:           { label: 'Ocasional',            color: '#73726c' }
-}
+  async function cargar() {
+    const [clientes, { data: usuarios }, { data: estados }, { data: act }, { data: camp }, { data: presup }, { data: srv }] =
+      await Promise.all([
+        fetchAllRows('clientes', 'id,segmento,estado_id,vendedor_id,facturacion_total'),
+        supabase.from('usuarios').select('id,nombre').eq('rol', 'vendedor').eq('activo', true),
+        supabase.from('pipeline_estados').select('*').order('orden'),
+        supabase.from('actividades').select('cliente_id,vendedor_id,resultado,campana_id,tipo_servicio').limit(8000),
+        supabase.from('campanas').select('id,nombre,segmento').order('prioridad'),
+        supabase.from('presupuestos').select('estado,monto,tipo_servicio').limit(5000),
+        supabase.from('servicios').select('tipo_servicio,tipo_servicio_2').limit(20000)
+      ])
+    setD({ clientes: clientes || [], usuarios: usuarios || [], estados: estados || [],
+           act: act || [], camp: camp || [], presup: presup || [], servicios: srv || [] })
+  }
 
-export const VENTANAS = {
-  vencida:   { label: 'Vencida',          color: '#A32D2D' },
-  inminente: { label: 'Inminente (≤30d)', color: '#C98A1B' },
-  proxima:   { label: 'Próxima (1-2m)',   color: '#185FA5' },
-  futura:    { label: 'Futura (3-4m)',    color: '#1D9E75' },
-  lejana:    { label: 'Lejana (>4m)',     color: '#73726c' }
-}
+  const r = useMemo(() => {
+    if (!d) return null
+    const wonEstado = d.estados.find((e) => e.clave === 'servicio' || e.nombre === 'Servicio realizado' || e.nombre === 'Vendido')
+    const wonId = wonEstado?.id
 
-export const TIPOS_ACTIVIDAD = {
-  llamada:      'Llamada',
-  propuesta:    'Propuesta',
-  agendamiento: 'Agendamiento',
-  visita:       'Visita',
-  email:        'Email',
-  whatsapp:     'WhatsApp'
-}
+    const embudo = d.estados.map((e) => ({
+      name: e.nombre, value: d.clientes.filter((c) => c.estado_id === e.id).length, fill: e.color
+    }))
+    const segs = Object.keys(SEGMENTOS).map((k) => ({
+      name: SEGMENTOS[k].label, value: d.clientes.filter((c) => c.segmento === k).length, fill: SEGMENTOS[k].color
+    })).filter((s) => s.value > 0)
 
-export const RESULTADOS = {
-  pendiente:         'Pendiente de contacto',
-  no_contesta:       'No contesta',
-  numero_erroneo:    'Número erróneo',
-  interesado:        'Interesado',
-  cotizacion_enviada:'Cotización enviada',
-  compromiso:        'Comprometió visita',
-  agendado:          'Agendó hora',
-  fidelizado:        'Cliente conforme (postventa)',
-  reagendar:         'Reagendar / volver a llamar',
-  no_interesado:     'No interesado por ahora',
-  no_desea_contacto: 'No desea ser contactado',
-  exitosa:           'Cerrada / vendida'
-}
+    const porVendedor = d.usuarios.map((u) => {
+      const asignados = d.clientes.filter((c) => c.vendedor_id === u.id)
+      const contactos = d.act.filter((a) => a.vendedor_id === u.id && a.resultado !== 'pendiente').length
+      const conv = wonId ? asignados.filter((c) => c.estado_id === wonId).length : 0
+      return { nombre: u.nombre, asignados: asignados.length, contactos, conv,
+               tasa: asignados.length ? Math.round((conv / asignados.length) * 100) : 0 }
+    })
 
-export const segLabel = (s) => SEGMENTOS[s]?.label || '—'
-export const segColor = (s) => SEGMENTOS[s]?.color || '#73726c'
+    const porCampana = d.camp.map((cp) => {
+      const ids = new Set(d.act.filter((a) => a.campana_id === cp.id).map((a) => a.cliente_id))
+      let cohorte = ids
+      if (!cohorte.size && cp.segmento) cohorte = new Set(d.clientes.filter((c) => c.segmento === cp.segmento).map((c) => c.id))
+      const contactados = new Set(d.act.filter((a) => a.campana_id === cp.id && a.resultado !== 'pendiente').map((a) => a.cliente_id))
+      const conv = wonId ? [...cohorte].filter((id) => d.clientes.find((c) => c.id === id)?.estado_id === wonId).length : 0
+      return { nombre: cp.nombre, cohorte: cohorte.size, contactados: contactados.size, conv,
+               tasa: cohorte.size ? Math.round((conv / cohorte.size) * 100) : 0 }
+    }).filter((x) => x.cohorte > 0)
 
-export const ESTADOS_PRESUPUESTO = {
-  borrador:        { label: 'Borrador',        color: '#73726c' },
-  enviado:         { label: 'Enviado',         color: '#185FA5' },
-  en_seguimiento:  { label: 'En seguimiento',  color: '#C98A1B' },
-  aprobado:        { label: 'Aprobado',        color: '#1D9E75' },
-  rechazado:       { label: 'Rechazado',       color: '#A32D2D' },
-  vencido:         { label: 'Vencido',         color: '#94a3b8' }
-}
+    const enJuego = d.presup.filter((p) => ['enviado', 'en_seguimiento'].includes(p.estado))
+      .reduce((a, p) => a + Number(p.monto || 0), 0)
+    const ganado = d.presup.filter((p) => p.estado === 'aprobado').reduce((a, p) => a + Number(p.monto || 0), 0)
 
-// ---- v4: Tipo de cliente (Empresa / Persona / Interno) --------------
-export const TIPOS_CLIENTE = {
-  EMPRESA: 'Empresa',
-  PERSONA: 'Persona',
-  INTERNO: 'Interno'
-}
-// Mapea valores antiguos ('PARTICULAR') al nuevo etiquetado.
-export const tipoClienteLabel = (t) => {
-  if (!t) return '—'
-  if (t === 'PARTICULAR') return 'Persona'
-  return TIPOS_CLIENTE[t] || t
-}
+    const facturacion = d.clientes.reduce((a, c) => a + Number(c.facturacion_total || 0), 0)
+    const convTotal = wonId ? d.clientes.filter((c) => c.estado_id === wonId).length : 0
 
-// ---- v4: Orden canónico de la línea de tiempo de gestión ------------
-// Se usa para resaltar el avance del cliente en su ficha. Si la BD tiene
-// la columna 'clave' (migración 08), se respeta; si no, se cae al 'orden'.
-export const ETAPAS_ORDEN = [
-  'asignado', 'pendiente', 'contactado', 'interesado',
-  'cotizacion', 'agendado', 'servicio', 'seguimiento'
-]
-// Etapas marcadas como opcionales en la línea de tiempo
-export const ETAPAS_OPCIONALES = ['cotizacion']
+    // Servicios más solicitados (actividades + presupuestos + historial de OT)
+    const conteoServ = {}
+    const sumar = (arr) => arr.forEach((x) => {
+      if (x.tipo_servicio) {
+        const etiqueta = TIPOS_SERVICIO[x.tipo_servicio] || x.tipo_servicio
+        conteoServ[etiqueta] = (conteoServ[etiqueta] || 0) + 1
+      }
+    })
+    sumar(d.act); sumar(d.presup); sumar(d.servicios)
+    // El segundo servicio de cada OT también suma
+    d.servicios.forEach((x) => {
+      if (x.tipo_servicio_2) {
+        const etiqueta = TIPOS_SERVICIO[x.tipo_servicio_2] || x.tipo_servicio_2
+        conteoServ[etiqueta] = (conteoServ[etiqueta] || 0) + 1
+      }
+    })
+    const servicios = Object.entries(conteoServ)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
 
-// ---- v5: Construye la URL del Registro de OT con datos prellenados ---
-// - Normaliza el esquema (si falta https://, lo antepone).
-// - Agrega los datos del cliente/vehículo como parámetros de consulta.
-export function buildOtUrl(base, params = {}) {
-  if (!base) return ''
-  let url = String(base).trim()
-  if (!/^https?:\/\//i.test(url)) url = 'https://' + url
-  const qs = Object.entries(params)
-    .filter(([, v]) => v != null && v !== '')
-    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-    .join('&')
-  return qs ? `${url}${url.includes('?') ? '&' : '?'}${qs}` : url
-}
+    return { embudo, segs, porVendedor, porCampana, servicios, enJuego, ganado, facturacion,
+             totalClientes: d.clientes.length,
+             conversionGlobal: d.clientes.length ? Math.round((convTotal / d.clientes.length) * 100) : 0 }
+  }, [d])
 
-// ---- v5: Formatea un RUT chileno -> 12.345.678-9 --------------------
-// Limpia, agrupa miles con punto y antepone el dígito verificador con guion.
-// No valida el DV; solo homologa el formato al del formulario de OT.
-export function formatRut(rut) {
-  if (!rut) return ''
-  const limpio = String(rut).replace(/[^0-9kK]/g, '').toUpperCase()
-  if (limpio.length < 2) return limpio
-  const cuerpo = limpio.slice(0, -1)
-  const dv = limpio.slice(-1)
-  const conPuntos = cuerpo.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
-  return `${conPuntos}-${dv}`
-}
+  if (!r) return <div className="text-slate-400 text-sm">Cargando informes…</div>
 
-// ---- v6: Formato de teléfono (+56 9 XXXX XXXX / +54 …) ---------------
-// Detecta código país (56 Chile, 54 Argentina; por defecto 56) y agrupa.
-export function formatTelefono(raw) {
-  if (!raw) return ''
-  let d = String(raw).replace(/\D/g, '')
-  if (!d) return String(raw).trim()
-  if (d.startsWith('00')) d = d.slice(2)
-  let cc = ''
-  if (d.startsWith('56')) { cc = '56'; d = d.slice(2) }
-  else if (d.startsWith('54')) { cc = '54'; d = d.slice(2) }
-  else cc = '56'
-  d = d.replace(/^0+/, '')               // quita ceros de larga distancia
-  let movil = ''
-  if (d.startsWith('9') && d.length >= 9) { movil = '9'; d = d.slice(1) }
-  else if (cc === '56' && d.length === 8) { movil = '9' } // celular sin el 9
-  const grupos = []
-  let resto = d
-  while (resto.length > 4) { grupos.push(resto.slice(0, 4)); resto = resto.slice(4) }
-  if (resto) grupos.push(resto)
-  const num = [movil, ...grupos].filter(Boolean).join(' ')
-  return `+${cc} ${num}`.trim()
-}
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-xl font-bold text-ink">Informes</h1>
+        <p className="text-sm text-slate-500">Resumen de gestión comercial · administración</p>
+      </div>
 
-// ---- v6: Formato de patente (XX XX XX) ------------------------------
-export function formatPatente(raw) {
-  if (!raw) return ''
-  const limpio = String(raw).replace(/[^A-Za-z0-9]/g, '').toUpperCase()
-  return limpio.replace(/(.{2})(?=.)/g, '$1 ').trim()
-}
-export const patenteLimpia = (p) => String(p || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase()
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard titulo="Clientes" valor={r.totalClientes} />
+        <StatCard titulo="Conversión global" valor={`${r.conversionGlobal}%`} />
+        <StatCard titulo="Presupuestos en juego" valor={fmtCLP(r.enJuego)} />
+        <StatCard titulo="Presupuestos aprobados" valor={fmtCLP(r.ganado)} />
+      </div>
 
-// ---- v6: Catálogo de marcas de vehículos ----------------------------
-export const MARCAS_VEHICULO = [
-  'TOYOTA', 'CHEVROLET', 'HYUNDAI', 'KIA', 'NISSAN', 'SUZUKI', 'MAZDA',
-  'MITSUBISHI', 'FORD', 'VOLKSWAGEN', 'PEUGEOT', 'RENAULT', 'HONDA',
-  'SUBARU', 'CHERY', 'GREAT WALL', 'HAVAL', 'MG', 'JAC', 'CHANGAN',
-  'CITROEN', 'FIAT', 'JEEP', 'BMW', 'MERCEDES-BENZ', 'AUDI', 'VOLVO',
-  'DODGE', 'RAM', 'SSANGYONG', 'ISUZU', 'BYD', 'DFSK', 'MAXUS', 'FOTON',
-  'BAIC', 'GEELY', 'DONGFENG', 'JETOUR'
-]
+      <div className="grid lg:grid-cols-2 gap-5">
+        <div className="card p-5">
+          <h3 className="font-semibold text-ink mb-3">Embudo por estado</h3>
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={r.embudo}>
+              <XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} angle={-15} textAnchor="end" height={50} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+              <Tooltip />
+              <Bar dataKey="value">{r.embudo.map((e, i) => <Cell key={i} fill={e.fill} />)}</Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="card p-5">
+          <h3 className="font-semibold text-ink mb-3">Clientes por segmento</h3>
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={r.segs} layout="vertical">
+              <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
+              <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 10 }} />
+              <Tooltip />
+              <Bar dataKey="value">{r.segs.map((e, i) => <Cell key={i} fill={e.fill} />)}</Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
 
-// ---- v6: Tipo de servicio solicitado (catálogo) ---------------------
-export const TIPOS_SERVICIO = {
-  mantencion_basica:     'Mantención básica',
-  mantencion_intermedia: 'Mantención intermedia',
-  mantencion_mayor:      'Mantención mayor',
-  frenos:                'Frenos',
-  embrague:              'Embrague',
-  suspension:            'Suspensión / dirección',
-  distribucion:          'Distribución / correa',
-  motor:                 'Motor',
-  diagnostico:           'Diagnóstico / escáner',
-  electrico:             'Sistema eléctrico',
-  aire:                  'Aire acondicionado',
-  neumaticos:            'Neumáticos / alineación',
-  dyp:                   'Desabolladura y pintura',
-  revision_tecnica:      'Revisión técnica',
-  otro:                  'Otro'
-}
-export const tipoServicioLabel = (t) => t ? (TIPOS_SERVICIO[t] || t) : '—'
+      <div className="card p-5">
+        <h3 className="font-semibold text-ink mb-3">Servicios más solicitados</h3>
+        {r.servicios.length ? (
+          <ResponsiveContainer width="100%" height={Math.max(180, r.servicios.length * 32)}>
+            <BarChart data={r.servicios} layout="vertical">
+              <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
+              <YAxis type="category" dataKey="name" width={150} tick={{ fontSize: 10 }} />
+              <Tooltip />
+              <Bar dataKey="value" fill="#2C5A72" radius={[0, 4, 4, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        ) : (
+          <p className="text-sm text-slate-400">
+            Aún no hay servicios registrados. Empieza a etiquetar el "Tipo de servicio" en cada
+            seguimiento o presupuesto para alimentar este análisis.
+          </p>
+        )}
+      </div>
 
-// ---- v6: Mapa resultado de actividad -> etapa de gestión (clave) ----
-// Al registrar una actividad, el estado del cliente avanza a esta etapa
-// (nunca retrocede, salvo 'perdido'). null = no cambia el estado.
-export const RESULTADO_A_ETAPA = {
-  pendiente:          'pendiente',
-  no_contesta:        'pendiente',
-  numero_erroneo:     null,
-  interesado:         'interesado',
-  cotizacion_enviada: 'cotizacion',
-  compromiso:         'interesado',
-  agendado:           'agendado',
-  fidelizado:         'seguimiento',
-  reagendar:          'contactado',
-  no_interesado:      'contactado',
-  no_desea_contacto:  'perdido',
-  exitosa:            'servicio'
+      <div className="card p-5">
+        <h3 className="font-semibold text-ink mb-3">Desempeño por vendedor</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-slate-500 text-xs uppercase">
+              <tr>
+                <th className="text-left font-medium py-2">Vendedor</th>
+                <th className="text-right font-medium py-2">Asignados</th>
+                <th className="text-right font-medium py-2">Contactos</th>
+                <th className="text-right font-medium py-2">Convertidos</th>
+                <th className="text-right font-medium py-2">Conversión</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {r.porVendedor.map((v) => (
+                <tr key={v.nombre}>
+                  <td className="py-2 font-medium text-ink">{v.nombre}</td>
+                  <td className="py-2 text-right">{v.asignados}</td>
+                  <td className="py-2 text-right">{v.contactos}</td>
+                  <td className="py-2 text-right">{v.conv}</td>
+                  <td className="py-2 text-right font-medium">{v.tasa}%</td>
+                </tr>
+              ))}
+              {r.porVendedor.length === 0 && (
+                <tr><td colSpan="5" className="py-4 text-center text-slate-400">Sin vendedores activos.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="card p-5">
+        <h3 className="font-semibold text-ink mb-3">Efectividad por campaña</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-slate-500 text-xs uppercase">
+              <tr>
+                <th className="text-left font-medium py-2">Campaña</th>
+                <th className="text-right font-medium py-2">Cohorte</th>
+                <th className="text-right font-medium py-2">Contactados</th>
+                <th className="text-right font-medium py-2">Convertidos</th>
+                <th className="text-right font-medium py-2">Conversión</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {r.porCampana.map((c) => (
+                <tr key={c.nombre}>
+                  <td className="py-2 font-medium text-ink">{c.nombre}</td>
+                  <td className="py-2 text-right">{c.cohorte}</td>
+                  <td className="py-2 text-right">{c.contactados}</td>
+                  <td className="py-2 text-right">{c.conv}</td>
+                  <td className="py-2 text-right font-medium">{c.tasa}%</td>
+                </tr>
+              ))}
+              {r.porCampana.length === 0 && (
+                <tr><td colSpan="5" className="py-4 text-center text-slate-400">Aún no hay campañas con clientes cargados.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
 }

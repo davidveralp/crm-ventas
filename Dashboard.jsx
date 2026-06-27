@@ -1,194 +1,108 @@
-export const CLP = new Intl.NumberFormat('es-CL', {
-  style: 'currency', currency: 'CLP', maximumFractionDigits: 0
-})
+import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { supabase } from '../lib/supabase'
+import { Pill, StatCard, EmptyState } from '../components/UI'
+import { fmtCLP, fmtFecha, ESTADOS_PRESUPUESTO } from '../lib/helpers'
 
-export const fmtCLP = (n) => CLP.format(Number(n) || 0)
+export default function Presupuestos() {
+  const navigate = useNavigate()
+  const [lista, setLista] = useState([])
+  const [filtro, setFiltro] = useState('')
 
-export const fmtFecha = (d) => {
-  if (!d) return '—'
-  try { return new Date(d).toLocaleDateString('es-CL') } catch { return d }
-}
+  useEffect(() => { cargar() }, [])
 
-export const SEGMENTOS = {
-  nuevo:               { label: 'Nuevo cliente',        color: '#0E7490' },
-  flota_empresa:       { label: 'Flota / Empresa',      color: '#1C4357' },
-  vip_activo:          { label: 'VIP Activo',           color: '#1D9E75' },
-  alto_valor_riesgo:   { label: 'Alto Valor en Riesgo', color: '#A32D2D' },
-  leal_recurrente:     { label: 'Leal Recurrente',      color: '#534AB7' },
-  prometedor:          { label: 'Prometedor',           color: '#185FA5' },
-  dormido_recuperable: { label: 'Dormido Recuperable',  color: '#C98A1B' },
-  ocasional:           { label: 'Ocasional',            color: '#73726c' }
-}
+  async function cargar() {
+    const { data } = await supabase.from('presupuestos')
+      .select('*, clientes(nombre)')
+      .order('proxima_gestion', { ascending: true, nullsFirst: false })
+    setLista(data || [])
+  }
 
-export const VENTANAS = {
-  vencida:   { label: 'Vencida',          color: '#A32D2D' },
-  inminente: { label: 'Inminente (≤30d)', color: '#C98A1B' },
-  proxima:   { label: 'Próxima (1-2m)',   color: '#185FA5' },
-  futura:    { label: 'Futura (3-4m)',    color: '#1D9E75' },
-  lejana:    { label: 'Lejana (>4m)',     color: '#73726c' }
-}
+  const filtrada = useMemo(() =>
+    lista.filter((p) => !filtro || p.estado === filtro), [lista, filtro])
 
-export const TIPOS_ACTIVIDAD = {
-  llamada:      'Llamada',
-  propuesta:    'Propuesta',
-  agendamiento: 'Agendamiento',
-  visita:       'Visita',
-  email:        'Email',
-  whatsapp:     'WhatsApp'
-}
+  const m = useMemo(() => {
+    const abiertos = lista.filter((p) => ['enviado', 'en_seguimiento'].includes(p.estado))
+    const aprobados = lista.filter((p) => p.estado === 'aprobado')
+    return {
+      enJuego: abiertos.reduce((a, p) => a + Number(p.monto || 0), 0),
+      ganado: aprobados.reduce((a, p) => a + Number(p.monto || 0), 0),
+      abiertos: abiertos.length
+    }
+  }, [lista])
 
-export const RESULTADOS = {
-  pendiente:         'Pendiente de contacto',
-  no_contesta:       'No contesta',
-  numero_erroneo:    'Número erróneo',
-  interesado:        'Interesado',
-  cotizacion_enviada:'Cotización enviada',
-  compromiso:        'Comprometió visita',
-  agendado:          'Agendó hora',
-  fidelizado:        'Cliente conforme (postventa)',
-  reagendar:         'Reagendar / volver a llamar',
-  no_interesado:     'No interesado por ahora',
-  no_desea_contacto: 'No desea ser contactado',
-  exitosa:           'Cerrada / vendida'
-}
+  const hoy = new Date().toISOString().slice(0, 10)
 
-export const segLabel = (s) => SEGMENTOS[s]?.label || '—'
-export const segColor = (s) => SEGMENTOS[s]?.color || '#73726c'
+  return (
+    <div className="space-y-5">
+      <div>
+        <h1 className="text-xl font-bold text-ink">Presupuestos</h1>
+        <p className="text-sm text-slate-500">Seguimiento de cotizaciones · ordenados por próxima gestión</p>
+      </div>
 
-export const ESTADOS_PRESUPUESTO = {
-  borrador:        { label: 'Borrador',        color: '#73726c' },
-  enviado:         { label: 'Enviado',         color: '#185FA5' },
-  en_seguimiento:  { label: 'En seguimiento',  color: '#C98A1B' },
-  aprobado:        { label: 'Aprobado',        color: '#1D9E75' },
-  rechazado:       { label: 'Rechazado',       color: '#A32D2D' },
-  vencido:         { label: 'Vencido',         color: '#94a3b8' }
-}
+      <div className="grid grid-cols-3 gap-4">
+        <StatCard titulo="En juego (abiertos)" valor={fmtCLP(m.enJuego)} sub={`${m.abiertos} presupuestos`} />
+        <StatCard titulo="Aprobado" valor={fmtCLP(m.ganado)} />
+        <StatCard titulo="Total" valor={lista.length} />
+      </div>
 
-// ---- v4: Tipo de cliente (Empresa / Persona / Interno) --------------
-export const TIPOS_CLIENTE = {
-  EMPRESA: 'Empresa',
-  PERSONA: 'Persona',
-  INTERNO: 'Interno'
-}
-// Mapea valores antiguos ('PARTICULAR') al nuevo etiquetado.
-export const tipoClienteLabel = (t) => {
-  if (!t) return '—'
-  if (t === 'PARTICULAR') return 'Persona'
-  return TIPOS_CLIENTE[t] || t
-}
+      <div className="flex gap-2 flex-wrap">
+        <button className={`pill border ${!filtro ? 'bg-deep text-white' : 'text-slate-600'}`}
+                style={{ borderColor: '#e2e8f0' }} onClick={() => setFiltro('')}>Todos</button>
+        {Object.entries(ESTADOS_PRESUPUESTO).map(([k, v]) => (
+          <button key={k} className="pill border" onClick={() => setFiltro(k)}
+                  style={filtro === k
+                    ? { background: v.color, borderColor: v.color, color: '#fff' }
+                    : { borderColor: '#e2e8f0', color: '#475569' }}>
+            {v.label}
+          </button>
+        ))}
+      </div>
 
-// ---- v4: Orden canónico de la línea de tiempo de gestión ------------
-// Se usa para resaltar el avance del cliente en su ficha. Si la BD tiene
-// la columna 'clave' (migración 08), se respeta; si no, se cae al 'orden'.
-export const ETAPAS_ORDEN = [
-  'asignado', 'pendiente', 'contactado', 'interesado',
-  'cotizacion', 'agendado', 'servicio', 'seguimiento'
-]
-// Etapas marcadas como opcionales en la línea de tiempo
-export const ETAPAS_OPCIONALES = ['cotizacion']
-
-// ---- v5: Construye la URL del Registro de OT con datos prellenados ---
-// - Normaliza el esquema (si falta https://, lo antepone).
-// - Agrega los datos del cliente/vehículo como parámetros de consulta.
-export function buildOtUrl(base, params = {}) {
-  if (!base) return ''
-  let url = String(base).trim()
-  if (!/^https?:\/\//i.test(url)) url = 'https://' + url
-  const qs = Object.entries(params)
-    .filter(([, v]) => v != null && v !== '')
-    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-    .join('&')
-  return qs ? `${url}${url.includes('?') ? '&' : '?'}${qs}` : url
-}
-
-// ---- v5: Formatea un RUT chileno -> 12.345.678-9 --------------------
-// Limpia, agrupa miles con punto y antepone el dígito verificador con guion.
-// No valida el DV; solo homologa el formato al del formulario de OT.
-export function formatRut(rut) {
-  if (!rut) return ''
-  const limpio = String(rut).replace(/[^0-9kK]/g, '').toUpperCase()
-  if (limpio.length < 2) return limpio
-  const cuerpo = limpio.slice(0, -1)
-  const dv = limpio.slice(-1)
-  const conPuntos = cuerpo.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
-  return `${conPuntos}-${dv}`
-}
-
-// ---- v6: Formato de teléfono (+56 9 XXXX XXXX / +54 …) ---------------
-// Detecta código país (56 Chile, 54 Argentina; por defecto 56) y agrupa.
-export function formatTelefono(raw) {
-  if (!raw) return ''
-  let d = String(raw).replace(/\D/g, '')
-  if (!d) return String(raw).trim()
-  if (d.startsWith('00')) d = d.slice(2)
-  let cc = ''
-  if (d.startsWith('56')) { cc = '56'; d = d.slice(2) }
-  else if (d.startsWith('54')) { cc = '54'; d = d.slice(2) }
-  else cc = '56'
-  d = d.replace(/^0+/, '')               // quita ceros de larga distancia
-  let movil = ''
-  if (d.startsWith('9') && d.length >= 9) { movil = '9'; d = d.slice(1) }
-  else if (cc === '56' && d.length === 8) { movil = '9' } // celular sin el 9
-  const grupos = []
-  let resto = d
-  while (resto.length > 4) { grupos.push(resto.slice(0, 4)); resto = resto.slice(4) }
-  if (resto) grupos.push(resto)
-  const num = [movil, ...grupos].filter(Boolean).join(' ')
-  return `+${cc} ${num}`.trim()
-}
-
-// ---- v6: Formato de patente (XX XX XX) ------------------------------
-export function formatPatente(raw) {
-  if (!raw) return ''
-  const limpio = String(raw).replace(/[^A-Za-z0-9]/g, '').toUpperCase()
-  return limpio.replace(/(.{2})(?=.)/g, '$1 ').trim()
-}
-export const patenteLimpia = (p) => String(p || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase()
-
-// ---- v6: Catálogo de marcas de vehículos ----------------------------
-export const MARCAS_VEHICULO = [
-  'TOYOTA', 'CHEVROLET', 'HYUNDAI', 'KIA', 'NISSAN', 'SUZUKI', 'MAZDA',
-  'MITSUBISHI', 'FORD', 'VOLKSWAGEN', 'PEUGEOT', 'RENAULT', 'HONDA',
-  'SUBARU', 'CHERY', 'GREAT WALL', 'HAVAL', 'MG', 'JAC', 'CHANGAN',
-  'CITROEN', 'FIAT', 'JEEP', 'BMW', 'MERCEDES-BENZ', 'AUDI', 'VOLVO',
-  'DODGE', 'RAM', 'SSANGYONG', 'ISUZU', 'BYD', 'DFSK', 'MAXUS', 'FOTON',
-  'BAIC', 'GEELY', 'DONGFENG', 'JETOUR'
-]
-
-// ---- v6: Tipo de servicio solicitado (catálogo) ---------------------
-export const TIPOS_SERVICIO = {
-  mantencion_basica:     'Mantención básica',
-  mantencion_intermedia: 'Mantención intermedia',
-  mantencion_mayor:      'Mantención mayor',
-  frenos:                'Frenos',
-  embrague:              'Embrague',
-  suspension:            'Suspensión / dirección',
-  distribucion:          'Distribución / correa',
-  motor:                 'Motor',
-  diagnostico:           'Diagnóstico / escáner',
-  electrico:             'Sistema eléctrico',
-  aire:                  'Aire acondicionado',
-  neumaticos:            'Neumáticos / alineación',
-  dyp:                   'Desabolladura y pintura',
-  revision_tecnica:      'Revisión técnica',
-  otro:                  'Otro'
-}
-export const tipoServicioLabel = (t) => t ? (TIPOS_SERVICIO[t] || t) : '—'
-
-// ---- v6: Mapa resultado de actividad -> etapa de gestión (clave) ----
-// Al registrar una actividad, el estado del cliente avanza a esta etapa
-// (nunca retrocede, salvo 'perdido'). null = no cambia el estado.
-export const RESULTADO_A_ETAPA = {
-  pendiente:          'pendiente',
-  no_contesta:        'pendiente',
-  numero_erroneo:     null,
-  interesado:         'interesado',
-  cotizacion_enviada: 'cotizacion',
-  compromiso:         'interesado',
-  agendado:           'agendado',
-  fidelizado:         'seguimiento',
-  reagendar:          'contactado',
-  no_interesado:      'contactado',
-  no_desea_contacto:  'perdido',
-  exitosa:            'servicio'
+      {filtrada.length === 0 ? (
+        <EmptyState titulo="Sin presupuestos"
+                    mensaje="Crea presupuestos desde la ficha de cada cliente para darles seguimiento aquí." />
+      ) : (
+        <div className="card overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-paper text-slate-500 text-xs uppercase">
+              <tr>
+                <th className="text-left font-medium px-4 py-3">Cliente</th>
+                <th className="text-left font-medium px-4 py-3 hidden md:table-cell">Descripción</th>
+                <th className="text-right font-medium px-4 py-3">Monto</th>
+                <th className="text-left font-medium px-4 py-3">Estado</th>
+                <th className="text-left font-medium px-4 py-3 hidden sm:table-cell">Próx. gestión</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filtrada.map((p) => {
+                const vencido = p.proxima_gestion && p.proxima_gestion < hoy &&
+                                ['enviado', 'en_seguimiento'].includes(p.estado)
+                return (
+                  <tr key={p.id} className="hover:bg-paper cursor-pointer"
+                      onClick={() => navigate(`/clientes/${p.cliente_id}`)}>
+                    <td className="px-4 py-3 font-medium text-ink">{p.clientes?.nombre}</td>
+                    <td className="px-4 py-3 hidden md:table-cell text-slate-500 max-w-xs truncate">
+                      {p.descripcion || '—'}
+                    </td>
+                    <td className="px-4 py-3 text-right font-medium">{fmtCLP(p.monto)}</td>
+                    <td className="px-4 py-3">
+                      <Pill color={ESTADOS_PRESUPUESTO[p.estado]?.color}>
+                        {ESTADOS_PRESUPUESTO[p.estado]?.label}
+                      </Pill>
+                    </td>
+                    <td className="px-4 py-3 hidden sm:table-cell">
+                      <span className={vencido ? 'text-red-600 font-medium' : 'text-slate-500'}>
+                        {fmtFecha(p.proxima_gestion)}{vencido ? ' ⚠' : ''}
+                      </span>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
 }

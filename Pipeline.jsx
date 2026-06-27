@@ -1,106 +1,89 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { Pill, StatCard, EmptyState } from '../components/UI'
-import { fmtCLP, fmtFecha, ESTADOS_PRESUPUESTO } from '../lib/helpers'
+import { TIPOS_ACTIVIDAD, fmtFecha } from '../lib/helpers'
 
-export default function Presupuestos() {
+export default function Agenda() {
   const navigate = useNavigate()
-  const [lista, setLista] = useState([])
-  const [filtro, setFiltro] = useState('')
+  const [citas, setCitas] = useState([])
 
   useEffect(() => { cargar() }, [])
 
   async function cargar() {
-    const { data } = await supabase.from('presupuestos')
-      .select('*, clientes(nombre)')
-      .order('proxima_gestion', { ascending: true, nullsFirst: false })
-    setLista(data || [])
+    const hoy = new Date().toISOString().slice(0, 10)
+    const { data } = await supabase.from('actividades')
+      .select('*, clientes(nombre,telefono)')
+      .gte('proxima_fecha', hoy)
+      .order('proxima_fecha').order('hora')
+    setCitas(data || [])
   }
 
-  const filtrada = useMemo(() =>
-    lista.filter((p) => !filtro || p.estado === filtro), [lista, filtro])
+  const grupos = useMemo(() => {
+    const g = {}
+    citas.forEach((c) => { (g[c.proxima_fecha] ||= []).push(c) })
+    return g
+  }, [citas])
 
-  const m = useMemo(() => {
-    const abiertos = lista.filter((p) => ['enviado', 'en_seguimiento'].includes(p.estado))
-    const aprobados = lista.filter((p) => p.estado === 'aprobado')
-    return {
-      enJuego: abiertos.reduce((a, p) => a + Number(p.monto || 0), 0),
-      ganado: aprobados.reduce((a, p) => a + Number(p.monto || 0), 0),
-      abiertos: abiertos.length
-    }
-  }, [lista])
-
-  const hoy = new Date().toISOString().slice(0, 10)
+  function exportarICS() {
+    const pad = (n) => String(n).padStart(2, '0')
+    let ics = 'BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//DIDIAL CRM//ES\n'
+    citas.forEach((c) => {
+      const f = c.proxima_fecha.replace(/-/g, '')
+      const h = (c.hora || '09:00').slice(0, 5).replace(':', '') + '00'
+      ics += 'BEGIN:VEVENT\n'
+      ics += `UID:${c.id}@didial\n`
+      ics += `DTSTART:${f}T${h}\n`
+      ics += `SUMMARY:${TIPOS_ACTIVIDAD[c.tipo]} · ${c.clientes?.nombre || ''}\n`
+      ics += `DESCRIPTION:${(c.descripcion || '').replace(/\n/g, ' ')}\n`
+      ics += 'END:VEVENT\n'
+    })
+    ics += 'END:VCALENDAR'
+    const blob = new Blob([ics], { type: 'text/calendar' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = 'agenda-didial.ics'; a.click()
+    URL.revokeObjectURL(url)
+  }
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-xl font-bold text-ink">Presupuestos</h1>
-        <p className="text-sm text-slate-500">Seguimiento de cotizaciones · ordenados por próxima gestión</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-ink">Agenda</h1>
+          <p className="text-sm text-slate-500">Próximas actividades y agendamientos</p>
+        </div>
+        {citas.length > 0 && (
+          <button className="btn-soft" onClick={exportarICS}>Exportar a Outlook (.ics)</button>
+        )}
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
-        <StatCard titulo="En juego (abiertos)" valor={fmtCLP(m.enJuego)} sub={`${m.abiertos} presupuestos`} />
-        <StatCard titulo="Aprobado" valor={fmtCLP(m.ganado)} />
-        <StatCard titulo="Total" valor={lista.length} />
-      </div>
-
-      <div className="flex gap-2 flex-wrap">
-        <button className={`pill border ${!filtro ? 'bg-deep text-white' : 'text-slate-600'}`}
-                style={{ borderColor: '#e2e8f0' }} onClick={() => setFiltro('')}>Todos</button>
-        {Object.entries(ESTADOS_PRESUPUESTO).map(([k, v]) => (
-          <button key={k} className="pill border" onClick={() => setFiltro(k)}
-                  style={filtro === k
-                    ? { background: v.color, borderColor: v.color, color: '#fff' }
-                    : { borderColor: '#e2e8f0', color: '#475569' }}>
-            {v.label}
-          </button>
-        ))}
-      </div>
-
-      {filtrada.length === 0 ? (
-        <EmptyState titulo="Sin presupuestos"
-                    mensaje="Crea presupuestos desde la ficha de cada cliente para darles seguimiento aquí." />
+      {Object.keys(grupos).length === 0 ? (
+        <div className="card p-10 text-center text-slate-400 text-sm">
+          No hay actividades agendadas a futuro. Regístralas desde la ficha de cada cliente.
+        </div>
       ) : (
-        <div className="card overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-paper text-slate-500 text-xs uppercase">
-              <tr>
-                <th className="text-left font-medium px-4 py-3">Cliente</th>
-                <th className="text-left font-medium px-4 py-3 hidden md:table-cell">Descripción</th>
-                <th className="text-right font-medium px-4 py-3">Monto</th>
-                <th className="text-left font-medium px-4 py-3">Estado</th>
-                <th className="text-left font-medium px-4 py-3 hidden sm:table-cell">Próx. gestión</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filtrada.map((p) => {
-                const vencido = p.proxima_gestion && p.proxima_gestion < hoy &&
-                                ['enviado', 'en_seguimiento'].includes(p.estado)
-                return (
-                  <tr key={p.id} className="hover:bg-paper cursor-pointer"
-                      onClick={() => navigate(`/clientes/${p.cliente_id}`)}>
-                    <td className="px-4 py-3 font-medium text-ink">{p.clientes?.nombre}</td>
-                    <td className="px-4 py-3 hidden md:table-cell text-slate-500 max-w-xs truncate">
-                      {p.descripcion || '—'}
-                    </td>
-                    <td className="px-4 py-3 text-right font-medium">{fmtCLP(p.monto)}</td>
-                    <td className="px-4 py-3">
-                      <Pill color={ESTADOS_PRESUPUESTO[p.estado]?.color}>
-                        {ESTADOS_PRESUPUESTO[p.estado]?.label}
-                      </Pill>
-                    </td>
-                    <td className="px-4 py-3 hidden sm:table-cell">
-                      <span className={vencido ? 'text-red-600 font-medium' : 'text-slate-500'}>
-                        {fmtFecha(p.proxima_gestion)}{vencido ? ' ⚠' : ''}
+        <div className="space-y-5">
+          {Object.entries(grupos).map(([fecha, items]) => (
+            <div key={fecha}>
+              <div className="text-sm font-semibold text-deep mb-2 capitalize">{fmtFecha(fecha)}</div>
+              <div className="card divide-y divide-slate-100">
+                {items.map((c) => (
+                  <div key={c.id} className="flex items-center justify-between px-4 py-3 hover:bg-paper cursor-pointer"
+                       onClick={() => navigate(`/clientes/${c.cliente_id}`)}>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-mono text-slate-400 w-12">
+                        {c.hora ? c.hora.slice(0, 5) : '—'}
                       </span>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+                      <div>
+                        <div className="text-sm font-medium text-ink">{c.clientes?.nombre}</div>
+                        <div className="text-xs text-slate-400">{TIPOS_ACTIVIDAD[c.tipo]}{c.clientes?.telefono ? ` · ${c.clientes.telefono}` : ''}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

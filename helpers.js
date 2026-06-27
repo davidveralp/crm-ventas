@@ -1,72 +1,64 @@
-import { useState, useEffect } from 'react'
-import { MARCAS_VEHICULO } from '../lib/helpers'
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-export function Pill({ children, color }) {
-  return (
-    <span className="pill" style={{ background: `${color}1A`, color }}>
-      {children}
-    </span>
-  )
+:root { color-scheme: light; }
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, sans-serif;
+  background: #F6F8F9;
+  color: #0A0B0C;
+  -webkit-font-smoothing: antialiased;
 }
 
-export function StatCard({ titulo, valor, sub }) {
-  return (
-    <div className="card p-4">
-      <div className="text-xs font-medium text-slate-500">{titulo}</div>
-      <div className="text-2xl font-bold text-ink mt-1">{valor}</div>
-      {sub && <div className="text-xs text-slate-400 mt-0.5">{sub}</div>}
-    </div>
-  )
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2
+           text-sm font-medium transition-colors disabled:opacity-50
+           disabled:cursor-not-allowed;
+  }
+  .btn-primary { @apply btn bg-deep text-white hover:bg-steel; }
+  .btn-ghost   { @apply btn bg-transparent text-deep hover:bg-mist; }
+  .btn-soft    { @apply btn bg-mist text-deep hover:bg-sky/40; }
+  .card        { @apply bg-white rounded-xl border border-slate-200/70 shadow-sm; }
+  .input {
+    @apply w-full rounded-lg border border-slate-300 px-3 py-2 text-sm
+           outline-none focus:border-deep focus:ring-1 focus:ring-deep;
+  }
+  .label { @apply block text-xs font-medium text-slate-500 mb-1; }
+  .pill  { @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium; }
 }
 
-export function EmptyState({ titulo, mensaje, accion }) {
-  return (
-    <div className="card p-10 text-center">
-      <p className="text-slate-700 font-medium">{titulo}</p>
-      {mensaje && <p className="text-slate-500 text-sm mt-1">{mensaje}</p>}
-      {accion && <div className="mt-4">{accion}</div>}
-    </div>
-  )
+/* =====================================================================
+   TEMA CARBÓN (sutil, con juego de sombras)
+   Para el fondo del Login y la barra lateral.
+   ===================================================================== */
+.carbon {
+  background-color: #0c0d0f;
+  background-image:
+    radial-gradient(120% 80% at 50% -8%, rgba(255,255,255,0.045), transparent 60%),
+    radial-gradient(90% 90% at 0% 0%, rgba(231,60,50,0.05), transparent 55%),
+    repeating-linear-gradient(45deg,  rgba(255,255,255,0.012) 0 2px, transparent 2px 4px),
+    repeating-linear-gradient(-45deg, rgba(0,0,0,0.10) 0 2px, transparent 2px 4px);
 }
-
-export function Modal({ abierto, onClose, titulo, children, ancho = 'max-w-lg' }) {
-  if (!abierto) return null
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/40"
-         onClick={onClose}>
-      <div className={`card w-full ${ancho} max-h-[90vh] overflow-y-auto`}
-           onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
-          <h3 className="font-semibold text-ink">{titulo}</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
-        </div>
-        <div className="p-5">{children}</div>
-      </div>
-    </div>
-  )
+.carbon-sidebar {
+  background-color: #101113;
+  background-image:
+    radial-gradient(110% 34% at 0% 0%, rgba(231,60,50,0.10), transparent 60%),
+    linear-gradient(180deg, rgba(255,255,255,0.04), transparent 16%),
+    linear-gradient(27deg,  rgba(255,255,255,0.035) 5px, transparent 5px) 0 5px,
+    linear-gradient(207deg, rgba(255,255,255,0.035) 5px, transparent 5px) 10px 0,
+    linear-gradient(27deg,  rgba(0,0,0,0.55) 5px, transparent 5px) 0 10px,
+    linear-gradient(207deg, rgba(0,0,0,0.55) 5px, transparent 5px) 10px 5px;
+  background-size: auto, auto, 20px 20px, 20px 20px, 20px 20px, 20px 20px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 8px 0 28px rgba(0,0,0,0.55);
 }
-
-// Selector de marca con catálogo + opción "Otra…" (texto libre)
-export function SelectMarca({ value, onChange }) {
-  const enLista = (v) => MARCAS_VEHICULO.includes(v)
-  const [otra, setOtra] = useState(false)
-  useEffect(() => { if (value && !enLista(value)) setOtra(true) }, [value])
-  const selVal = otra ? '__OTRA__' : (enLista(value) ? value : '')
-  return (
-    <>
-      <select className="input" value={selVal}
-              onChange={(e) => {
-                if (e.target.value === '__OTRA__') { setOtra(true); onChange('') }
-                else { setOtra(false); onChange(e.target.value) }
-              }}>
-        <option value="">— Selecciona —</option>
-        {MARCAS_VEHICULO.map((m) => <option key={m} value={m}>{m}</option>)}
-        <option value="__OTRA__">Otra…</option>
-      </select>
-      {otra && (
-        <input className="input mt-2" placeholder="Escribe la marca"
-               value={value} onChange={(e) => onChange(e.target.value.toUpperCase())} />
-      )}
-    </>
-  )
+/* Línea de tiempo de gestión (stepper horizontal) */
+.stepper { @apply flex items-center gap-0 overflow-x-auto pb-1; }
+.step-dot {
+  @apply grid place-items-center w-7 h-7 rounded-full text-[11px] font-bold shrink-0
+         border-2 transition-colors;
 }
+.step-line { @apply h-0.5 flex-1 min-w-[18px] rounded-full transition-colors; }

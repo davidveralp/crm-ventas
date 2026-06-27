@@ -1,98 +1,92 @@
 // =====================================================================
-// DIDIAL CRM · REPORTE DIARIO (Supabase Edge Function)
+// DIDIAL CRM · ENVIAR CAMPAÑA POR EMAIL (Supabase Edge Function)
 // =====================================================================
-// Se ejecuta todos los días a las 08:00 hora de La Serena (UTC-4).
-// Arma un resumen de la cartera + actividad y lo envía por email al
-// administrador y gerencia vía Brevo.
+// Recibe { campana_id }, busca los clientes del segmento de esa campaña
+// que tengan email, y les envía el mensaje de la campaña vía Brevo.
 //
-// Despliegue:  supabase functions deploy reporte-diario
-// Programación: ver docs/DEPLOY.md (pg_cron o panel de Supabase)
-//
-// Variables de entorno requeridas (Project Settings > Edge Functions):
-//   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
-//   BREVO_API_KEY            (clave de la API de Brevo)
-//   REPORTE_DESTINATARIOS    (correos separados por coma)
+// Despliegue:  supabase functions deploy enviar-campana
+// Requiere secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, BREVO_API_KEY
 // =====================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const fmtCLP = (n: number) =>
-  new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 })
-    .format(n || 0)
+const cors = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS'
+}
 
-Deno.serve(async () => {
-  const supabase = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-  )
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
 
-  const hoy = new Date().toISOString().slice(0, 10)
-  const ayer = new Date(Date.now() - 864e5).toISOString().slice(0, 10)
+  try {
+    const { campana_id } = await req.json()
+    if (!campana_id) {
+      return new Response(JSON.stringify({ error: 'Falta campana_id' }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } })
+    }
 
-  // --- Métricas ---
-  const { count: totalClientes } = await supabase
-    .from('clientes').select('*', { count: 'exact', head: true })
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    )
 
-  const { data: actAyer } = await supabase
-    .from('actividades').select('tipo, resultado').eq('fecha', ayer)
+    // 1. Cargar la campaña
+    const { data: c, error: ec } = await supabase
+      .from('campanas').select('*').eq('id', campana_id).single()
+    if (ec || !c) throw new Error('Campaña no encontrada')
 
-  const { data: citasHoy } = await supabase
-    .from('actividades')
-    .select('hora, tipo, clientes(nombre)')
-    .eq('fecha', hoy).order('hora')
+    // 2. Buscar clientes del segmento con email
+    let q = supabase.from('clientes').select('nombre,email').not('email', 'is', null)
+    if (c.segmento) q = q.eq('segmento', c.segmento)
+    if (c.dias_recientes) {
+      const desde = new Date(Date.now() - c.dias_recientes * 864e5).toISOString()
+      q = q.gte('creado_en', desde)
+    }
+    const { data: clientes } = await q.limit(1000)
+    const destinatarios = (clientes || [])
+      .filter((x) => x.email && x.email.includes('@'))
+      .map((x) => ({ email: x.email.trim(), name: x.nombre }))
 
-  const agendamientos = (actAyer || []).filter((a) => a.resultado === 'agendado').length
+    if (!destinatarios.length) {
+      return new Response(JSON.stringify({ ok: true, enviados: 0, motivo: 'Sin clientes con email en este segmento' }),
+        { headers: { ...cors, 'Content-Type': 'application/json' } })
+    }
 
-  // --- HTML del correo ---
-  const citasHtml = (citasHoy || []).map((c) =>
-    `<li>${c.hora ? c.hora.slice(0, 5) : '—'} · ${c.tipo} · ${(c as any).clientes?.nombre || ''}</li>`
-  ).join('') || '<li>Sin actividades agendadas para hoy.</li>'
+    // 3. Enviar vía Brevo (mensaje de la campaña)
+    const brevoKey = Deno.env.get('BREVO_API_KEY')
+    if (!brevoKey) throw new Error('Falta BREVO_API_KEY en los secrets')
 
-  const html = `
-    <div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;color:#0A0B0C">
-      <div style="background:#1C4357;color:#fff;padding:20px;border-radius:12px 12px 0 0">
-        <h2 style="margin:0">DIDIAL · Reporte diario</h2>
-        <p style="margin:4px 0 0;color:#7FB3C7">${hoy}</p>
-      </div>
-      <div style="border:1px solid #e2e8f0;border-top:none;padding:20px;border-radius:0 0 12px 12px">
-        <h3>Resumen</h3>
-        <ul>
-          <li>Clientes en cartera: <b>${totalClientes ?? 0}</b></li>
-          <li>Actividades de ayer: <b>${(actAyer || []).length}</b></li>
-          <li>Agendamientos logrados ayer: <b>${agendamientos}</b></li>
-        </ul>
-        <h3>Agenda de hoy</h3>
-        <ul>${citasHtml}</ul>
-        <p style="color:#94a3b8;font-size:12px;margin-top:20px">
-          Generado automáticamente por DIDIAL CRM.
-        </p>
-      </div>
+    const html = `<div style="font-family:Arial,sans-serif;font-size:15px;color:#1A1C20;line-height:1.6">
+      ${(c.mensaje_plantilla || '').replace(/\n/g, '<br>')}
+      <br><br><span style="color:#6B7280;font-size:12px">DIDIAL Servicio Automotriz · La Serena</span>
     </div>`
 
-  // --- Envío vía Brevo ---
-  const destinatarios = (Deno.env.get('REPORTE_DESTINATARIOS') || '')
-    .split(',').map((e) => e.trim()).filter(Boolean)
-    .map((email) => ({ email }))
-
-  const brevoKey = Deno.env.get('BREVO_API_KEY')
-
-  if (brevoKey && destinatarios.length) {
-    const r = await fetch('https://api.brevo.com/v3/smtp/email', {
-      method: 'POST',
-      headers: { 'api-key': brevoKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sender: { name: 'DIDIAL CRM', email: 'administracion@didial.cl' },
-        to: destinatarios,
-        subject: `DIDIAL · Reporte diario ${hoy}`,
-        htmlContent: html
+    // Brevo permite hasta ~50 destinatarios "to" por llamada; enviamos en lotes
+    let enviados = 0
+    for (let i = 0; i < destinatarios.length; i += 50) {
+      const lote = destinatarios.slice(i, i + 50)
+      const r = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: { 'api-key': brevoKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sender: { name: 'DIDIAL Servicio Automotriz', email: 'administracion@didial.cl' },
+          messageVersions: lote.map((d) => ({ to: [d] })),
+          subject: c.nombre,
+          htmlContent: html
+        })
       })
-    })
-    if (!r.ok) {
-      return new Response(JSON.stringify({ error: await r.text() }), { status: 500 })
+      if (r.ok) enviados += lote.length
     }
-  }
 
-  return new Response(JSON.stringify({ ok: true, fecha: hoy, enviado_a: destinatarios.length }), {
-    headers: { 'Content-Type': 'application/json' }
-  })
+    // 4. Marcar campaña como activa
+    await supabase.from('campanas').update({ estado: 'activa' }).eq('id', campana_id)
+
+    return new Response(JSON.stringify({ ok: true, enviados, total: destinatarios.length }),
+      { headers: { ...cors, 'Content-Type': 'application/json' } })
+
+  } catch (e) {
+    return new Response(JSON.stringify({ error: String(e.message || e) }),
+      { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } })
+  }
 })
