@@ -1,57 +1,67 @@
--- =====================================================================
--- DIDIAL CRM · ACTUALIZACIÓN v7
--- 1) Segmento "Nuevo cliente"
--- 2) Dirección del cliente
--- 3) Tabla de servicios (historial de OT por vehículo / patente)
--- Ejecutar en el SQL Editor de Supabase. Es seguro re-ejecutarlo.
--- NOTA: si la línea ALTER TYPE da error por transacción, ejecútala sola.
--- =====================================================================
+# DIDIAL CRM
 
--- ---- 1. Nuevo valor de segmento -----------------------------------
-alter type segmento_valor add value if not exists 'nuevo';
+PWA de gestión comercial para **Servicio Automotriz Didial** (La Serena). Maneja clientes, vehículos, pipeline de ventas, campañas segmentadas, agenda, dashboard y reportes automáticos.
 
--- ---- 2. Dirección del cliente -------------------------------------
-alter table clientes add column if not exists direccion text;
-alter table clientes add column if not exists comuna    text;
+Construida para ser **replicable**: el mismo código sirve para otras empresas cambiando solo la base de datos y las variables de entorno.
 
--- ---- 3. Historial de servicios (alimentado desde la base de OT) ----
-create table if not exists servicios (
-  id            uuid primary key default uuid_generate_v4(),
-  empresa_id    uuid not null references empresas(id)  on delete cascade,
-  cliente_id    uuid references clientes(id)           on delete set null,
-  vehiculo_id   uuid references vehiculos(id)          on delete set null,
-  patente       text,
-  ot_numero     text,
-  fecha         date,
-  tipo_servicio   text,
-  tipo_servicio_2 text,
-  descripcion   text,
-  monto         numeric,
-  km            integer,
-  creado_en     timestamptz default now()
-);
--- Por si la tabla ya existía de una corrida anterior:
-alter table servicios add column if not exists tipo_servicio_2 text;
-create index if not exists idx_servicios_patente on servicios(patente);
-create index if not exists idx_servicios_cliente on servicios(cliente_id);
--- Único normal (NO parcial): requerido para el upsert on_conflict del sync.
-create unique index if not exists uq_servicios_ot on servicios(empresa_id, ot_numero);
+---
 
-alter table servicios enable row level security;
-drop policy if exists servicios_all on servicios;
-create policy servicios_all on servicios
-  for all using (empresa_id = empresa_actual())
-  with check (empresa_id = empresa_actual());
+## Qué incluye
 
--- Vincula cada servicio con su vehículo/cliente por patente (re-ejecutable).
--- Córrela después de cada sincronización desde la planilla de OT.
-update servicios s set
-  vehiculo_id = v.id,
-  cliente_id  = coalesce(s.cliente_id, v.cliente_id)
-from vehiculos v
-where s.vehiculo_id is null
-  and s.patente is not null
-  and regexp_replace(upper(v.patente), '[^A-Z0-9]', '', 'g')
-    = regexp_replace(upper(s.patente), '[^A-Z0-9]', '', 'g');
+- **Clientes y vehículos** con segmentación por valor (Pareto + RFM) y por kilometraje.
+- **Pipeline** tipo kanban (Lead → Contactado → Propuesta → Agendado → Vendido / Perdido) con arrastrar y soltar.
+- **Seguimiento** de llamadas, propuestas y agendamientos por cliente.
+- **Campañas** basadas en el Plan Maestro de DIDIAL (7 campañas precargadas).
+- **Agenda** con exportación a Outlook / Google Calendar (.ics).
+- **Dashboard** con embudo de ventas, conversión y distribución por segmento.
+- **Importar / Exportar** desde Google Sheets (CSV/Excel) con detección automática de columnas.
+- **Roles**: administrador (ve todo) y vendedor (ve solo lo suyo), con seguridad a nivel de base de datos (RLS).
+- **Auditoría** de cambios de estado.
+- **Reporte diario** automático por correo a las 08:00.
 
--- Listo. Refresca el CRM tras ejecutar.
+## Arquitectura
+
+| Capa | Tecnología |
+|------|-----------|
+| Frontend | React + Vite + Tailwind (PWA, funciona offline) |
+| Backend / BD | Supabase (PostgreSQL + Auth + RLS + Edge Functions) |
+| Gráficos | Recharts |
+| Importación | PapaParse (CSV) + SheetJS (Excel) |
+| Email | Brevo (reporte diario) |
+| Hosting | GitHub + Vercel (gratis) |
+
+No requiere servidor propio: la PWA habla directo con Supabase.
+
+## Puesta en marcha
+
+Sigue **[docs/SETUP.md](docs/SETUP.md)** paso a paso (crear Supabase, cargar la base de datos, crear usuarios y conectar el frontend). Para publicarla en internet, **[docs/DEPLOY.md](docs/DEPLOY.md)**. Para el uso diario, **[docs/USAGE.md](docs/USAGE.md)**.
+
+### Resumen rápido (local)
+
+```bash
+npm install
+cp .env.example .env      # rellena con tus credenciales de Supabase
+npm run dev
+```
+
+## Estructura
+
+```
+didial-crm/
+├── database/          SQL: esquema, RLS, datos iniciales, usuarios
+├── src/               Frontend React (PWA)
+│   ├── pages/         Dashboard, Clientes, Pipeline, Agenda, Campañas, Datos, Usuarios
+│   ├── components/    Layout, UI, rutas protegidas
+│   ├── context/       Autenticación
+│   └── lib/           Cliente Supabase + helpers
+├── supabase/functions/reporte-diario/   Edge Function del reporte diario
+└── docs/              SETUP · DEPLOY · USAGE
+```
+
+## Replicar para otra empresa
+
+Ver la sección final de [docs/SETUP.md](docs/SETUP.md): se crea un nuevo proyecto Supabase, se corre el mismo SQL cambiando el nombre de la empresa, y se despliega otra instancia del frontend. El código no cambia.
+
+---
+
+Licencia MIT.

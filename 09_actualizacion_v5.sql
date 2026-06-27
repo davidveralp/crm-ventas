@@ -1,13 +1,15 @@
--- =====================================================================
--- DIDIAL CRM · ACTUALIZACIÓN v6
--- Agrega "Tipo de servicio" solicitado, para saber qué necesita el
--- cliente, armar presupuestos y alimentar los análisis.
--- Ejecutar en el SQL Editor de Supabase. Es seguro re-ejecutarlo.
--- =====================================================================
+MIT License
 
-alter table actividades  add column if not exists tipo_servicio text;
-alter table presupuestos add column if not exists tipo_servicio text;
+Copyright (c) 2026 David Vera / Servicio Automotriz Didial
 
-create index if not exists idx_actividades_tiposerv on actividades(tipo_servicio);
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
--- Listo. Refresca el CRM tras ejecutar.
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.

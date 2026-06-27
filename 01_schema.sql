@@ -1,9 +1,29 @@
--- =====================================================================
--- DIDIAL CRM · ACTUALIZACIÓN v5
--- Agrega el RUT del cliente (viaja al formulario de OT como "documento").
--- Ejecutar en el SQL Editor de Supabase. Es seguro re-ejecutarlo.
--- =====================================================================
-
-alter table clientes add column if not exists rut text;
-
--- Listo. Refresca el CRM tras ejecutar.
+{
+  "name": "didial-crm",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "CRM comercial PWA para Servicio Automotriz Didial",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "papaparse": "^5.4.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.0",
+    "recharts": "^2.12.7",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.40",
+    "tailwindcss": "^3.4.7",
+    "vite": "^5.4.0",
+    "vite-plugin-pwa": "^0.20.1"
+  }
+}

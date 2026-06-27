@@ -1,108 +1,88 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { Pill, StatCard, EmptyState } from '../components/UI'
-import { fmtCLP, fmtFecha, ESTADOS_PRESUPUESTO } from '../lib/helpers'
+import { Pill } from '../components/UI'
 
-export default function Presupuestos() {
-  const navigate = useNavigate()
-  const [lista, setLista] = useState([])
-  const [filtro, setFiltro] = useState('')
+export default function Usuarios() {
+  const [usuarios, setUsuarios] = useState([])
+  const [auditoria, setAuditoria] = useState([])
 
   useEffect(() => { cargar() }, [])
 
   async function cargar() {
-    const { data } = await supabase.from('presupuestos')
-      .select('*, clientes(nombre)')
-      .order('proxima_gestion', { ascending: true, nullsFirst: false })
-    setLista(data || [])
+    const [{ data: u }, { data: a }] = await Promise.all([
+      supabase.from('usuarios').select('*').order('rol'),
+      supabase.from('auditoria').select('*, usuarios(nombre)')
+        .order('ocurrido_en', { ascending: false }).limit(30)
+    ])
+    setUsuarios(u || []); setAuditoria(a || [])
   }
 
-  const filtrada = useMemo(() =>
-    lista.filter((p) => !filtro || p.estado === filtro), [lista, filtro])
-
-  const m = useMemo(() => {
-    const abiertos = lista.filter((p) => ['enviado', 'en_seguimiento'].includes(p.estado))
-    const aprobados = lista.filter((p) => p.estado === 'aprobado')
-    return {
-      enJuego: abiertos.reduce((a, p) => a + Number(p.monto || 0), 0),
-      ganado: aprobados.reduce((a, p) => a + Number(p.monto || 0), 0),
-      abiertos: abiertos.length
-    }
-  }, [lista])
-
-  const hoy = new Date().toISOString().slice(0, 10)
+  async function toggleActivo(u) {
+    await supabase.from('usuarios').update({ activo: !u.activo }).eq('id', u.id)
+    cargar()
+  }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6 max-w-3xl">
       <div>
-        <h1 className="text-xl font-bold text-ink">Presupuestos</h1>
-        <p className="text-sm text-slate-500">Seguimiento de cotizaciones · ordenados por próxima gestión</p>
+        <h1 className="text-xl font-bold text-ink">Usuarios</h1>
+        <p className="text-sm text-slate-500">Equipo comercial y registro de cambios</p>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
-        <StatCard titulo="En juego (abiertos)" valor={fmtCLP(m.enJuego)} sub={`${m.abiertos} presupuestos`} />
-        <StatCard titulo="Aprobado" valor={fmtCLP(m.ganado)} />
-        <StatCard titulo="Total" valor={lista.length} />
-      </div>
-
-      <div className="flex gap-2 flex-wrap">
-        <button className={`pill border ${!filtro ? 'bg-deep text-white' : 'text-slate-600'}`}
-                style={{ borderColor: '#e2e8f0' }} onClick={() => setFiltro('')}>Todos</button>
-        {Object.entries(ESTADOS_PRESUPUESTO).map(([k, v]) => (
-          <button key={k} className="pill border" onClick={() => setFiltro(k)}
-                  style={filtro === k
-                    ? { background: v.color, borderColor: v.color, color: '#fff' }
-                    : { borderColor: '#e2e8f0', color: '#475569' }}>
-            {v.label}
-          </button>
-        ))}
-      </div>
-
-      {filtrada.length === 0 ? (
-        <EmptyState titulo="Sin presupuestos"
-                    mensaje="Crea presupuestos desde la ficha de cada cliente para darles seguimiento aquí." />
-      ) : (
-        <div className="card overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-paper text-slate-500 text-xs uppercase">
-              <tr>
-                <th className="text-left font-medium px-4 py-3">Cliente</th>
-                <th className="text-left font-medium px-4 py-3 hidden md:table-cell">Descripción</th>
-                <th className="text-right font-medium px-4 py-3">Monto</th>
-                <th className="text-left font-medium px-4 py-3">Estado</th>
-                <th className="text-left font-medium px-4 py-3 hidden sm:table-cell">Próx. gestión</th>
+      <div className="card overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-paper text-slate-500 text-xs uppercase">
+            <tr>
+              <th className="text-left font-medium px-4 py-3">Nombre</th>
+              <th className="text-left font-medium px-4 py-3">Correo</th>
+              <th className="text-left font-medium px-4 py-3">Rol</th>
+              <th className="text-right font-medium px-4 py-3">Estado</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {usuarios.map((u) => (
+              <tr key={u.id}>
+                <td className="px-4 py-3 font-medium text-ink">{u.nombre}</td>
+                <td className="px-4 py-3 text-slate-500">{u.email}</td>
+                <td className="px-4 py-3">
+                  <Pill color={u.rol === 'admin' ? '#1C4357' : '#185FA5'}>{u.rol}</Pill>
+                </td>
+                <td className="px-4 py-3 text-right">
+                  <button onClick={() => toggleActivo(u)}
+                    className={`pill ${u.activo ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                    {u.activo ? 'Activo' : 'Inactivo'}
+                  </button>
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filtrada.map((p) => {
-                const vencido = p.proxima_gestion && p.proxima_gestion < hoy &&
-                                ['enviado', 'en_seguimiento'].includes(p.estado)
-                return (
-                  <tr key={p.id} className="hover:bg-paper cursor-pointer"
-                      onClick={() => navigate(`/clientes/${p.cliente_id}`)}>
-                    <td className="px-4 py-3 font-medium text-ink">{p.clientes?.nombre}</td>
-                    <td className="px-4 py-3 hidden md:table-cell text-slate-500 max-w-xs truncate">
-                      {p.descripcion || '—'}
-                    </td>
-                    <td className="px-4 py-3 text-right font-medium">{fmtCLP(p.monto)}</td>
-                    <td className="px-4 py-3">
-                      <Pill color={ESTADOS_PRESUPUESTO[p.estado]?.color}>
-                        {ESTADOS_PRESUPUESTO[p.estado]?.label}
-                      </Pill>
-                    </td>
-                    <td className="px-4 py-3 hidden sm:table-cell">
-                      <span className={vencido ? 'text-red-600 font-medium' : 'text-slate-500'}>
-                        {fmtFecha(p.proxima_gestion)}{vencido ? ' ⚠' : ''}
-                      </span>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="rounded-lg bg-sky/10 px-4 py-3 text-sm text-deep">
+        Para crear un usuario nuevo: agrégalo en Supabase → Authentication → Users,
+        y luego vuelve a ejecutar el script <span className="font-mono">04_vincular_usuarios.sql</span>
+        añadiendo su fila.
+      </div>
+
+      <div>
+        <h3 className="font-semibold text-ink mb-3">Registro de cambios (auditoría)</h3>
+        <div className="card divide-y divide-slate-100">
+          {auditoria.length ? auditoria.map((a) => (
+            <div key={a.id} className="px-4 py-2.5 text-sm flex items-center justify-between">
+              <span className="text-slate-600">
+                <span className="font-medium text-ink">{a.usuarios?.nombre || 'Sistema'}</span>
+                {' '}cambió {a.campo} de un cliente
+              </span>
+              <span className="text-xs text-slate-400">
+                {new Date(a.ocurrido_en).toLocaleString('es-CL')}
+              </span>
+            </div>
+          )) : <div className="px-4 py-4 text-sm text-slate-400 text-center">
+            Sin cambios registrados todavía.
+          </div>}
         </div>
-      )}
+      </div>
     </div>
   )
 }

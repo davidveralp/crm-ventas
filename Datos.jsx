@@ -1,88 +1,91 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { Pill } from '../components/UI'
+import { TIPOS_ACTIVIDAD, fmtFecha } from '../lib/helpers'
 
-export default function Usuarios() {
-  const [usuarios, setUsuarios] = useState([])
-  const [auditoria, setAuditoria] = useState([])
+export default function Agenda() {
+  const navigate = useNavigate()
+  const [citas, setCitas] = useState([])
 
   useEffect(() => { cargar() }, [])
 
   async function cargar() {
-    const [{ data: u }, { data: a }] = await Promise.all([
-      supabase.from('usuarios').select('*').order('rol'),
-      supabase.from('auditoria').select('*, usuarios(nombre)')
-        .order('ocurrido_en', { ascending: false }).limit(30)
-    ])
-    setUsuarios(u || []); setAuditoria(a || [])
+    const hoy = new Date().toISOString().slice(0, 10)
+    const { data } = await supabase.from('actividades')
+      .select('*, clientes(nombre,telefono)')
+      .gte('proxima_fecha', hoy)
+      .order('proxima_fecha').order('hora')
+    setCitas(data || [])
   }
 
-  async function toggleActivo(u) {
-    await supabase.from('usuarios').update({ activo: !u.activo }).eq('id', u.id)
-    cargar()
+  const grupos = useMemo(() => {
+    const g = {}
+    citas.forEach((c) => { (g[c.proxima_fecha] ||= []).push(c) })
+    return g
+  }, [citas])
+
+  function exportarICS() {
+    const pad = (n) => String(n).padStart(2, '0')
+    let ics = 'BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//DIDIAL CRM//ES\n'
+    citas.forEach((c) => {
+      const f = c.proxima_fecha.replace(/-/g, '')
+      const h = (c.hora || '09:00').slice(0, 5).replace(':', '') + '00'
+      ics += 'BEGIN:VEVENT\n'
+      ics += `UID:${c.id}@didial\n`
+      ics += `DTSTART:${f}T${h}\n`
+      ics += `SUMMARY:${TIPOS_ACTIVIDAD[c.tipo]} · ${c.clientes?.nombre || ''}\n`
+      ics += `DESCRIPTION:${(c.descripcion || '').replace(/\n/g, ' ')}\n`
+      ics += 'END:VEVENT\n'
+    })
+    ics += 'END:VCALENDAR'
+    const blob = new Blob([ics], { type: 'text/calendar' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = 'agenda-didial.ics'; a.click()
+    URL.revokeObjectURL(url)
   }
 
   return (
-    <div className="space-y-6 max-w-3xl">
-      <div>
-        <h1 className="text-xl font-bold text-ink">Usuarios</h1>
-        <p className="text-sm text-slate-500">Equipo comercial y registro de cambios</p>
-      </div>
-
-      <div className="card overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-paper text-slate-500 text-xs uppercase">
-            <tr>
-              <th className="text-left font-medium px-4 py-3">Nombre</th>
-              <th className="text-left font-medium px-4 py-3">Correo</th>
-              <th className="text-left font-medium px-4 py-3">Rol</th>
-              <th className="text-right font-medium px-4 py-3">Estado</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {usuarios.map((u) => (
-              <tr key={u.id}>
-                <td className="px-4 py-3 font-medium text-ink">{u.nombre}</td>
-                <td className="px-4 py-3 text-slate-500">{u.email}</td>
-                <td className="px-4 py-3">
-                  <Pill color={u.rol === 'admin' ? '#1C4357' : '#185FA5'}>{u.rol}</Pill>
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <button onClick={() => toggleActivo(u)}
-                    className={`pill ${u.activo ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
-                    {u.activo ? 'Activo' : 'Inactivo'}
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="rounded-lg bg-sky/10 px-4 py-3 text-sm text-deep">
-        Para crear un usuario nuevo: agrégalo en Supabase → Authentication → Users,
-        y luego vuelve a ejecutar el script <span className="font-mono">04_vincular_usuarios.sql</span>
-        añadiendo su fila.
-      </div>
-
-      <div>
-        <h3 className="font-semibold text-ink mb-3">Registro de cambios (auditoría)</h3>
-        <div className="card divide-y divide-slate-100">
-          {auditoria.length ? auditoria.map((a) => (
-            <div key={a.id} className="px-4 py-2.5 text-sm flex items-center justify-between">
-              <span className="text-slate-600">
-                <span className="font-medium text-ink">{a.usuarios?.nombre || 'Sistema'}</span>
-                {' '}cambió {a.campo} de un cliente
-              </span>
-              <span className="text-xs text-slate-400">
-                {new Date(a.ocurrido_en).toLocaleString('es-CL')}
-              </span>
-            </div>
-          )) : <div className="px-4 py-4 text-sm text-slate-400 text-center">
-            Sin cambios registrados todavía.
-          </div>}
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-ink">Agenda</h1>
+          <p className="text-sm text-slate-500">Próximas actividades y agendamientos</p>
         </div>
+        {citas.length > 0 && (
+          <button className="btn-soft" onClick={exportarICS}>Exportar a Outlook (.ics)</button>
+        )}
       </div>
+
+      {Object.keys(grupos).length === 0 ? (
+        <div className="card p-10 text-center text-slate-400 text-sm">
+          No hay actividades agendadas a futuro. Regístralas desde la ficha de cada cliente.
+        </div>
+      ) : (
+        <div className="space-y-5">
+          {Object.entries(grupos).map(([fecha, items]) => (
+            <div key={fecha}>
+              <div className="text-sm font-semibold text-deep mb-2 capitalize">{fmtFecha(fecha)}</div>
+              <div className="card divide-y divide-slate-100">
+                {items.map((c) => (
+                  <div key={c.id} className="flex items-center justify-between px-4 py-3 hover:bg-paper cursor-pointer"
+                       onClick={() => navigate(`/clientes/${c.cliente_id}`)}>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-mono text-slate-400 w-12">
+                        {c.hora ? c.hora.slice(0, 5) : '—'}
+                      </span>
+                      <div>
+                        <div className="text-sm font-medium text-ink">{c.clientes?.nombre}</div>
+                        <div className="text-xs text-slate-400">{TIPOS_ACTIVIDAD[c.tipo]}{c.clientes?.telefono ? ` · ${c.clientes.telefono}` : ''}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

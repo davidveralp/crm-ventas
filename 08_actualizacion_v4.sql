@@ -1,93 +1,98 @@
--- =====================================================================
--- DIDIAL CRM · ACTUALIZACIÓN v2
--- Agrega: marca principal del cliente + módulo de presupuestos.
--- Ejecutar en el SQL Editor ANTES de 06_carga_clientes.sql
--- Es seguro re-ejecutarlo.
--- =====================================================================
+// =====================================================================
+// DIDIAL CRM · REPORTE DIARIO (Supabase Edge Function)
+// =====================================================================
+// Se ejecuta todos los días a las 08:00 hora de La Serena (UTC-4).
+// Arma un resumen de la cartera + actividad y lo envía por email al
+// administrador y gerencia vía Brevo.
+//
+// Despliegue:  supabase functions deploy reporte-diario
+// Programación: ver docs/DEPLOY.md (pg_cron o panel de Supabase)
+//
+// Variables de entorno requeridas (Project Settings > Edge Functions):
+//   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+//   BREVO_API_KEY            (clave de la API de Brevo)
+//   REPORTE_DESTINATARIOS    (correos separados por coma)
+// =====================================================================
 
--- 1. Marca principal del cliente (para segmentar por marca: Toyota, etc.)
-alter table clientes add column if not exists marca_principal text;
-create index if not exists idx_clientes_marca on clientes(marca_principal);
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
--- 2. Tipo de estado para presupuestos
-do $$ begin
-  create type estado_presupuesto as enum (
-    'borrador', 'enviado', 'en_seguimiento', 'aprobado', 'rechazado', 'vencido'
-  );
-exception when duplicate_object then null; end $$;
+const fmtCLP = (n: number) =>
+  new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 })
+    .format(n || 0)
 
--- 3. Tabla de presupuestos
-create table if not exists presupuestos (
-  id            uuid primary key default uuid_generate_v4(),
-  empresa_id    uuid not null references empresas(id) on delete cascade,
-  cliente_id    uuid not null references clientes(id) on delete cascade,
-  vehiculo_id   uuid references vehiculos(id) on delete set null,
-  vendedor_id   uuid references usuarios(id) on delete set null,
-  numero        text,                       -- N° de presupuesto interno
-  descripcion   text,
-  monto         numeric(14,2) default 0,
-  estado        estado_presupuesto default 'borrador',
-  fecha_emision date default current_date,
-  fecha_validez date,                       -- hasta cuándo es válido
-  proxima_gestion date,                     -- cuándo volver a contactar
-  notas         text,
-  creado_en     timestamptz default now(),
-  actualizado_en timestamptz default now()
-);
-create index if not exists idx_presup_empresa  on presupuestos(empresa_id);
-create index if not exists idx_presup_cliente  on presupuestos(cliente_id);
-create index if not exists idx_presup_vendedor on presupuestos(vendedor_id);
-create index if not exists idx_presup_estado   on presupuestos(estado);
+Deno.serve(async () => {
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  )
 
--- 4. Trigger de actualizado_en
-drop trigger if exists trg_presup_touch on presupuestos;
-create trigger trg_presup_touch
-  before update on presupuestos
-  for each row execute function touch_actualizado_en();
+  const hoy = new Date().toISOString().slice(0, 10)
+  const ayer = new Date(Date.now() - 864e5).toISOString().slice(0, 10)
 
--- 5. Auditoría de cambios de estado del presupuesto
-create or replace function auditar_presupuesto()
-returns trigger as $$
-begin
-  if (old.estado is distinct from new.estado) then
-    insert into auditoria (empresa_id, entidad, entidad_id, usuario_id,
-                           campo, valor_antes, valor_despues)
-    values (new.empresa_id, 'presupuesto', new.id, auth.uid(),
-            'estado', old.estado::text, new.estado::text);
-  end if;
-  return new;
-end;
-$$ language plpgsql security definer;
+  // --- Métricas ---
+  const { count: totalClientes } = await supabase
+    .from('clientes').select('*', { count: 'exact', head: true })
 
-drop trigger if exists trg_presup_auditoria on presupuestos;
-create trigger trg_presup_auditoria
-  after update on presupuestos
-  for each row execute function auditar_presupuesto();
+  const { data: actAyer } = await supabase
+    .from('actividades').select('tipo, resultado').eq('fecha', ayer)
 
--- 6. RLS para presupuestos (mismo criterio: vendedor ve lo suyo, admin todo)
-alter table presupuestos enable row level security;
+  const { data: citasHoy } = await supabase
+    .from('actividades')
+    .select('hora, tipo, clientes(nombre)')
+    .eq('fecha', hoy).order('hora')
 
-drop policy if exists presup_select on presupuestos;
-create policy presup_select on presupuestos
-  for select using (
-    empresa_id = empresa_actual()
-    and (es_admin() or vendedor_id = auth.uid())
-  );
+  const agendamientos = (actAyer || []).filter((a) => a.resultado === 'agendado').length
 
-drop policy if exists presup_insert on presupuestos;
-create policy presup_insert on presupuestos
-  for insert with check (empresa_id = empresa_actual());
+  // --- HTML del correo ---
+  const citasHtml = (citasHoy || []).map((c) =>
+    `<li>${c.hora ? c.hora.slice(0, 5) : '—'} · ${c.tipo} · ${(c as any).clientes?.nombre || ''}</li>`
+  ).join('') || '<li>Sin actividades agendadas para hoy.</li>'
 
-drop policy if exists presup_update on presupuestos;
-create policy presup_update on presupuestos
-  for update using (
-    empresa_id = empresa_actual()
-    and (es_admin() or vendedor_id = auth.uid())
-  );
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;color:#0A0B0C">
+      <div style="background:#1C4357;color:#fff;padding:20px;border-radius:12px 12px 0 0">
+        <h2 style="margin:0">DIDIAL · Reporte diario</h2>
+        <p style="margin:4px 0 0;color:#7FB3C7">${hoy}</p>
+      </div>
+      <div style="border:1px solid #e2e8f0;border-top:none;padding:20px;border-radius:0 0 12px 12px">
+        <h3>Resumen</h3>
+        <ul>
+          <li>Clientes en cartera: <b>${totalClientes ?? 0}</b></li>
+          <li>Actividades de ayer: <b>${(actAyer || []).length}</b></li>
+          <li>Agendamientos logrados ayer: <b>${agendamientos}</b></li>
+        </ul>
+        <h3>Agenda de hoy</h3>
+        <ul>${citasHtml}</ul>
+        <p style="color:#94a3b8;font-size:12px;margin-top:20px">
+          Generado automáticamente por DIDIAL CRM.
+        </p>
+      </div>
+    </div>`
 
-drop policy if exists presup_delete on presupuestos;
-create policy presup_delete on presupuestos
-  for delete using (
-    empresa_id = empresa_actual()
-    and (es_admin() or vendedor_id = auth.uid())
-  );
+  // --- Envío vía Brevo ---
+  const destinatarios = (Deno.env.get('REPORTE_DESTINATARIOS') || '')
+    .split(',').map((e) => e.trim()).filter(Boolean)
+    .map((email) => ({ email }))
+
+  const brevoKey = Deno.env.get('BREVO_API_KEY')
+
+  if (brevoKey && destinatarios.length) {
+    const r = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: { 'api-key': brevoKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sender: { name: 'DIDIAL CRM', email: 'administracion@didial.cl' },
+        to: destinatarios,
+        subject: `DIDIAL · Reporte diario ${hoy}`,
+        htmlContent: html
+      })
+    })
+    if (!r.ok) {
+      return new Response(JSON.stringify({ error: await r.text() }), { status: 500 })
+    }
+  }
+
+  return new Response(JSON.stringify({ ok: true, fecha: hoy, enviado_a: destinatarios.length }), {
+    headers: { 'Content-Type': 'application/json' }
+  })
+})

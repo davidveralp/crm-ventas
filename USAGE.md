@@ -1,44 +1,39 @@
-# Email marketing automático (Brevo) — Roadmap Fase 2
+# Botón "Enviar campaña por email" — activación
 
-Objetivo: enviar correos a un segmento de clientes (ej. Ocasionales y Dormidos)
-de forma automática, con bajo costo.
+El CRM ahora tiene un botón para enviar una campaña por correo a todos los
+clientes de su segmento (con email registrado), directo desde la pantalla
+Campañas. Para activarlo hay que conectar Brevo una sola vez.
 
-## Por qué Brevo
-- Plan gratis: 300 correos/día (9.000/mes). Suficiente para campañas segmentadas.
-- API simple, ya dejé preparada la función de envío en el proyecto.
+## Requisitos previos (una vez)
+1. Cuenta Brevo + remitente `administracion@didial.cl` verificado.
+2. API Key de Brevo (SMTP & API → API Keys).
 
-## Paso 1 — Crear cuenta y remitente
-1. Regístrate en [brevo.com](https://www.brevo.com).
-2. Ve a **Senders, Domains & Dedicated IPs → Senders** y agrega/verifica
-   `administracion@didial.cl` (te llega un correo de verificación).
-3. Ve a **SMTP & API → API Keys** y crea una clave. Cópiala.
-
-## Paso 2 — Cargar la clave en Supabase
-En Supabase → **Project Settings → Edge Functions → Secrets**, agrega:
+## Paso 1 — Instalar el CLI de Supabase (en tu PC)
+```bash
+npm install -g supabase
+supabase login
+supabase link --project-ref ehpstxrzsjwcevcafxgk
 ```
-BREVO_API_KEY = xkeysib-...
+(El project-ref es el código de tu URL de Supabase.)
+
+## Paso 2 — Cargar los secrets
+```bash
+supabase secrets set BREVO_API_KEY=xkeysib-TU_CLAVE
 ```
 
-## Paso 3 — Función de envío de campaña
-El proyecto incluye la función `reporte-diario`. Para campañas masivas usaremos
-la misma cuenta Brevo. El flujo recomendado para DIDIAL:
+## Paso 3 — Desplegar la función
+```bash
+supabase functions deploy enviar-campana
+```
 
-1. En el CRM, abre la campaña (ej. "Reactivación de Dormidos") y revisa los
-   clientes que coinciden y que tengan correo.
-2. Exporta esa lista (Importar/Exportar → Descargar Excel, filtrando el segmento).
-3. En Brevo: **Contacts → Import**, sube la lista como una "Lista".
-4. **Campaigns → Email → Create**: diseña el correo con el mensaje del segmento
-   (los tienes en la Guía del Vendedor), elige la lista y programa el envío.
+## Cómo se usa
+1. En el CRM → Campañas, abre una campaña cuyo canal sea **Email**.
+2. Revisa los clientes que coinciden.
+3. Botón **"Enviar por email (Brevo)"** → confirma. Se envían los correos y
+   te muestra cuántos salieron.
 
-## Paso 4 — Automatización real (opcional, más adelante)
-Cuando quieras envío 100% automático desde el CRM (sin exportar), conectamos:
-- Un botón "Enviar campaña" en la pantalla de Campañas →
-- que llame a una Edge Function `enviar-campana` →
-- que tome los clientes del segmento con email y los envíe vía Brevo API.
-
-Esto requiere un poco más de desarrollo; cuando llegues aquí, lo armamos.
-
-## Buenas prácticas
-- Empieza por segmentos masivos de bajo costo (Ocasional, Dormido).
-- A los VIP y Alto Valor NO los metas en correo masivo: esos van por llamada/WhatsApp personal.
-- Incluye siempre opción de "no recibir más correos" (Brevo lo agrega solo).
+## Importante
+- Solo envía a clientes con email válido en su ficha.
+- Los segmentos masivos (Ocasional, Dormido) son los ideales para email.
+- VIP y Alto Valor: contáctalos por llamada/WhatsApp personal, NO por correo masivo.
+- Brevo gratis: 300 correos/día. Si un segmento supera eso, divídelo en días.

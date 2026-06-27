@@ -1,177 +1,302 @@
-import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { Pill, Modal } from '../components/UI'
-import { SEGMENTOS, VENTANAS, segLabel } from '../lib/helpers'
+import { Pill, Modal, EmptyState, SelectMarca } from '../components/UI'
+import { SEGMENTOS, TIPOS_CLIENTE, segLabel, segColor, fmtCLP, formatRut, formatTelefono, formatPatente } from '../lib/helpers'
 
-const ESTADO_COLOR = {
-  borrador: '#73726c', activa: '#1D9E75', pausada: '#C98A1B', completada: '#185FA5'
+const VACIO = {
+  nombre: '', rut: '', email: '', telefono: '', ciudad: 'La Serena',
+  direccion: '', comuna: '',
+  tipo: 'PERSONA', segmento: 'nuevo', marca_principal: '', vendedor_id: '',
+  // datos del primer vehículo (opcionales)
+  v_marca: '', v_modelo: '', v_anio: '', v_patente: '', v_km: ''
 }
-const CANALES = { whatsapp: 'WhatsApp', llamada: 'Llamada', email: 'Email', sms: 'SMS' }
-// Canal de campaña -> tipo_actividad válido del enum
-const CANAL_A_TIPO = { whatsapp: 'whatsapp', llamada: 'llamada', email: 'email', sms: 'llamada' }
 
-export default function Campanas() {
+export default function Clientes() {
   const { esAdmin, perfil } = useAuth()
-  const [campanas, setCampanas] = useState([])
-  const [sel, setSel] = useState(null)
-  const [coincidencias, setCoincidencias] = useState([])
-  const [enviando, setEnviando] = useState(false)
-  const [cargandoAsesores, setCargandoAsesores] = useState(false)
-  const [resultadoEnvio, setResultadoEnvio] = useState('')
+  const navigate = useNavigate()
+  const [lista, setLista]   = useState([])
+  const [vendedores, setVendedores] = useState([])
+  const [estados, setEstados] = useState([])
+  const [busca, setBusca]   = useState('')
+  const [segFiltro, setSegFiltro] = useState('')
+  const [marcaFiltro, setMarcaFiltro] = useState('')
+  const [vendFiltro, setVendFiltro] = useState('')
+  const [estadoFiltro, setEstadoFiltro] = useState('')
+  const [modal, setModal]   = useState(false)
+  const [form, setForm]     = useState(VACIO)
+  const [guardando, setGuardando] = useState(false)
 
   useEffect(() => { cargar() }, [])
 
   async function cargar() {
-    const { data } = await supabase.from('campanas').select('*').order('prioridad')
-    setCampanas(data || [])
+    const data = await fetchAllRows('clientes', '*, usuarios(nombre)',
+      (q) => q.order('facturacion_total', { ascending: false }))
+    setLista(data || [])
+    const { data: v } = await supabase.from('usuarios')
+      .select('id,nombre').eq('rol', 'vendedor').eq('activo', true)
+    setVendedores(v || [])
+    const { data: e } = await supabase.from('pipeline_estados')
+      .select('id,nombre,color,orden,es_final').order('orden')
+    setEstados(e || [])
   }
 
-  async function abrir(c) {
-    setSel(c); setResultadoEnvio('')
-    let q = supabase.from('clientes').select('id,nombre,telefono,segmento,vendedor_id,creado_en')
-    if (c.segmento) q = q.eq('segmento', c.segmento)
-    if (c.dias_recientes) {
-      const desde = new Date(Date.now() - c.dias_recientes * 864e5).toISOString()
-      q = q.gte('creado_en', desde).order('creado_en', { ascending: false })
+  const marcas = useMemo(() => {
+    const set = new Set(lista.map((c) => c.marca_principal).filter(Boolean))
+    return [...set].sort()
+  }, [lista])
+
+  const filtrada = useMemo(() => {
+    const q = busca.toLowerCase()
+    return lista.filter((c) =>
+      (!segFiltro || c.segmento === segFiltro) &&
+      (!marcaFiltro || c.marca_principal === marcaFiltro) &&
+      (!vendFiltro || c.vendedor_id === vendFiltro) &&
+      (!estadoFiltro ||
+        (estadoFiltro === 'sin' ? !c.estado_id : c.estado_id === estadoFiltro)) &&
+      (!q || c.nombre?.toLowerCase().includes(q) ||
+             c.telefono?.includes(q) ||
+             c.email?.toLowerCase().includes(q))
+    )
+  }, [lista, busca, segFiltro, marcaFiltro, vendFiltro, estadoFiltro])
+
+  const estadoDe = (id) => estados.find((e) => e.id === id)
+
+  async function guardar(e) {
+    e.preventDefault()
+    setGuardando(true)
+    const asignado = estados.find((e) => e.clave === 'asignado' || e.nombre === 'Asignado')
+    const payload = {
+      nombre: form.nombre, email: form.email,
+      telefono: form.telefono ? formatTelefono(form.telefono) : null,
+      ciudad: form.ciudad, tipo: form.tipo, segmento: form.segmento,
+      direccion: form.direccion || null, comuna: form.comuna || null,
+      rut: form.rut ? formatRut(form.rut) : null,
+      marca_principal: form.marca_principal || form.v_marca || null,
+      estado_id: asignado ? asignado.id : null,
+      empresa_id: perfil.empresa_id,
+      vendedor_id: form.vendedor_id || (esAdmin ? null : perfil.id)
     }
-    const { data } = await q.limit(500)
-    setCoincidencias(data || [])
-  }
+    const { data: nuevo, error } = await supabase.from('clientes')
+      .insert(payload).select('id').single()
+    if (error) { setGuardando(false); alert('No se pudo guardar: ' + error.message); return }
 
-  async function cambiarEstado(id, estado) {
-    await supabase.from('campanas').update({ estado }).eq('id', id)
-    cargar(); if (sel?.id === id) setSel({ ...sel, estado })
-  }
-
-  // Crea tareas pendientes (actividades) para cada cliente del segmento,
-  // asignadas a su vendedor y etiquetadas con la campaña. Evita duplicar.
-  async function cargarAAsesores() {
-    if (!coincidencias.length) { setResultadoEnvio('No hay clientes en este segmento.'); return }
-    if (!confirm(`Se generarán tareas de seguimiento para ${coincidencias.length} cliente(s), asignadas a su vendedor. ¿Continuar?`)) return
-    setCargandoAsesores(true); setResultadoEnvio('')
-
-    // Clientes que ya tienen una tarea de esta campaña (para no duplicar)
-    const ids = coincidencias.map((c) => c.id)
-    const { data: existentes } = await supabase.from('actividades')
-      .select('cliente_id').eq('campana_id', sel.id).in('cliente_id', ids)
-    const yaCargados = new Set((existentes || []).map((a) => a.cliente_id))
-
-    const hoy = new Date().toISOString().slice(0, 10)
-    const tipo = CANAL_A_TIPO[sel.canal] || 'llamada'
-    const filas = coincidencias
-      .filter((c) => !yaCargados.has(c.id))
-      .map((c) => ({
-        empresa_id: perfil.empresa_id, cliente_id: c.id, vendedor_id: c.vendedor_id || null,
-        tipo, resultado: 'pendiente', fecha: hoy, proxima_fecha: hoy,
-        campana_id: sel.id, proxima_accion: `Campaña: ${sel.nombre}`,
-        descripcion: sel.mensaje_plantilla || ''
-      }))
-
-    if (!filas.length) { setCargandoAsesores(false); setResultadoEnvio('Todos los clientes ya tenían tarea de esta campaña.'); return }
-    const { error } = await supabase.from('actividades').insert(filas)
-    setCargandoAsesores(false)
-    if (error) { setResultadoEnvio('Error: ' + error.message); return }
-    if (sel.estado !== 'activa') await cambiarEstado(sel.id, 'activa')
-    setResultadoEnvio(`Listo: ${filas.length} tarea(s) cargada(s) a los asesores (visibles en su Calendario y Pipeline).`)
-  }
-
-  async function enviarEmail() {
-    if (!confirm('¿Enviar esta campaña por email a los clientes del segmento con correo registrado?')) return
-    setEnviando(true); setResultadoEnvio('')
-    const { data, error } = await supabase.functions.invoke('enviar-campana', { body: { campana_id: sel.id } })
-    setEnviando(false)
-    if (error || data?.error) {
-      setResultadoEnvio('Error: ' + (data?.error || error.message) +
-        '. Verifica que la función y la clave de Brevo estén configuradas.')
-      return
+    // Vehículo inicial (si se ingresó al menos patente o marca)
+    if (form.v_patente || form.v_marca) {
+      const km = Number(form.v_km) || null
+      await supabase.from('vehiculos').insert({
+        cliente_id: nuevo.id, empresa_id: perfil.empresa_id,
+        patente: form.v_patente ? formatPatente(form.v_patente) : null,
+        marca: form.v_marca || null,
+        modelo: form.v_modelo || null, anio: Number(form.v_anio) || null,
+        km_ultimo: km, km_actual_estimado: km
+      })
     }
-    setResultadoEnvio(`Enviados: ${data.enviados} de ${data.total || data.enviados} correos.`)
-    cargar()
+    setGuardando(false)
+    setModal(false); setForm(VACIO)
+    // Redirige a la ficha del nuevo cliente para gestionarlo de inmediato
+    navigate(`/clientes/${nuevo.id}`)
   }
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-xl font-bold text-ink">Campañas</h1>
-        <p className="text-sm text-slate-500">Oportunidades por segmento · ordenadas por prioridad</p>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-ink">Clientes</h1>
+          <p className="text-sm text-slate-500">{filtrada.length} de {lista.length}</p>
+        </div>
+        <button className="btn-primary" onClick={() => setModal(true)}>+ Nuevo cliente</button>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-4">
-        {campanas.map((c) => (
-          <div key={c.id} className="card p-5 hover:border-sky cursor-pointer" onClick={() => abrir(c)}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-deep text-white text-xs grid place-items-center font-medium">{c.prioridad}</span>
-                <h3 className="font-semibold text-ink text-sm">{c.nombre}</h3>
-              </div>
-              <Pill color={ESTADO_COLOR[c.estado]}>{c.estado}</Pill>
-            </div>
-            <p className="text-xs text-slate-500 mt-2">{c.descripcion}</p>
-            <div className="flex flex-wrap gap-2 mt-3">
-              {c.segmento && <span className="text-[11px] text-slate-400">{segLabel(c.segmento)}</span>}
-              {c.ventana && <span className="text-[11px] text-slate-400">· {VENTANAS[c.ventana]?.label}</span>}
-              <span className="text-[11px] text-slate-400">· {CANALES[c.canal]}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <Modal abierto={!!sel} onClose={() => { setSel(null); setResultadoEnvio('') }} titulo={sel?.nombre} ancho="max-w-2xl">
-        {sel && (
-          <div className="space-y-4">
-            <div className="flex flex-wrap gap-2 items-center">
-              {sel.segmento && <Pill color={SEGMENTOS[sel.segmento]?.color}>{segLabel(sel.segmento)}</Pill>}
-              {sel.ventana && <Pill color={VENTANAS[sel.ventana]?.color}>{VENTANAS[sel.ventana]?.label}</Pill>}
-              <span className="pill bg-mist text-deep">{CANALES[sel.canal]}</span>
-              <Pill color={ESTADO_COLOR[sel.estado]}>{sel.estado}</Pill>
-            </div>
-
-            <div>
-              <div className="label">Mensaje plantilla</div>
-              <div className="rounded-lg bg-paper p-3 text-sm text-slate-700 whitespace-pre-wrap">{sel.mensaje_plantilla}</div>
-            </div>
-
-            <div>
-              <div className="label">Clientes que coinciden ({coincidencias.length})</div>
-              <div className="max-h-48 overflow-y-auto card divide-y divide-slate-100">
-                {coincidencias.length ? coincidencias.map((c) => (
-                  <div key={c.id} className="flex items-center justify-between px-3 py-2 text-sm">
-                    <span className="text-ink">{c.nombre}</span>
-                    <span className="text-xs text-slate-400">{c.telefono || '—'}</span>
-                  </div>
-                )) : <div className="px-3 py-4 text-sm text-slate-400 text-center">Sin clientes en este segmento todavía.</div>}
-              </div>
-            </div>
-
-            {esAdmin && (
-              <div className="flex flex-wrap justify-end gap-2 pt-2 border-t border-slate-100">
-                <button className="btn-soft" onClick={cargarAAsesores} disabled={cargandoAsesores}>
-                  {cargandoAsesores ? 'Cargando…' : 'Cargar a asesores'}
-                </button>
-                {sel.canal === 'email' && (
-                  <button className="btn-soft" onClick={enviarEmail} disabled={enviando}>
-                    {enviando ? 'Enviando…' : 'Enviar por email (Brevo)'}
-                  </button>
-                )}
-                {sel.estado !== 'activa' && (
-                  <button className="btn-primary" onClick={() => cambiarEstado(sel.id, 'activa')}>Activar</button>
-                )}
-                {sel.estado === 'activa' && (
-                  <button className="btn-primary" onClick={() => cambiarEstado(sel.id, 'pausada')}>Pausar</button>
-                )}
-              </div>
-            )}
-
-            {resultadoEnvio && (
-              <div className="rounded-lg bg-sky/10 px-3 py-2 text-sm text-deep">{resultadoEnvio}</div>
-            )}
-
-            <p className="text-[11px] text-slate-400">
-              "Cargar a asesores" genera una tarea de seguimiento por cliente, asignada a su vendedor y visible en su Calendario y Pipeline.
-            </p>
-          </div>
+      <div className="grid grid-cols-2 md:flex md:flex-wrap gap-3">
+        <input className="input md:max-w-xs col-span-2" placeholder="Buscar por nombre, teléfono o correo…"
+               value={busca} onChange={(e) => setBusca(e.target.value)} />
+        <select className="input md:max-w-[180px]" value={estadoFiltro} onChange={(e) => setEstadoFiltro(e.target.value)}>
+          <option value="">Todos los estados</option>
+          <option value="sin">Sin estado</option>
+          {estados.map((e) => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+        </select>
+        <select className="input md:max-w-[180px]" value={segFiltro} onChange={(e) => setSegFiltro(e.target.value)}>
+          <option value="">Todos los segmentos</option>
+          {Object.entries(SEGMENTOS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+        </select>
+        <select className="input md:max-w-[160px]" value={marcaFiltro} onChange={(e) => setMarcaFiltro(e.target.value)}>
+          <option value="">Todas las marcas</option>
+          {marcas.map((m) => <option key={m} value={m}>{m}</option>)}
+        </select>
+        {esAdmin && (
+          <select className="input md:max-w-[180px]" value={vendFiltro} onChange={(e) => setVendFiltro(e.target.value)}>
+            <option value="">Todos los vendedores</option>
+            {vendedores.map((v) => <option key={v.id} value={v.id}>{v.nombre}</option>)}
+          </select>
         )}
+      </div>
+
+      {filtrada.length === 0 ? (
+        <EmptyState titulo="Sin clientes que coincidan"
+                    mensaje="Ajusta la búsqueda o los filtros." />
+      ) : (
+        <div className="card overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-paper text-slate-500 text-xs uppercase">
+              <tr>
+                <th className="text-left font-medium px-4 py-3">Cliente</th>
+                <th className="text-left font-medium px-4 py-3 hidden sm:table-cell">Marca</th>
+                <th className="text-left font-medium px-4 py-3">Estado</th>
+                <th className="text-left font-medium px-4 py-3 hidden md:table-cell">Segmento</th>
+                <th className="text-right font-medium px-4 py-3">Facturación</th>
+                <th className="text-center font-medium px-4 py-3 hidden md:table-cell">Visitas</th>
+                <th className="text-left font-medium px-4 py-3 hidden lg:table-cell">Vendedor</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filtrada.map((c) => {
+                const est = estadoDe(c.estado_id)
+                return (
+                  <tr key={c.id} className="hover:bg-paper cursor-pointer"
+                      onClick={() => navigate(`/clientes/${c.id}`)}>
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-ink">{c.nombre}</div>
+                      <div className="text-xs text-slate-400">{c.telefono ? formatTelefono(c.telefono) : (c.email || '—')}</div>
+                    </td>
+                    <td className="px-4 py-3 hidden sm:table-cell text-slate-600">{c.marca_principal || '—'}</td>
+                    <td className="px-4 py-3">
+                      {est
+                        ? <Pill color={est.color}>{est.nombre}</Pill>
+                        : <span className="text-xs text-slate-300">Sin estado</span>}
+                    </td>
+                    <td className="px-4 py-3 hidden md:table-cell">
+                      {c.segmento && <Pill color={segColor(c.segmento)}>{segLabel(c.segmento)}</Pill>}
+                    </td>
+                    <td className="px-4 py-3 text-right font-medium">{fmtCLP(c.facturacion_total)}</td>
+                    <td className="px-4 py-3 text-center hidden md:table-cell text-slate-500">{c.num_ot || 0}</td>
+                    <td className="px-4 py-3 hidden lg:table-cell text-slate-500">{c.usuarios?.nombre || '—'}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <Modal abierto={modal} onClose={() => setModal(false)} titulo="Nuevo cliente" ancho="max-w-xl">
+        <form onSubmit={guardar} className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Nombre *</label>
+              <input className="input" required value={form.nombre}
+                     onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
+            </div>
+            <div>
+              <label className="label">RUT</label>
+              <input className="input" value={form.rut}
+                     onChange={(e) => setForm({ ...form, rut: e.target.value })}
+                     onBlur={(e) => setForm({ ...form, rut: formatRut(e.target.value) })}
+                     placeholder="12.345.678-9" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Teléfono</label>
+              <input className="input" value={form.telefono}
+                     onChange={(e) => setForm({ ...form, telefono: e.target.value })}
+                     onBlur={(e) => setForm({ ...form, telefono: formatTelefono(e.target.value) })}
+                     placeholder="+56 9 XXXX XXXX" />
+            </div>
+            <div>
+              <label className="label">Correo</label>
+              <input className="input" type="email" value={form.email}
+                     onChange={(e) => setForm({ ...form, email: e.target.value })} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Tipo</label>
+              <select className="input" value={form.tipo}
+                      onChange={(e) => setForm({ ...form, tipo: e.target.value })}>
+                {Object.entries(TIPOS_CLIENTE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Segmento</label>
+              <select className="input" value={form.segmento}
+                      onChange={(e) => setForm({ ...form, segmento: e.target.value })}>
+                {Object.entries(SEGMENTOS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+              </select>
+            </div>
+          </div>
+          {esAdmin && (
+            <div>
+              <label className="label">Vendedor</label>
+              <select className="input" value={form.vendedor_id}
+                      onChange={(e) => setForm({ ...form, vendedor_id: e.target.value })}>
+                <option value="">Sin asignar</option>
+                {vendedores.map((v) => <option key={v.id} value={v.id}>{v.nombre}</option>)}
+              </select>
+            </div>
+          )}
+
+          <div className="border-t border-slate-100 pt-3">
+            <div className="text-xs font-semibold text-slate-500 mb-2">Dirección (opcional)</div>
+            <div className="space-y-3">
+              <input className="input" placeholder="Calle y número" value={form.direccion}
+                     onChange={(e) => setForm({ ...form, direccion: e.target.value })} />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Comuna</label>
+                  <input className="input" value={form.comuna}
+                         onChange={(e) => setForm({ ...form, comuna: e.target.value })} />
+                </div>
+                <div>
+                  <label className="label">Ciudad</label>
+                  <input className="input" value={form.ciudad}
+                         onChange={(e) => setForm({ ...form, ciudad: e.target.value })} />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Vehículo inicial */}
+          <div className="border-t border-slate-100 pt-3">
+            <div className="text-xs font-semibold text-slate-500 mb-2">Vehículo (opcional)</div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label">Marca</label>
+                <SelectMarca value={form.v_marca} onChange={(v) => setForm({ ...form, v_marca: v })} />
+              </div>
+              <div>
+                <label className="label">Modelo</label>
+                <input className="input" value={form.v_modelo}
+                       onChange={(e) => setForm({ ...form, v_modelo: e.target.value })} />
+              </div>
+              <div>
+                <label className="label">Año</label>
+                <input className="input" type="number" value={form.v_anio}
+                       onChange={(e) => setForm({ ...form, v_anio: e.target.value })} />
+              </div>
+              <div>
+                <label className="label">Patente</label>
+                <input className="input" value={form.v_patente}
+                       onChange={(e) => setForm({ ...form, v_patente: e.target.value.toUpperCase() })}
+                       onBlur={(e) => setForm({ ...form, v_patente: formatPatente(e.target.value) })}
+                       placeholder="XX XX XX" />
+              </div>
+              <div className="col-span-2">
+                <label className="label">Kilometraje</label>
+                <input className="input" type="number" value={form.v_km}
+                       onChange={(e) => setForm({ ...form, v_km: e.target.value })} />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" className="btn-soft" onClick={() => setModal(false)}>Cancelar</button>
+            <button className="btn-primary" disabled={guardando}>
+              {guardando ? 'Guardando…' : 'Crear y gestionar'}
+            </button>
+          </div>
+        </form>
       </Modal>
     </div>
   )

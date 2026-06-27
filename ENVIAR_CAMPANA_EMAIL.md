@@ -1,60 +1,44 @@
-# Publicar en internet — DIDIAL CRM
+# Email marketing automático (Brevo) — Roadmap Fase 2
 
-## Frontend en Vercel (gratis)
+Objetivo: enviar correos a un segmento de clientes (ej. Ocasionales y Dormidos)
+de forma automática, con bajo costo.
 
-1. Entra a [vercel.com](https://vercel.com) y conéctate con tu cuenta de GitHub.
-2. **Add New → Project** → elige el repo `didial-crm`.
-3. Vercel detecta Vite automáticamente. En **Environment Variables** agrega:
-   - `VITE_SUPABASE_URL` = tu Project URL de Supabase
-   - `VITE_SUPABASE_ANON_KEY` = tu anon key
-4. **Deploy**. En ~1 minuto tendrás una URL pública (ej: `didial-crm.vercel.app`).
+## Por qué Brevo
+- Plan gratis: 300 correos/día (9.000/mes). Suficiente para campañas segmentadas.
+- API simple, ya dejé preparada la función de envío en el proyecto.
 
-Cada vez que hagas `git push`, Vercel actualiza la app sola.
+## Paso 1 — Crear cuenta y remitente
+1. Regístrate en [brevo.com](https://www.brevo.com).
+2. Ve a **Senders, Domains & Dedicated IPs → Senders** y agrega/verifica
+   `administracion@didial.cl` (te llega un correo de verificación).
+3. Ve a **SMTP & API → API Keys** y crea una clave. Cópiala.
 
-### Instalar como app en el celular
-
-Abre la URL en el navegador del teléfono → menú → **"Agregar a pantalla de inicio"**.
-Queda como una app nativa y funciona offline (los datos vistos quedan en caché).
-
----
-
-## Reporte diario automático (8:00 hrs)
-
-El reporte vive en `supabase/functions/reporte-diario`. Para activarlo:
-
-### 1. Crear cuenta Brevo (envío de correos, gratis hasta 300/día)
-- Regístrate en [brevo.com](https://www.brevo.com), ve a **SMTP & API → API Keys** y crea una clave.
-- Verifica el remitente `administracion@didial.cl` en **Senders**.
-
-### 2. Cargar las variables en Supabase
-En **Project Settings → Edge Functions → Secrets**, agrega:
+## Paso 2 — Cargar la clave en Supabase
+En Supabase → **Project Settings → Edge Functions → Secrets**, agrega:
 ```
-BREVO_API_KEY=xkeysib-...
-REPORTE_DESTINATARIOS=administracion@didial.cl,gerencia@didial.cl
+BREVO_API_KEY = xkeysib-...
 ```
 
-### 3. Desplegar la función
-Instala el CLI de Supabase y ejecuta:
-```bash
-npm install -g supabase
-supabase login
-supabase link --project-ref TU-PROJECT-REF
-supabase functions deploy reporte-diario
-```
+## Paso 3 — Función de envío de campaña
+El proyecto incluye la función `reporte-diario`. Para campañas masivas usaremos
+la misma cuenta Brevo. El flujo recomendado para DIDIAL:
 
-### 4. Programar a las 8:00 (UTC-4 = 12:00 UTC)
-En el **SQL Editor** de Supabase:
-```sql
-select cron.schedule(
-  'reporte-diario-didial',
-  '0 12 * * *',   -- 12:00 UTC = 08:00 La Serena
-  $$ select net.http_post(
-       url := 'https://TU-PROJECT-REF.supabase.co/functions/v1/reporte-diario',
-       headers := '{"Authorization": "Bearer TU-ANON-KEY"}'::jsonb
-     ); $$
-);
-```
+1. En el CRM, abre la campaña (ej. "Reactivación de Dormidos") y revisa los
+   clientes que coinciden y que tengan correo.
+2. Exporta esa lista (Importar/Exportar → Descargar Excel, filtrando el segmento).
+3. En Brevo: **Contacts → Import**, sube la lista como una "Lista".
+4. **Campaigns → Email → Create**: diseña el correo con el mensaje del segmento
+   (los tienes en la Guía del Vendedor), elige la lista y programa el envío.
 
-> Si tu zona pasa a horario de verano (UTC-3), ajusta a `'0 11 * * *'`.
+## Paso 4 — Automatización real (opcional, más adelante)
+Cuando quieras envío 100% automático desde el CRM (sin exportar), conectamos:
+- Un botón "Enviar campaña" en la pantalla de Campañas →
+- que llame a una Edge Function `enviar-campana` →
+- que tome los clientes del segmento con email y los envíe vía Brevo API.
 
-Listo: cada mañana a las 8:00 el administrador y gerencia reciben el resumen.
+Esto requiere un poco más de desarrollo; cuando llegues aquí, lo armamos.
+
+## Buenas prácticas
+- Empieza por segmentos masivos de bajo costo (Ocasional, Dormido).
+- A los VIP y Alto Valor NO los metas en correo masivo: esos van por llamada/WhatsApp personal.
+- Incluye siempre opción de "no recibir más correos" (Brevo lo agrega solo).

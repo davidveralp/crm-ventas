@@ -1,39 +1,36 @@
-# Botón "Enviar campaña por email" — activación
+# Uso diario — DIDIAL CRM
 
-El CRM ahora tiene un botón para enviar una campaña por correo a todos los
-clientes de su segmento (con email registrado), directo desde la pantalla
-Campañas. Para activarlo hay que conectar Brevo una sola vez.
+## Roles
 
-## Requisitos previos (una vez)
-1. Cuenta Brevo + remitente `administracion@didial.cl` verificado.
-2. API Key de Brevo (SMTP & API → API Keys).
+- **Administrador (David Vera):** ve toda la cartera, gestiona usuarios y campañas, recibe el reporte diario.
+- **Vendedor:** ve y trabaja solo sus clientes asignados.
 
-## Paso 1 — Instalar el CLI de Supabase (en tu PC)
-```bash
-npm install -g supabase
-supabase login
-supabase link --project-ref ehpstxrzsjwcevcafxgk
-```
-(El project-ref es el código de tu URL de Supabase.)
+## Flujo de trabajo recomendado
 
-## Paso 2 — Cargar los secrets
-```bash
-supabase secrets set BREVO_API_KEY=xkeysib-TU_CLAVE
-```
+1. **Cada mañana** revisa el Dashboard (embudo, conversión, actividad reciente) y la Agenda del día.
+2. **Trabaja el pipeline:** arrastra clientes entre etapas a medida que avanzan (Lead → Contactado → Propuesta → Agendado → Vendido).
+3. **Registra cada contacto** desde la ficha del cliente (botón "Registrar" en Seguimiento): tipo (llamada/propuesta/agendamiento), resultado y próxima acción.
+4. **Agenda:** las actividades con fecha futura aparecen en la sección Agenda; expórtalas a Outlook con el botón ".ics".
+5. **Campañas:** abre una campaña para ver el mensaje plantilla y la lista de clientes que coinciden. El administrador la activa.
 
-## Paso 3 — Desplegar la función
-```bash
-supabase functions deploy enviar-campana
-```
+## Segmentos de valor
 
-## Cómo se usa
-1. En el CRM → Campañas, abre una campaña cuyo canal sea **Email**.
-2. Revisa los clientes que coinciden.
-3. Botón **"Enviar por email (Brevo)"** → confirma. Se envían los correos y
-   te muestra cuántos salieron.
+| Segmento | Quiénes | Foco |
+|----------|---------|------|
+| Flota / Empresa | Empresas o 3+ vehículos | Convenio de mantención |
+| VIP Activo | Top facturación, recientes | Retención premium |
+| Alto Valor en Riesgo | Alto monto pero no vienen | **Win-back (máxima prioridad)** |
+| Leal Recurrente | Vienen seguido | Subir ticket |
+| Prometedor | 1-2 visitas recientes | Lograr 2ª/3ª visita |
+| Dormido Recuperable | Monto medio-bajo, fríos | Reactivar a bajo costo |
+| Ocasional | Bajo monto y frecuencia | Automático |
 
-## Importante
-- Solo envía a clientes con email válido en su ficha.
-- Los segmentos masivos (Ocasional, Dormido) son los ideales para email.
-- VIP y Alto Valor: contáctalos por llamada/WhatsApp personal, NO por correo masivo.
-- Brevo gratis: 300 correos/día. Si un segmento supera eso, divídelo en días.
+## Importar clientes
+
+Google Sheets → Archivo → Descargar → CSV/Excel → en el CRM, Importar/Exportar → subir.
+El sistema reconoce columnas comunes (nombre, teléfono, correo, facturación, segmento) automáticamente.
+
+## Cambiar contraseña
+
+Cada usuario puede pedir reseteo desde el login, o el administrador la cambia en
+Supabase → Authentication → Users.
