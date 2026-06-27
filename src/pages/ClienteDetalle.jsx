@@ -7,7 +7,7 @@ import {
   segLabel, segColor, fmtCLP, fmtFecha, tipoClienteLabel, TIPOS_CLIENTE,
   TIPOS_ACTIVIDAD, RESULTADOS, VENTANAS, ESTADOS_PRESUPUESTO, ETAPAS_OPCIONALES,
   buildOtUrl, formatRut, formatTelefono, formatPatente, patenteLimpia,
-  TIPOS_SERVICIO, tipoServicioLabel, RESULTADO_A_ETAPA
+  TIPOS_SERVICIO, tipoServicioLabel, RESULTADO_A_ETAPA, fmtHora
 } from '../lib/helpers'
 
 const OT_URL = import.meta.env.VITE_REGISTRO_OT_URL || ''
@@ -15,7 +15,7 @@ const OT_URL = import.meta.env.VITE_REGISTRO_OT_URL || ''
 const ACT_VACIA = {
   tipo: 'llamada', resultado: 'pendiente', tipo_servicio: '',
   fecha: new Date().toISOString().slice(0, 10),
-  hora: '', descripcion: '', proxima_accion: '', proxima_fecha: ''
+  hora: '', descripcion: '', proxima_accion: '', proxima_fecha: '', proxima_hora: ''
 }
 const PRESUP_VACIO = {
   numero: '', descripcion: '', monto: '', estado: 'borrador', tipo_servicio: '',
@@ -112,6 +112,7 @@ export default function ClienteDetalle() {
       ...act, cliente_id: id, empresa_id: cliente.empresa_id,
       vendedor_id: cliente.vendedor_id, hora: act.hora || null,
       proxima_fecha: act.proxima_fecha || null,
+      proxima_hora: act.proxima_hora || null,
       tipo_servicio: act.tipo_servicio || null
     })
     if (error) { alert('Error: ' + error.message); return }
@@ -450,7 +451,7 @@ export default function ClienteDetalle() {
                   </div>
                   {a.descripcion && <p className="text-sm text-slate-600 mt-1 line-clamp-2">{a.descripcion}</p>}
                   {a.proxima_accion && (
-                    <p className="text-xs text-deep mt-1">→ {a.proxima_accion}{a.proxima_fecha ? ` · ${fmtFecha(a.proxima_fecha)}` : ''}</p>
+                    <p className="text-xs text-deep mt-1">→ {a.proxima_accion}{a.proxima_fecha ? ` · ${fmtFecha(a.proxima_fecha)}` : ''}{a.proxima_hora ? ` ${fmtHora(a.proxima_hora)}` : ''}</p>
                   )}
                   <span className="text-[11px] text-slate-400 underline">Ver detalle</span>
                 </div>
@@ -524,17 +525,22 @@ export default function ClienteDetalle() {
                       onChange={(e) => setAct({ ...act, descripcion: e.target.value })}
                       placeholder="¿Qué dijo el cliente? Detalles relevantes de la conversación." />
           </div>
+          <div>
+            <label className="label">Próxima acción</label>
+            <input className="input" value={act.proxima_accion}
+                   onChange={(e) => setAct({ ...act, proxima_accion: e.target.value })}
+                   placeholder="Ej: confirmar hora" />
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="label">Próxima acción</label>
-              <input className="input" value={act.proxima_accion}
-                     onChange={(e) => setAct({ ...act, proxima_accion: e.target.value })}
-                     placeholder="Ej: confirmar hora" />
-            </div>
-            <div>
-              <label className="label">¿Cuándo? (va a tu Calendario)</label>
+              <label className="label">Fecha (va a tu Calendario)</label>
               <input className="input" type="date" value={act.proxima_fecha}
                      onChange={(e) => setAct({ ...act, proxima_fecha: e.target.value })} />
+            </div>
+            <div>
+              <label className="label">Hora (aviso 15 min antes)</label>
+              <input className="input" type="time" value={act.proxima_hora}
+                     onChange={(e) => setAct({ ...act, proxima_hora: e.target.value })} />
             </div>
           </div>
           {/* Presupuesto opcional, en el mismo registro */}
@@ -595,7 +601,7 @@ export default function ClienteDetalle() {
             <Campo k="Tipo de servicio" v={tipoServicioLabel(detalle.data.tipo_servicio)} />
             <Campo k="Observaciones" v={detalle.data.descripcion || '—'} />
             <Campo k="Próxima acción" v={detalle.data.proxima_accion
-              ? `${detalle.data.proxima_accion}${detalle.data.proxima_fecha ? ' · ' + fmtFecha(detalle.data.proxima_fecha) : ''}` : '—'} />
+              ? `${detalle.data.proxima_accion}${detalle.data.proxima_fecha ? ' · ' + fmtFecha(detalle.data.proxima_fecha) : ''}${detalle.data.proxima_hora ? ' ' + fmtHora(detalle.data.proxima_hora) : ''}` : '—'} />
             {detalle.data.monto_recuperado ? <Campo k="Monto recuperado" v={fmtCLP(detalle.data.monto_recuperado)} /> : null}
           </div>
         )}

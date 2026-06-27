@@ -192,3 +192,17 @@ export const RESULTADO_A_ETAPA = {
   no_desea_contacto:  'perdido',
   exitosa:            'servicio'
 }
+
+// ---- v9: Colores sobrios por tipo de gestión (para el calendario) ---
+export const COLOR_ACTIVIDAD = {
+  llamada:      '#2C5A72',  // azul acero
+  visita:       '#1D7A5F',  // verde bosque
+  agendamiento: '#B07A2E',  // ámbar tostado
+  propuesta:    '#7A5C8E',  // morado apagado
+  email:        '#5B6B8C',  // azul pizarra
+  whatsapp:     '#3B7A57'   // verde mar
+}
+export const colorActividad = (t) => COLOR_ACTIVIDAD[t] || '#64748b'
+
+// Combina fecha + hora ('HH:MM') para mostrar agendamientos
+export const fmtHora = (h) => h ? String(h).slice(0, 5) : ''

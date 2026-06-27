@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import Recordatorios from './Recordatorios'
 
 const NAV = [
   { to: '/',          label: 'Dashboard',   icon: 'M3 12l9-9 9 9M5 10v10h14V10' },
@@ -72,6 +73,7 @@ export default function Layout({ children }) {
 
   return (
     <div className="h-full flex">
+      <Recordatorios />
       {/* Sidebar */}
       <aside className="hidden md:flex w-60 shrink-0 flex-col carbon-sidebar text-white">
         <div className="px-5 py-5 border-b border-white/10">
