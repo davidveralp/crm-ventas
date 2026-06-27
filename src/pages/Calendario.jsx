@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { TIPOS_ACTIVIDAD, RESULTADOS, fmtFecha, fmtHora, colorActividad, COLOR_ACTIVIDAD } from '../lib/helpers'
+import { RESULTADOS, fmtFecha, fmtHora, colorAgenda, TIPOS_AGENDA, agendaLabel } from '../lib/helpers'
 
 const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
@@ -22,7 +22,7 @@ export default function Calendario() {
 
   async function cargar() {
     const { data } = await supabase.from('actividades')
-      .select('id,tipo,resultado,proxima_fecha,proxima_hora,cliente_id,clientes(nombre,telefono)')
+      .select('id,tipo,agenda_tipo,resultado,proxima_fecha,proxima_hora,cliente_id,clientes(nombre,telefono)')
       .not('proxima_fecha', 'is', null)
       .order('proxima_fecha').order('proxima_hora').limit(2000)
     setCitas(data || [])
@@ -63,10 +63,10 @@ export default function Calendario() {
 
   const Leyenda = () => (
     <div className="flex flex-wrap gap-3 text-xs text-slate-500">
-      {Object.entries(COLOR_ACTIVIDAD).map(([k, color]) => (
+      {Object.entries(TIPOS_AGENDA).map(([k, v]) => (
         <span key={k} className="inline-flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full" style={{ background: color }} />
-          {TIPOS_ACTIVIDAD[k]}
+          <span className="w-2.5 h-2.5 rounded-full" style={{ background: v.color }} />
+          {v.label}
         </span>
       ))}
     </div>
@@ -112,7 +112,7 @@ export default function Calendario() {
                   <button key={c.id} onClick={() => navigate(`/clientes/${c.cliente_id}`)}
                           className="w-full flex items-center justify-between text-sm hover:bg-paper rounded px-2 py-1">
                     <span className="text-ink">{c.clientes?.nombre}</span>
-                    <span className="text-xs text-slate-400">{c.proxima_hora ? fmtHora(c.proxima_hora) : TIPOS_ACTIVIDAD[c.tipo]}</span>
+                    <span className="text-xs text-slate-400">{c.proxima_hora ? fmtHora(c.proxima_hora) : agendaLabel(c.agenda_tipo)}</span>
                   </button>
                 ))}
               </div>
@@ -148,7 +148,7 @@ export default function Calendario() {
                   </div>
                   {items.slice(0, 3).map((c) => (
                     <div key={c.id} className="mt-0.5 truncate rounded text-white text-[10px] px-1 py-0.5"
-                         style={{ background: colorActividad(c.tipo) }}>
+                         style={{ background: colorAgenda(c.agenda_tipo) }}>
                       {c.proxima_hora ? fmtHora(c.proxima_hora) + ' ' : ''}{c.clientes?.nombre}
                     </div>
                   ))}
@@ -230,11 +230,11 @@ export default function Calendario() {
                 <div key={c.id} className="flex items-center justify-between px-1 py-2 hover:bg-paper cursor-pointer"
                      onClick={() => navigate(`/clientes/${c.cliente_id}`)}>
                   <div className="flex items-center gap-3">
-                    <span className="w-1.5 h-8 rounded" style={{ background: colorActividad(c.tipo) }} />
+                    <span className="w-1.5 h-8 rounded" style={{ background: colorAgenda(c.agenda_tipo) }} />
                     <span className="text-sm font-mono text-slate-400 w-12">{c.proxima_hora ? fmtHora(c.proxima_hora) : '—'}</span>
                     <div>
                       <div className="text-sm font-medium text-ink">{c.clientes?.nombre}</div>
-                      <div className="text-xs text-slate-400">{TIPOS_ACTIVIDAD[c.tipo]} · {RESULTADOS[c.resultado]}</div>
+                      <div className="text-xs text-slate-400">{agendaLabel(c.agenda_tipo)} · {RESULTADOS[c.resultado]}</div>
                     </div>
                   </div>
                   {c.clientes?.telefono && <span className="text-xs text-slate-400">{c.clientes.telefono}</span>}
@@ -252,8 +252,8 @@ function Evento({ c, navigate }) {
   return (
     <button onClick={() => navigate(`/clientes/${c.cliente_id}`)}
             className="w-full text-left truncate rounded text-white text-[10px] px-1 py-0.5"
-            style={{ background: colorActividad(c.tipo) }}
-            title={`${c.clientes?.nombre} · ${TIPOS_ACTIVIDAD[c.tipo]}`}>
+            style={{ background: colorAgenda(c.agenda_tipo) }}
+            title={`${c.clientes?.nombre} · ${agendaLabel(c.agenda_tipo)}`}>
       {c.proxima_hora ? fmtHora(c.proxima_hora) + ' ' : ''}{c.clientes?.nombre}
     </button>
   )

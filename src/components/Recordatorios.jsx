@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { TIPOS_ACTIVIDAD, fmtHora } from '../lib/helpers'
+import { agendaLabel, fmtHora } from '../lib/helpers'
 
 const ABIERTOS = ['pendiente', 'no_contesta', 'reagendar', 'compromiso']
 const yaAvisado = (k) => { try { return localStorage.getItem(k) === '1' } catch { return false } }
@@ -25,7 +25,7 @@ export default function Recordatorios() {
   async function revisar() {
     const hoy = new Date().toISOString().slice(0, 10)
     const { data } = await supabase.from('actividades')
-      .select('id,tipo,proxima_hora,cliente_id,clientes(nombre)')
+      .select('id,agenda_tipo,proxima_hora,recordatorio_min,cliente_id,clientes(nombre)')
       .eq('proxima_fecha', hoy)
       .not('proxima_hora', 'is', null)
       .in('resultado', ABIERTOS)
@@ -33,14 +33,16 @@ export default function Recordatorios() {
 
     const ahora = new Date()
     data.forEach((a) => {
+      const aviso = a.recordatorio_min ?? 15
+      if (!aviso) return // 0 = sin aviso
       const [h, m] = String(a.proxima_hora).split(':')
       const t = new Date(); t.setHours(+h, +m, 0, 0)
       const mins = (t - ahora) / 60000
       const clave = `didial_notif_${a.id}_${hoy}`
-      if (mins <= 15 && mins >= -2 && !yaAvisado(clave)) {
+      if (mins <= aviso && mins >= -2 && !yaAvisado(clave)) {
         marcar(clave)
         const titulo = `Agendamiento en ${Math.max(0, Math.round(mins))} min`
-        const cuerpo = `${a.clientes?.nombre || 'Cliente'} · ${TIPOS_ACTIVIDAD[a.tipo]} ${fmtHora(a.proxima_hora)}`
+        const cuerpo = `${a.clientes?.nombre || 'Cliente'} · ${agendaLabel(a.agenda_tipo)} ${fmtHora(a.proxima_hora)}`
         if ('Notification' in window && Notification.permission === 'granted') {
           try { new Notification(titulo, { body: cuerpo }) } catch { /* */ }
         }

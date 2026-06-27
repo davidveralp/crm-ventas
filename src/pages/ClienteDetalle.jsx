@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { Pill, Modal, StatCard, SelectMarca } from '../components/UI'
+import { Pill, Modal, StatCard, SelectMarca, TimePicker } from '../components/UI'
 import {
   segLabel, segColor, fmtCLP, fmtFecha, tipoClienteLabel, TIPOS_CLIENTE,
   TIPOS_ACTIVIDAD, RESULTADOS, VENTANAS, ESTADOS_PRESUPUESTO, ETAPAS_OPCIONALES,
   buildOtUrl, formatRut, formatTelefono, formatPatente, patenteLimpia,
-  TIPOS_SERVICIO, tipoServicioLabel, RESULTADO_A_ETAPA, fmtHora
+  TIPOS_SERVICIO, tipoServicioLabel, RESULTADO_A_ETAPA, fmtHora,
+  ESTADOS_GESTION, estadoGestionLabel, estadoGestionColor, ES_CIERRE,
+  TIPOS_AGENDA, agendaLabel, colorAgenda
 } from '../lib/helpers'
 
 const OT_URL = import.meta.env.VITE_REGISTRO_OT_URL || ''
@@ -15,7 +17,8 @@ const OT_URL = import.meta.env.VITE_REGISTRO_OT_URL || ''
 const ACT_VACIA = {
   tipo: 'llamada', resultado: 'pendiente', tipo_servicio: '',
   fecha: new Date().toISOString().slice(0, 10),
-  hora: '', descripcion: '', proxima_accion: '', proxima_fecha: '', proxima_hora: ''
+  hora: '', descripcion: '', proxima_accion: '', proxima_fecha: '', proxima_hora: '',
+  agenda_tipo: '', recordatorio_min: 15
 }
 const PRESUP_VACIO = {
   numero: '', descripcion: '', monto: '', estado: 'borrador', tipo_servicio: '',
@@ -27,6 +30,7 @@ const VEH_VACIO = {
   km: '', proximo_servicio_km: '', tipo_mantencion: ''
 }
 const MANT = { basica: 'Básica', intermedia: 'Intermedia', mayor: 'Mayor' }
+const ICONO = { llamada: '📞', whatsapp: '💬', email: '✉️', visita: '🚗', propuesta: '📄', agendamiento: '📅' }
 
 export default function ClienteDetalle() {
   const { id } = useParams()
@@ -39,16 +43,19 @@ export default function ClienteDetalle() {
   const [presupuestos, setPresupuestos] = useState([])
   const [servicios, setServicios] = useState([])
   const [vendedores, setVendedores] = useState([])
-  const [tab, setTab] = useState('actividades')
+  const [gestiones, setGestiones] = useState([])
+  const [gestionTarget, setGestionTarget] = useState(null) // gestión a la que se agrega (null = nueva)
   const [modal, setModal] = useState(false)
   const [modalC, setModalC] = useState(false)
   const [modalV, setModalV] = useState(false)
   const [act, setAct] = useState(ACT_VACIA)
   const [conPresup, setConPresup] = useState(false)
+  const [conAgenda, setConAgenda] = useState(false)
   const [presup, setPresup] = useState(PRESUP_VACIO)
   const [contacto, setContacto] = useState(null)
   const [veh, setVeh] = useState(VEH_VACIO)
   const [detalle, setDetalle] = useState(null) // {tipo:'act'|'presup', data}
+  const [expandida, setExpandida] = useState({}) // gestion_id -> bool
 
   useEffect(() => { cargar() }, [id])
 
@@ -56,16 +63,18 @@ export default function ClienteDetalle() {
     const { data: c } = await supabase.from('clientes')
       .select('*, usuarios(nombre)').eq('id', id).single()
     setCliente(c)
-    const [vh, est, actv, pre, srv] = await Promise.all([
+    const [vh, est, actv, pre, srv, ges] = await Promise.all([
       supabase.from('vehiculos').select('*').eq('cliente_id', id).order('creado_en'),
       supabase.from('pipeline_estados').select('*').order('orden'),
       supabase.from('actividades').select('*').eq('cliente_id', id).order('fecha', { ascending: false }),
       supabase.from('presupuestos').select('*').eq('cliente_id', id).order('fecha_emision', { ascending: false }),
-      supabase.from('servicios').select('*').eq('cliente_id', id).order('fecha', { ascending: false })
+      supabase.from('servicios').select('*').eq('cliente_id', id).order('fecha', { ascending: false }),
+      supabase.from('gestiones').select('*, vehiculos(marca,modelo,patente), campanas(nombre)')
+        .eq('cliente_id', id).order('creado_en', { ascending: false })
     ])
     setVehiculos(vh.data || []); setEstados(est.data || [])
     setActividades(actv.data || []); setPresupuestos(pre.data || [])
-    setServicios(srv.data || [])
+    setServicios(srv.data || []); setGestiones(ges.data || [])
     if (esAdmin) {
       const { data: v } = await supabase.from('usuarios')
         .select('id,nombre').eq('rol', 'vendedor').eq('activo', true)
@@ -104,16 +113,53 @@ export default function ClienteDetalle() {
     await supabase.from('clientes').update({ estado_id: destino.id }).eq('id', id)
   }
 
-  // Registro unificado: siempre crea el seguimiento; si se marcó
-  // "agregar presupuesto", crea también el presupuesto (mismo tipo de servicio).
+  // ---- Gestiones ----------------------------------------------------
+  function nuevaGestion() {
+    setGestionTarget(null)
+    setAct(ACT_VACIA); setPresup(PRESUP_VACIO); setConPresup(false); setConAgenda(false)
+    setModal(true)
+  }
+  function continuarGestion(g) {
+    setGestionTarget(g)
+    setAct(ACT_VACIA); setPresup(PRESUP_VACIO); setConPresup(false); setConAgenda(false)
+    setModal(true)
+  }
+  async function cambiarEstadoGestion(g, estado) {
+    const cierra = ES_CIERRE.includes(estado)
+    await supabase.from('gestiones').update({
+      estado, abierta: !cierra, cerrada_en: cierra ? new Date().toISOString() : null
+    }).eq('id', g.id)
+    cargar()
+  }
+
+  // Registro: agrega un contacto (y opcionalmente presupuesto y/o
+  // agendamiento) a una gestión. Si es nueva, primero crea la gestión.
   async function guardarRegistro(e) {
     e.preventDefault()
+    let gestionId = gestionTarget?.id
+
+    if (!gestionId) {
+      const v0 = vehiculos[0]
+      const titulo = v0 ? `${v0.marca || ''} ${v0.modelo || ''}`.trim() || 'Gestión' : 'Gestión'
+      const { data: ng, error: eg } = await supabase.from('gestiones').insert({
+        empresa_id: cliente.empresa_id, cliente_id: id, vendedor_id: cliente.vendedor_id,
+        vehiculo_id: v0?.id || null, titulo, estado: 'en_seguimiento', abierta: true
+      }).select('id').single()
+      if (eg) { alert('No se pudo crear la gestión: ' + eg.message); return }
+      gestionId = ng.id
+    }
+
     const { error } = await supabase.from('actividades').insert({
-      ...act, cliente_id: id, empresa_id: cliente.empresa_id,
-      vendedor_id: cliente.vendedor_id, hora: act.hora || null,
-      proxima_fecha: act.proxima_fecha || null,
-      proxima_hora: act.proxima_hora || null,
-      tipo_servicio: act.tipo_servicio || null
+      tipo: act.tipo, resultado: act.resultado, fecha: act.fecha,
+      hora: act.hora || null, descripcion: act.descripcion || null,
+      proxima_accion: conAgenda ? (act.proxima_accion || null) : null,
+      proxima_fecha: conAgenda ? (act.proxima_fecha || null) : null,
+      proxima_hora: conAgenda ? (act.proxima_hora || null) : null,
+      agenda_tipo: conAgenda ? (act.agenda_tipo || null) : null,
+      recordatorio_min: conAgenda ? (act.recordatorio_min || null) : null,
+      tipo_servicio: act.tipo_servicio || null,
+      cliente_id: id, empresa_id: cliente.empresa_id,
+      vendedor_id: cliente.vendedor_id, gestion_id: gestionId
     })
     if (error) { alert('Error: ' + error.message); return }
 
@@ -123,12 +169,24 @@ export default function ClienteDetalle() {
         vendedor_id: cliente.vendedor_id, monto: Number(presup.monto) || 0,
         fecha_validez: presup.fecha_validez || null,
         proxima_gestion: presup.proxima_gestion || null,
-        tipo_servicio: presup.tipo_servicio || act.tipo_servicio || null
+        tipo_servicio: presup.tipo_servicio || act.tipo_servicio || null,
+        gestion_id: gestionId
       })
-      if (e2) { alert('Seguimiento guardado, pero el presupuesto falló: ' + e2.message) }
+      if (e2) { alert('Contacto guardado, pero el presupuesto falló: ' + e2.message) }
     }
+
+    // Avance suave del estado de la gestión (no retrocede; respeta cierres)
+    const g = gestiones.find((x) => x.id === gestionId)
+    if (g && !ES_CIERRE.includes(g.estado)) {
+      let nuevo = g.estado
+      if (conAgenda && act.agenda_tipo) nuevo = 'agendada'
+      if (conPresup) nuevo = 'presupuesto_entregado'
+      if (nuevo !== g.estado) await supabase.from('gestiones').update({ estado: nuevo }).eq('id', gestionId)
+    }
+
     await avanzarEstadoPorResultado(act.resultado)
-    setModal(false); setAct(ACT_VACIA); setPresup(PRESUP_VACIO); setConPresup(false); cargar()
+    setModal(false); setAct(ACT_VACIA); setPresup(PRESUP_VACIO)
+    setConPresup(false); setConAgenda(false); setGestionTarget(null); cargar()
   }
 
   async function cambiarEstadoPresup(pid, estado) {
@@ -414,140 +472,165 @@ export default function ClienteDetalle() {
         </p>
       </div>
 
-      {/* Panel unificado de actividades */}
+      {/* Gestiones: procesos comerciales abiertos */}
       <div className="card p-5">
         <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
-          <h3 className="font-semibold text-ink">Panel de actividades</h3>
-          <div className="flex items-center gap-2">
-            <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-xs">
-              <button onClick={() => setTab('actividades')}
-                      className={`px-3 py-1.5 ${tab === 'actividades' ? 'bg-deep text-white' : 'text-slate-500'}`}>
-                Seguimiento ({actividades.length})
-              </button>
-              <button onClick={() => setTab('presupuestos')}
-                      className={`px-3 py-1.5 ${tab === 'presupuestos' ? 'bg-deep text-white' : 'text-slate-500'}`}>
-                Presupuestos ({presupuestos.length})
-              </button>
-            </div>
-            <button className="btn-primary text-xs py-1.5" onClick={() => { setAct(ACT_VACIA); setPresup(PRESUP_VACIO); setConPresup(false); setModal(true) }}>+ Registrar</button>
+          <div>
+            <h3 className="font-semibold text-ink">Gestiones</h3>
+            <p className="text-xs text-slate-400">
+              {gestiones.filter((g) => g.abierta).length} abierta(s) · {gestiones.length} en total
+            </p>
           </div>
+          <button className="btn-primary text-xs py-1.5" onClick={nuevaGestion}>+ Nueva gestión</button>
         </div>
 
-        {tab === 'actividades' ? (
-          actividades.length ? (
-            <div className="space-y-3">
-              {actividades.map((a) => (
-                <div key={a.id} onClick={() => setDetalle({ tipo: 'act', data: a })}
-                     className="border-l-2 border-sky pl-3 py-1 cursor-pointer hover:bg-paper rounded-r">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-ink">{TIPOS_ACTIVIDAD[a.tipo]}</span>
-                    <span className="text-xs text-slate-400">{fmtFecha(a.fecha)}{a.hora ? ` · ${a.hora.slice(0,5)}` : ''}</span>
-                  </div>
-                  <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-2 flex-wrap">
-                    <span>{RESULTADOS[a.resultado]}</span>
-                    {a.tipo_servicio && (
-                      <span className="pill bg-mist text-deep">{tipoServicioLabel(a.tipo_servicio)}</span>
-                    )}
-                  </div>
-                  {a.descripcion && <p className="text-sm text-slate-600 mt-1 line-clamp-2">{a.descripcion}</p>}
-                  {a.proxima_accion && (
-                    <p className="text-xs text-deep mt-1">→ {a.proxima_accion}{a.proxima_fecha ? ` · ${fmtFecha(a.proxima_fecha)}` : ''}{a.proxima_hora ? ` ${fmtHora(a.proxima_hora)}` : ''}</p>
-                  )}
-                  <span className="text-[11px] text-slate-400 underline">Ver detalle</span>
-                </div>
-              ))}
-            </div>
-          ) : <p className="text-sm text-slate-400">Sin actividades. Registra la primera llamada o contacto.</p>
+        {gestiones.length === 0 ? (
+          <p className="text-sm text-slate-400">Sin gestiones. Crea la primera para registrar el contacto con el cliente.</p>
         ) : (
-          presupuestos.length ? (
-            <div className="space-y-2">
-              {presupuestos.map((p) => (
-                <div key={p.id} onClick={() => setDetalle({ tipo: 'presup', data: p })}
-                     className="border border-slate-200 rounded-lg p-3 cursor-pointer hover:border-sky">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-ink">{p.numero ? `N° ${p.numero}` : 'Presupuesto'}</span>
-                      <span className="text-sm text-slate-500">· {fmtCLP(p.monto)}</span>
-                      {p.tipo_servicio && <span className="pill bg-mist text-deep">{tipoServicioLabel(p.tipo_servicio)}</span>}
+          <div className="space-y-3">
+            {gestiones.map((g) => {
+              const evs = [
+                ...actividades.filter((a) => a.gestion_id === g.id).map((a) => ({ kind: 'act', d: a, f: a.fecha })),
+                ...presupuestos.filter((p) => p.gestion_id === g.id).map((p) => ({ kind: 'presup', d: p, f: p.fecha_emision }))
+              ].sort((a, b) => (a.f < b.f ? -1 : a.f > b.f ? 1 : 0))
+              const abierto = expandida[g.id] ?? g.abierta
+              return (
+                <div key={g.id} className={`border rounded-xl ${g.abierta ? 'border-slate-200' : 'border-slate-100 bg-slate-50'}`}>
+                  <div className="p-3 flex items-start justify-between gap-3 flex-wrap">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-ink text-sm">{g.titulo || 'Gestión'}</span>
+                        {g.vehiculos?.patente && <span className="pill bg-ink text-white">{g.vehiculos.marca} {g.vehiculos.modelo}</span>}
+                        {g.campanas?.nombre && <span className="pill bg-mist text-deep">{g.campanas.nombre}</span>}
+                      </div>
+                      <div className="text-[11px] text-slate-400 mt-0.5">
+                        Abierta {fmtFecha(g.creado_en?.slice(0,10))} · {evs.length} evento(s)
+                      </div>
                     </div>
-                    <select className="text-xs rounded-md border border-slate-200 px-2 py-1"
-                            onClick={(e) => e.stopPropagation()}
-                            value={p.estado} onChange={(e) => { e.stopPropagation(); cambiarEstadoPresup(p.id, e.target.value) }}
-                            style={{ color: ESTADOS_PRESUPUESTO[p.estado]?.color }}>
-                      {Object.entries(ESTADOS_PRESUPUESTO).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-                    </select>
+                    <div className="flex items-center gap-2">
+                      <select value={g.estado} onChange={(e) => cambiarEstadoGestion(g, e.target.value)}
+                              className="text-xs rounded-md border px-2 py-1 font-medium"
+                              style={{ color: estadoGestionColor(g.estado), borderColor: estadoGestionColor(g.estado) + '55' }}>
+                        {Object.entries(ESTADOS_GESTION).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                      </select>
+                      <button onClick={() => setExpandida((p) => ({ ...p, [g.id]: !abierto }))}
+                              className="text-xs text-slate-400 hover:text-deep">{abierto ? '▲' : '▼'}</button>
+                    </div>
                   </div>
-                  {p.descripcion && <p className="text-sm text-slate-600 mt-1 line-clamp-2">{p.descripcion}</p>}
-                  <div className="flex gap-4 text-xs text-slate-400 mt-2">
-                    <span>Emitido {fmtFecha(p.fecha_emision)}</span>
-                    {p.proxima_gestion && <span className="text-deep">Gestionar: {fmtFecha(p.proxima_gestion)}</span>}
-                  </div>
+
+                  {abierto && (
+                    <div className="px-3 pb-3">
+                      {/* Timeline de la gestión */}
+                      {evs.length ? (
+                        <div className="relative pl-5 border-l-2 border-slate-100 space-y-3 ml-1">
+                          {evs.map((ev, i) => (
+                            <div key={i} className="relative cursor-pointer"
+                                 onClick={() => setDetalle(ev.kind === 'act' ? { tipo: 'act', data: ev.d } : { tipo: 'presup', data: ev.d })}>
+                              <span className="absolute -left-[26px] top-0.5 text-sm">
+                                {ev.kind === 'presup' ? '📄' : (ICONO[ev.d.tipo] || '•')}
+                              </span>
+                              {ev.kind === 'act' ? (
+                                <div className="hover:bg-paper rounded p-1 -m-1">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-sm font-medium text-ink">{TIPOS_ACTIVIDAD[ev.d.tipo]}</span>
+                                    <span className="text-xs text-slate-400">{fmtFecha(ev.d.fecha)}</span>
+                                  </div>
+                                  <div className="text-xs text-slate-500">{RESULTADOS[ev.d.resultado]}
+                                    {ev.d.tipo_servicio && <span className="ml-1 pill bg-mist text-deep">{tipoServicioLabel(ev.d.tipo_servicio)}</span>}
+                                  </div>
+                                  {ev.d.descripcion && <p className="text-sm text-slate-600 mt-0.5 line-clamp-2">{ev.d.descripcion}</p>}
+                                  {ev.d.proxima_fecha && (
+                                    <div className="mt-1 inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full text-white"
+                                         style={{ background: colorAgenda(ev.d.agenda_tipo) }}>
+                                      📅 {agendaLabel(ev.d.agenda_tipo)} · {fmtFecha(ev.d.proxima_fecha)}{ev.d.proxima_hora ? ' ' + fmtHora(ev.d.proxima_hora) : ''}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="hover:bg-paper rounded p-1 -m-1">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-sm font-medium text-ink">Presupuesto {ev.d.numero ? `N° ${ev.d.numero}` : ''} · {fmtCLP(ev.d.monto)}</span>
+                                    <span className="text-xs" style={{ color: ESTADOS_PRESUPUESTO[ev.d.estado]?.color }}>{ESTADOS_PRESUPUESTO[ev.d.estado]?.label}</span>
+                                  </div>
+                                  {ev.d.descripcion && <p className="text-sm text-slate-600 mt-0.5 line-clamp-2">{ev.d.descripcion}</p>}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : <p className="text-sm text-slate-400">Sin eventos todavía.</p>}
+
+                      {g.abierta && (
+                        <button onClick={() => continuarGestion(g)}
+                                className="btn-soft text-xs py-1.5 mt-3">+ Continuar gestión</button>
+                      )}
+                    </div>
+                  )}
                 </div>
-              ))}
-            </div>
-          ) : <p className="text-sm text-slate-400">Sin presupuestos. Crea uno para darle seguimiento.</p>
+              )
+            })}
+          </div>
         )}
       </div>
 
-      {/* Modal registrar (seguimiento + presupuesto opcional) */}
-      <Modal abierto={modal} onClose={() => setModal(false)} titulo="Registrar gestión" ancho="max-w-xl">
+      {/* Modal registrar gestión: Contacto / Presupuesto / Agendamiento */}
+      <Modal abierto={modal} onClose={() => setModal(false)}
+             titulo={gestionTarget ? 'Continuar gestión' : 'Nueva gestión'} ancho="max-w-xl">
         <form onSubmit={guardarRegistro} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+          {gestionTarget && (
+            <div className="rounded-lg bg-sky/10 px-3 py-2 text-xs text-deep">
+              Agregando al historial de: <span className="font-medium">{gestionTarget.titulo || 'gestión'}</span>
+            </div>
+          )}
+
+          {/* ---- Paso 1: Contacto (lo que ya ocurrió) ---- */}
+          <div className="rounded-xl border border-slate-200 p-3 space-y-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-ink">
+              <span className="w-5 h-5 rounded-full bg-deep text-white text-xs flex items-center justify-center">1</span>
+              Contacto
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label">Tipo de contacto</label>
+                <select className="input" value={act.tipo} onChange={(e) => setAct({ ...act, tipo: e.target.value })}>
+                  {Object.entries(TIPOS_ACTIVIDAD).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="label">Fecha</label>
+                <input className="input" type="date" value={act.fecha} onChange={(e) => setAct({ ...act, fecha: e.target.value })} />
+              </div>
+            </div>
             <div>
-              <label className="label">Tipo de contacto</label>
-              <select className="input" value={act.tipo} onChange={(e) => setAct({ ...act, tipo: e.target.value })}>
-                {Object.entries(TIPOS_ACTIVIDAD).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              <label className="label">Resultado del contacto *</label>
+              <select className="input" value={act.resultado} required
+                      onChange={(e) => setAct({ ...act, resultado: e.target.value })}>
+                {Object.entries(RESULTADOS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </div>
             <div>
-              <label className="label">Fecha</label>
-              <input className="input" type="date" value={act.fecha} onChange={(e) => setAct({ ...act, fecha: e.target.value })} />
-            </div>
-          </div>
-          <div>
-            <label className="label">Resultado / estado del cliente *</label>
-            <select className="input" value={act.resultado} required
-                    onChange={(e) => setAct({ ...act, resultado: e.target.value })}>
-              {Object.entries(RESULTADOS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="label">Tipo de servicio solicitado</label>
-            <select className="input" value={act.tipo_servicio}
-                    onChange={(e) => setAct({ ...act, tipo_servicio: e.target.value })}>
-              <option value="">— Sin especificar —</option>
-              {Object.entries(TIPOS_SERVICIO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="label">Observaciones</label>
-            <textarea className="input" rows="3" value={act.descripcion}
-                      onChange={(e) => setAct({ ...act, descripcion: e.target.value })}
-                      placeholder="¿Qué dijo el cliente? Detalles relevantes de la conversación." />
-          </div>
-          <div>
-            <label className="label">Próxima acción</label>
-            <input className="input" value={act.proxima_accion}
-                   onChange={(e) => setAct({ ...act, proxima_accion: e.target.value })}
-                   placeholder="Ej: confirmar hora" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label">Fecha (va a tu Calendario)</label>
-              <input className="input" type="date" value={act.proxima_fecha}
-                     onChange={(e) => setAct({ ...act, proxima_fecha: e.target.value })} />
+              <label className="label">Tipo de servicio solicitado</label>
+              <select className="input" value={act.tipo_servicio}
+                      onChange={(e) => setAct({ ...act, tipo_servicio: e.target.value })}>
+                <option value="">— Sin especificar —</option>
+                {Object.entries(TIPOS_SERVICIO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
             </div>
             <div>
-              <label className="label">Hora (aviso 15 min antes)</label>
-              <input className="input" type="time" value={act.proxima_hora}
-                     onChange={(e) => setAct({ ...act, proxima_hora: e.target.value })} />
+              <label className="label">Observaciones</label>
+              <textarea className="input" rows="3" value={act.descripcion}
+                        onChange={(e) => setAct({ ...act, descripcion: e.target.value })}
+                        placeholder="¿Qué dijo el cliente? Detalles relevantes de la conversación." />
             </div>
           </div>
-          {/* Presupuesto opcional, en el mismo registro */}
-          <div className="border border-slate-200 rounded-lg">
-            <label className="flex items-center gap-2 px-3 py-2 cursor-pointer">
+
+          {/* ---- Paso 2: Presupuesto (opcional) ---- */}
+          <div className="rounded-xl border border-slate-200">
+            <label className="flex items-center gap-2 px-3 py-2.5 cursor-pointer">
               <input type="checkbox" checked={conPresup} onChange={(e) => setConPresup(e.target.checked)} />
-              <span className="text-sm font-medium text-ink">Agregar presupuesto a esta gestión</span>
+              <span className="w-5 h-5 rounded-full bg-mist text-deep text-xs flex items-center justify-center">2</span>
+              <span className="text-sm font-semibold text-ink">Presupuesto</span>
+              <span className="text-xs text-slate-400">(opcional)</span>
             </label>
             {conPresup && (
               <div className="px-3 pb-3 space-y-3 border-t border-slate-100 pt-3">
@@ -574,18 +657,75 @@ export default function ClienteDetalle() {
                     </select>
                   </div>
                   <div>
-                    <label className="label">Próxima gestión</label>
-                    <input className="input" type="date" value={presup.proxima_gestion} onChange={(e) => setPresup({ ...presup, proxima_gestion: e.target.value })} />
+                    <label className="label">Validez hasta</label>
+                    <input className="input" type="date" value={presup.fecha_validez} onChange={(e) => setPresup({ ...presup, fecha_validez: e.target.value })} />
                   </div>
                 </div>
-                <p className="text-[11px] text-slate-400">El tipo de servicio del seguimiento se aplica también al presupuesto.</p>
+              </div>
+            )}
+          </div>
+
+          {/* ---- Paso 3: Agendamiento (opcional, apariencia de agenda) ---- */}
+          <div className={`rounded-xl border ${conAgenda ? 'border-deep/30' : 'border-slate-200'}`}>
+            <label className="flex items-center gap-2 px-3 py-2.5 cursor-pointer">
+              <input type="checkbox" checked={conAgenda} onChange={(e) => setConAgenda(e.target.checked)} />
+              <span className="w-5 h-5 rounded-full bg-mist text-deep text-xs flex items-center justify-center">3</span>
+              <span className="text-sm font-semibold text-ink">Agendamiento</span>
+              <span className="text-xs text-slate-400">(acción futura · opcional)</span>
+            </label>
+            {conAgenda && (
+              <div className="px-3 pb-3 pt-1 border-t border-slate-100">
+                <div className="rounded-lg bg-paper p-3 space-y-3">
+                  <div>
+                    <label className="label">Tipo de agendamiento</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {Object.entries(TIPOS_AGENDA).map(([k, v]) => (
+                        <button type="button" key={k}
+                                onClick={() => setAct({ ...act, agenda_tipo: k })}
+                                className={`flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs
+                                  ${act.agenda_tipo === k ? 'border-transparent text-white' : 'border-slate-200 text-slate-600 bg-white'}`}
+                                style={act.agenda_tipo === k ? { background: v.color } : {}}>
+                          <span className="w-2 h-2 rounded-full" style={{ background: act.agenda_tipo === k ? '#fff' : v.color }} />
+                          {v.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="label">Próxima acción</label>
+                    <input className="input" value={act.proxima_accion}
+                           onChange={(e) => setAct({ ...act, proxima_accion: e.target.value })}
+                           placeholder="Ej: confirmar hora de la visita" />
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="label">Fecha</label>
+                      <input className="input" type="date" value={act.proxima_fecha}
+                             onChange={(e) => setAct({ ...act, proxima_fecha: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">Hora</label>
+                      <TimePicker value={act.proxima_hora} onChange={(v) => setAct({ ...act, proxima_hora: v })} />
+                    </div>
+                    <div>
+                      <label className="label">Recordatorio</label>
+                      <select className="input" value={act.recordatorio_min}
+                              onChange={(e) => setAct({ ...act, recordatorio_min: Number(e.target.value) })}>
+                        <option value="0">Sin aviso</option>
+                        <option value="15">15 min antes</option>
+                        <option value="30">30 min antes</option>
+                        <option value="60">1 hora antes</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" className="btn-soft" onClick={() => setModal(false)}>Cancelar</button>
-            <button className="btn-primary">Guardar gestión</button>
+            <button className="btn-primary">{gestionTarget ? 'Agregar al historial' : 'Crear gestión'}</button>
           </div>
         </form>
       </Modal>

@@ -206,3 +206,31 @@ export const colorActividad = (t) => COLOR_ACTIVIDAD[t] || '#64748b'
 
 // Combina fecha + hora ('HH:MM') para mostrar agendamientos
 export const fmtHora = (h) => h ? String(h).slice(0, 5) : ''
+
+// ---- v10: Estados del ciclo de vida de una GESTIÓN ------------------
+export const ESTADOS_GESTION = {
+  pendiente_contacto:    { label: 'Pendiente de contacto', color: '#94a3b8', cierre: false },
+  en_seguimiento:        { label: 'En seguimiento',        color: '#5B9BB5', cierre: false },
+  agendada:              { label: 'Agendada',              color: '#B07A2E', cierre: false },
+  asistio:               { label: 'Cliente asistió',       color: '#185FA5', cierre: false },
+  presupuesto_entregado: { label: 'Presupuesto entregado', color: '#7A5C8E', cierre: false },
+  pendiente_decision:    { label: 'Pendiente decisión',    color: '#C98A1B', cierre: false },
+  cerrada_ganada:        { label: 'Venta cerrada',         color: '#1D9E75', cierre: true },
+  cerrada_perdida:       { label: 'Finalizada sin éxito',  color: '#A32D2D', cierre: true }
+}
+export const estadoGestionLabel = (e) => ESTADOS_GESTION[e]?.label || e
+export const estadoGestionColor = (e) => ESTADOS_GESTION[e]?.color || '#64748b'
+export const ES_CIERRE = Object.entries(ESTADOS_GESTION)
+  .filter(([, v]) => v.cierre).map(([k]) => k)
+
+// ---- v10: Tipo de AGENDAMIENTO (acción futura) — colorea el calendario
+export const TIPOS_AGENDA = {
+  llamada:             { label: 'Llamada',                color: '#2C5A72' }, // azul
+  visita_taller:       { label: 'Visita al taller',       color: '#1D7A5F' }, // verde
+  entrega_presupuesto: { label: 'Entrega de presupuesto', color: '#7A5C8E' }, // morado
+  revision_cortesia:   { label: 'Revisión de cortesía',   color: '#C77D2E' }, // naranja
+  whatsapp:            { label: 'WhatsApp',               color: '#9AA4B2' }, // gris claro
+  email:               { label: 'Email',                  color: '#334155' }  // gris oscuro
+}
+export const agendaLabel = (t) => TIPOS_AGENDA[t]?.label || 'Agendamiento'
+export const colorAgenda = (t) => TIPOS_AGENDA[t]?.color || '#64748b'
