@@ -42,18 +42,23 @@ function crmSyncServicios() {
       '\nEncabezados detectados: ' + head.join(' | '));
   }
 
-  const filas = datos
-    .filter(r => r[idx.ot_numero] || r[idx.patente])
-    .map(r => ({
+  // Arma filas válidas y deduplica por N° de OT (la última gana)
+  const vistos = {};
+  datos.forEach(r => {
+    const ot = val(r[idx.ot_numero]);
+    if (!ot || /^(sin\s*ot|nula|n\/?a|-)$/i.test(ot)) return;  // descarta filas sin OT real
+    vistos[ot] = {
       empresa_id:      EMPRESA_ID,
-      ot_numero:       val(r[idx.ot_numero]),
+      ot_numero:       ot,
       fecha:           fecha(r[idx.fecha]),
       patente:         patente(r[idx.patente]),
       tipo_servicio:   val(r[idx.tipo_servicio]),
       tipo_servicio_2: val(r[idx.tipo_servicio_2]),
       monto:           num(r[idx.monto]),
-      km:              num(r[idx.km])
-    }));
+      km:              intnum(r[idx.km])
+    };
+  });
+  const filas = Object.values(vistos);
 
   // Sube en lotes con upsert por (empresa_id, ot_numero)
   const lote = 200;
@@ -78,10 +83,19 @@ function crmSyncServicios() {
 }
 
 function val(v)    { return v === '' || v == null ? null : String(v).trim(); }
-function num(v)    { const n = Number(String(v).replace(/[^0-9.-]/g, '')); return isNaN(n) ? null : n; }
+function num(v) {
+  if (v === '' || v == null) return null;
+  if (typeof v === 'number') return v;
+  let s = String(v).trim().replace(/[^0-9.,-]/g, '');
+  if (!s) return null;
+  s = s.replace(/\./g, '').replace(',', '.');   // . = miles, , = decimal (formato CL)
+  const n = Number(s);
+  return isNaN(n) ? null : n;
+}
+function intnum(v){ const n = num(v); return n == null ? null : Math.round(n); }
 function patente(v){ return v ? String(v).replace(/[^A-Za-z0-9]/g, '').toUpperCase() : null; }
 function fecha(v) {
-  if (!v) return null;
+  if (v === '' || v == null) return null;
   if (Object.prototype.toString.call(v) === '[object Date]') {
     return Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
   }
@@ -91,5 +105,6 @@ function fecha(v) {
     let y = m[3]; if (y.length === 2) y = '20' + y;
     return y + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2);
   }
-  return s; // asume ISO yyyy-mm-dd
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);   // ya viene ISO
+  return null;   // cualquier otro texto (ej. "NULA", "SIN OT") -> sin fecha
 }

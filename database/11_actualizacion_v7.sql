@@ -34,8 +34,8 @@ create table if not exists servicios (
 alter table servicios add column if not exists tipo_servicio_2 text;
 create index if not exists idx_servicios_patente on servicios(patente);
 create index if not exists idx_servicios_cliente on servicios(cliente_id);
-create unique index if not exists uq_servicios_ot on servicios(empresa_id, ot_numero)
-  where ot_numero is not null;
+-- Único normal (NO parcial): requerido para el upsert on_conflict del sync.
+create unique index if not exists uq_servicios_ot on servicios(empresa_id, ot_numero);
 
 alter table servicios enable row level security;
 drop policy if exists servicios_all on servicios;
