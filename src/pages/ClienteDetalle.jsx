@@ -9,7 +9,8 @@ import {
   buildOtUrl, formatRut, formatTelefono, formatPatente, patenteLimpia,
   TIPOS_SERVICIO, tipoServicioLabel, RESULTADO_A_ETAPA, fmtHora,
   ESTADOS_GESTION, estadoGestionLabel, estadoGestionColor, ES_CIERRE,
-  TIPOS_AGENDA, agendaLabel, colorAgenda
+  TIPOS_AGENDA, agendaLabel, colorAgenda,
+  TIPOS_CONTACTO, MOTIVOS_CIERRE, motivoCierreLabel
 } from '../lib/helpers'
 
 const OT_URL = import.meta.env.VITE_REGISTRO_OT_URL || ''
@@ -30,7 +31,7 @@ const VEH_VACIO = {
   km: '', proximo_servicio_km: '', tipo_mantencion: ''
 }
 const MANT = { basica: 'Básica', intermedia: 'Intermedia', mayor: 'Mayor' }
-const ICONO = { llamada: '📞', whatsapp: '💬', email: '✉️', visita: '🚗', propuesta: '📄', agendamiento: '📅' }
+const ICONO = { llamada: '📞', whatsapp: '💬', email: '✉️', presencial: '🏢', visita: '🚗', propuesta: '📄', agendamiento: '📅' }
 
 export default function ClienteDetalle() {
   const { id } = useParams()
@@ -56,6 +57,8 @@ export default function ClienteDetalle() {
   const [veh, setVeh] = useState(VEH_VACIO)
   const [detalle, setDetalle] = useState(null) // {tipo:'act'|'presup', data}
   const [expandida, setExpandida] = useState({}) // gestion_id -> bool
+  const [cerrando, setCerrando] = useState(null)  // { g, estado } al cerrar una gestión
+  const [motivoCierre, setMotivoCierre] = useState('venta_concretada')
 
   useEffect(() => { cargar() }, [id])
 
@@ -125,11 +128,23 @@ export default function ClienteDetalle() {
     setModal(true)
   }
   async function cambiarEstadoGestion(g, estado) {
-    const cierra = ES_CIERRE.includes(estado)
+    if (ES_CIERRE.includes(estado)) {
+      setMotivoCierre(estado === 'cerrada_perdida' ? 'cliente_rechazo' : 'venta_concretada')
+      setCerrando({ g, estado })
+      return
+    }
     await supabase.from('gestiones').update({
-      estado, abierta: !cierra, cerrada_en: cierra ? new Date().toISOString() : null
+      estado, abierta: true, cerrada_en: null, motivo_cierre: null
     }).eq('id', g.id)
     cargar()
+  }
+  async function confirmarCierre() {
+    if (!cerrando) return
+    await supabase.from('gestiones').update({
+      estado: cerrando.estado, abierta: false,
+      cerrada_en: new Date().toISOString(), motivo_cierre: motivoCierre
+    }).eq('id', cerrando.g.id)
+    setCerrando(null); cargar()
   }
 
   // Registro: agrega un contacto (y opcionalmente presupuesto y/o
@@ -505,6 +520,9 @@ export default function ClienteDetalle() {
                       </div>
                       <div className="text-[11px] text-slate-400 mt-0.5">
                         Abierta {fmtFecha(g.creado_en?.slice(0,10))} · {evs.length} evento(s)
+                        {!g.abierta && g.cerrada_en && (
+                          <span className="text-slate-500"> · Cerrada {fmtFecha(g.cerrada_en.slice(0,10))} · {motivoCierreLabel(g.motivo_cierre)}</span>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -593,7 +611,7 @@ export default function ClienteDetalle() {
               <div>
                 <label className="label">Tipo de contacto</label>
                 <select className="input" value={act.tipo} onChange={(e) => setAct({ ...act, tipo: e.target.value })}>
-                  {Object.entries(TIPOS_ACTIVIDAD).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  {TIPOS_CONTACTO.map((k) => <option key={k} value={k}>{TIPOS_ACTIVIDAD[k]}</option>)}
                 </select>
               </div>
               <div>
@@ -728,6 +746,25 @@ export default function ClienteDetalle() {
             <button className="btn-primary">{gestionTarget ? 'Agregar al historial' : 'Crear gestión'}</button>
           </div>
         </form>
+      </Modal>
+
+      {/* Modal cerrar gestión */}
+      <Modal abierto={!!cerrando} onClose={() => setCerrando(null)} titulo="Cerrar gestión">
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">
+            Vas a marcar esta gestión como <span className="font-semibold" style={{ color: estadoGestionColor(cerrando?.estado) }}>{estadoGestionLabel(cerrando?.estado)}</span>. Indica el motivo de cierre:
+          </p>
+          <div>
+            <label className="label">Motivo de cierre</label>
+            <select className="input" value={motivoCierre} onChange={(e) => setMotivoCierre(e.target.value)}>
+              {Object.entries(MOTIVOS_CIERRE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <button className="btn-soft" onClick={() => setCerrando(null)}>Cancelar</button>
+            <button className="btn-primary" onClick={confirmarCierre}>Cerrar gestión</button>
+          </div>
+        </div>
       </Modal>
 
       {/* Modal detalle de registro (solo lectura) */}

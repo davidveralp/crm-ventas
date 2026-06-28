@@ -2,11 +2,9 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { Pill, Modal } from '../components/UI'
-import { SEGMENTOS, VENTANAS, segLabel } from '../lib/helpers'
+import { SEGMENTOS, VENTANAS, segLabel, ESTADOS_CAMPANA, estadoCampanaLabel, estadoCampanaColor } from '../lib/helpers'
 
-const ESTADO_COLOR = {
-  borrador: '#73726c', activa: '#1D9E75', pausada: '#C98A1B', completada: '#185FA5'
-}
+const ESTADO_COLOR = Object.fromEntries(Object.entries(ESTADOS_CAMPANA).map(([k, v]) => [k, v.color]))
 const CANALES = { whatsapp: 'WhatsApp', llamada: 'Llamada', email: 'Email', sms: 'SMS' }
 // Canal de campaña -> tipo_actividad válido del enum
 const CANAL_A_TIPO = { whatsapp: 'whatsapp', llamada: 'llamada', email: 'email', sms: 'llamada' }
@@ -47,6 +45,10 @@ export default function Campanas() {
   // Crea tareas pendientes (actividades) para cada cliente del segmento,
   // asignadas a su vendedor y etiquetadas con la campaña. Evita duplicar.
   async function cargarAAsesores() {
+    if (sel.estado !== 'activa') {
+      setResultadoEnvio('Solo las campañas activas pueden asignar clientes. Activa la campaña primero.')
+      return
+    }
     if (!coincidencias.length) { setResultadoEnvio('No hay clientes en este segmento.'); return }
     if (!confirm(`Se generarán tareas de seguimiento para ${coincidencias.length} cliente(s), asignadas a su vendedor. ¿Continuar?`)) return
     setCargandoAsesores(true); setResultadoEnvio('')
@@ -72,7 +74,6 @@ export default function Campanas() {
     const { error } = await supabase.from('actividades').insert(filas)
     setCargandoAsesores(false)
     if (error) { setResultadoEnvio('Error: ' + error.message); return }
-    if (sel.estado !== 'activa') await cambiarEstado(sel.id, 'activa')
     setResultadoEnvio(`Listo: ${filas.length} tarea(s) cargada(s) a los asesores (visibles en su Calendario y Pipeline).`)
   }
 
@@ -105,7 +106,7 @@ export default function Campanas() {
                 <span className="w-6 h-6 rounded-full bg-deep text-white text-xs grid place-items-center font-medium">{c.prioridad}</span>
                 <h3 className="font-semibold text-ink text-sm">{c.nombre}</h3>
               </div>
-              <Pill color={ESTADO_COLOR[c.estado]}>{c.estado}</Pill>
+              <Pill color={ESTADO_COLOR[c.estado]}>{estadoCampanaLabel(c.estado)}</Pill>
             </div>
             <p className="text-xs text-slate-500 mt-2">{c.descripcion}</p>
             <div className="flex flex-wrap gap-2 mt-3">
@@ -124,7 +125,7 @@ export default function Campanas() {
               {sel.segmento && <Pill color={SEGMENTOS[sel.segmento]?.color}>{segLabel(sel.segmento)}</Pill>}
               {sel.ventana && <Pill color={VENTANAS[sel.ventana]?.color}>{VENTANAS[sel.ventana]?.label}</Pill>}
               <span className="pill bg-mist text-deep">{CANALES[sel.canal]}</span>
-              <Pill color={ESTADO_COLOR[sel.estado]}>{sel.estado}</Pill>
+              <Pill color={ESTADO_COLOR[sel.estado]}>{estadoCampanaLabel(sel.estado)}</Pill>
             </div>
 
             <div>
@@ -154,11 +155,17 @@ export default function Campanas() {
                     {enviando ? 'Enviando…' : 'Enviar por email (Brevo)'}
                   </button>
                 )}
-                {sel.estado !== 'activa' && (
+                {['borrador', 'pausada', 'finalizada', 'completada'].includes(sel.estado) && (
                   <button className="btn-primary" onClick={() => cambiarEstado(sel.id, 'activa')}>Activar</button>
                 )}
                 {sel.estado === 'activa' && (
-                  <button className="btn-primary" onClick={() => cambiarEstado(sel.id, 'pausada')}>Pausar</button>
+                  <button className="btn-soft" onClick={() => cambiarEstado(sel.id, 'pausada')}>Pausar</button>
+                )}
+                {['activa', 'pausada'].includes(sel.estado) && (
+                  <button className="btn-soft" onClick={() => cambiarEstado(sel.id, 'finalizada')}>Finalizar</button>
+                )}
+                {sel.estado !== 'archivada' && (
+                  <button className="btn-soft text-slate-500" onClick={() => cambiarEstado(sel.id, 'archivada')}>Archivar</button>
                 )}
               </div>
             )}

@@ -29,13 +29,17 @@ export const VENTANAS = {
 }
 
 export const TIPOS_ACTIVIDAD = {
-  llamada:      'Llamada',
-  propuesta:    'Propuesta',
-  agendamiento: 'Agendamiento',
+  llamada:    'Llamada',
+  whatsapp:   'WhatsApp',
+  email:      'Email',
+  presencial: 'Atención presencial',
+  // Etiquetas heredadas (solo para mostrar registros antiguos):
   visita:       'Visita',
-  email:        'Email',
-  whatsapp:     'WhatsApp'
+  propuesta:    'Propuesta',
+  agendamiento: 'Agendamiento'
 }
+// Opciones que se pueden elegir al registrar un contacto (acciones ya ejecutadas)
+export const TIPOS_CONTACTO = ['llamada', 'whatsapp', 'email', 'presencial']
 
 export const RESULTADOS = {
   pendiente:         'Pendiente de contacto',
@@ -234,3 +238,25 @@ export const TIPOS_AGENDA = {
 }
 export const agendaLabel = (t) => TIPOS_AGENDA[t]?.label || 'Agendamiento'
 export const colorAgenda = (t) => TIPOS_AGENDA[t]?.color || '#64748b'
+
+// ---- v11: Motivos de cierre de una gestión -------------------------
+export const MOTIVOS_CIERRE = {
+  venta_concretada: 'Venta concretada',
+  trabajo_realizado: 'Trabajo realizado',
+  cliente_rechazo: 'Cliente rechazó',
+  no_volvera: 'No volverá al taller',
+  cerrada_ejecutivo: 'Cerrada por el ejecutivo'
+}
+export const motivoCierreLabel = (m) => MOTIVOS_CIERRE[m] || m || '—'
+
+// ---- v11: Estados de campaña (ciclo de vida) -----------------------
+export const ESTADOS_CAMPANA = {
+  borrador:   { label: 'Borrador',   color: '#73726c', operativa: false },
+  activa:     { label: 'Activa',     color: '#1D9E75', operativa: true  },
+  pausada:    { label: 'Pausada',    color: '#C98A1B', operativa: false },
+  finalizada: { label: 'Finalizada', color: '#185FA5', operativa: false },
+  archivada:  { label: 'Archivada',  color: '#9AA4B2', operativa: false },
+  completada: { label: 'Finalizada', color: '#185FA5', operativa: false } // alias heredado
+}
+export const estadoCampanaLabel = (e) => ESTADOS_CAMPANA[e]?.label || e
+export const estadoCampanaColor = (e) => ESTADOS_CAMPANA[e]?.color || '#64748b'
