@@ -273,3 +273,23 @@ export const ESTADOS_EMAIL = {
 }
 export const estadoEmailLabel = (e) => ESTADOS_EMAIL[e]?.label || e
 export const estadoEmailColor = (e) => ESTADOS_EMAIL[e]?.color || '#64748b'
+
+// ---- v14: Catálogos dinámicos por empresa --------------------------
+// Reemplaza EN SITIO el contenido de los catálogos por los del tenant,
+// conservando la misma referencia para que todas las páginas que ya los
+// importan los vean actualizados. Si un catálogo no viene, se conserva
+// el valor por defecto (fallback seguro).
+function _reemplazar(obj, nuevo) {
+  Object.keys(obj).forEach((k) => delete obj[k])
+  Object.assign(obj, nuevo)
+}
+export function cargarCatalogos(c = {}) {
+  if (c.segmentos      && Object.keys(c.segmentos).length)      _reemplazar(SEGMENTOS, c.segmentos)
+  if (c.tiposServicio  && Object.keys(c.tiposServicio).length)  _reemplazar(TIPOS_SERVICIO, c.tiposServicio)
+  if (c.tiposAgenda    && Object.keys(c.tiposAgenda).length)    _reemplazar(TIPOS_AGENDA, c.tiposAgenda)
+  if (c.estadosGestion && Object.keys(c.estadosGestion).length) {
+    _reemplazar(ESTADOS_GESTION, c.estadosGestion)
+    ES_CIERRE.length = 0
+    Object.entries(ESTADOS_GESTION).forEach(([k, v]) => { if (v.cierre) ES_CIERRE.push(k) })
+  }
+}

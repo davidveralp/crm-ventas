@@ -50,7 +50,7 @@ export default function Configuracion() {
       </div>
 
       {tab === 'marca' && <Marca perfil={perfil} recargar={recargar} />}
-      {tab === 'catalogos' && <Catalogos perfil={perfil} />}
+      {tab === 'catalogos' && <Catalogos perfil={perfil} recargar={recargar} />}
       {tab === 'plan' && (
         <div className="card p-5 space-y-3">
           <div>
@@ -130,7 +130,7 @@ function Marca({ perfil, recargar }) {
   )
 }
 
-function Catalogos({ perfil }) {
+function Catalogos({ perfil, recargar }) {
   const [sel, setSel] = useState(CATALOGOS[0])
   const [rows, setRows] = useState([])
   const [msg, setMsg] = useState('')
@@ -159,7 +159,7 @@ function Catalogos({ perfil }) {
     }))
     const { error } = await supabase.from(sel.id).upsert(validos, { onConflict: 'empresa_id,clave' })
     if (error) { setMsg('Error: ' + error.message); return }
-    cargar(); setMsg('Catálogo guardado.')
+    cargar(); recargar?.(); setMsg('Catálogo guardado.')
   }
 
   return (
