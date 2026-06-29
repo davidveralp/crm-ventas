@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './AuthContext'
 
@@ -15,39 +15,37 @@ function hexCanales(hex) {
 const MAPA_VAR = { deep: '--c-deep', red: '--c-red', sky: '--c-sky', ink: '--c-ink',
   steel: '--c-steel', mist: '--c-mist', paper: '--c-paper', carbon: '--c-carbon' }
 
+export function aplicarColores(cols) {
+  Object.entries(cols || {}).forEach(([k, hex]) => {
+    const v = MAPA_VAR[k]; const ch = hexCanales(hex)
+    if (v && ch) document.documentElement.style.setProperty(v, ch)
+  })
+}
+
 export function ConfigProvider({ children }) {
   const { perfil } = useAuth()
   const [features, setFeatures] = useState(null) // null = aún cargando -> mostrar todo
   const [marca, setMarca] = useState({ nombre: null, loginTitulo: null })
 
-  useEffect(() => {
+  const cargar = useCallback(async () => {
     if (!perfil?.empresa_id) return
-    let vivo = true
-    ;(async () => {
-      const [{ data: feats }, { data: brand }] = await Promise.all([
-        supabase.rpc('features_empresa'),
-        supabase.from('empresa_branding').select('*').eq('empresa_id', perfil.empresa_id).maybeSingle()
-      ])
-      if (!vivo) return
-      // Features (si la RPC no existe todavía, deja null = todo visible)
-      if (Array.isArray(feats)) setFeatures(new Set(feats))
-      // Branding: nombre + colores en runtime
-      if (brand) {
-        setMarca({ nombre: brand.nombre_comercial, loginTitulo: brand.login_titulo })
-        const cols = brand.colores || {}
-        Object.entries(cols).forEach(([k, hex]) => {
-          const v = MAPA_VAR[k]; const ch = hexCanales(hex)
-          if (v && ch) document.documentElement.style.setProperty(v, ch)
-        })
-      }
-    })().catch(() => {})
-    return () => { vivo = false }
+    const [{ data: feats }, { data: brand }] = await Promise.all([
+      supabase.rpc('features_empresa'),
+      supabase.from('empresa_branding').select('*').eq('empresa_id', perfil.empresa_id).maybeSingle()
+    ])
+    if (Array.isArray(feats)) setFeatures(new Set(feats))
+    if (brand) {
+      setMarca({ nombre: brand.nombre_comercial, loginTitulo: brand.login_titulo })
+      aplicarColores(brand.colores || {})
+    }
   }, [perfil?.empresa_id])
+
+  useEffect(() => { cargar().catch(() => {}) }, [cargar])
 
   const tieneFeature = (clave) => features === null || features.has(clave)
 
   return (
-    <ConfigContext.Provider value={{ features, tieneFeature, ...marca }}>
+    <ConfigContext.Provider value={{ features, tieneFeature, ...marca, recargar: cargar }}>
       {children}
     </ConfigContext.Provider>
   )

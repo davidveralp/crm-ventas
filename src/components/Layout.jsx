@@ -17,7 +17,8 @@ const ICONS = {
   informes:  'M4 19V5m0 14h16M8 17V9m4 8V6m4 11v-5',
   usuarios:  'M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4z',
   email:     'M4 6h16a1 1 0 011 1v10a1 1 0 01-1 1H4a1 1 0 01-1-1V7a1 1 0 011-1zM3.5 7.5l8.5 6 8.5-6',
-  nuevaot:   'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M12 11v6m-3-3h6'
+  nuevaot:   'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M12 11v6m-3-3h6',
+  config:    'M4 8h9M17 8h3M4 16h3M11 16h9M13 6v4M7 14v4'
 }
 
 const GRUPOS = [
@@ -40,6 +41,7 @@ const GRUPOS = [
 const GRUPO_ADMIN = { titulo: 'Administración', items: [
   { to: '/email', label: 'Email marketing', icon: 'email', feature: 'marketing' },
   { to: '/informes', label: 'Informes', icon: 'informes', feature: 'informes' },
+  { to: '/configuracion', label: 'Configuración', icon: 'config' },
   { to: '/usuarios', label: 'Usuarios', icon: 'usuarios' }
 ]}
 
