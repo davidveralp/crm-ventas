@@ -4,23 +4,21 @@ export default {
   theme: {
     extend: {
       colors: {
-        ink:   '#0A0B0C',
-        deep:  '#1C4357',
-        steel: '#2C5A72',
-        sky:   '#7FB3C7',
-        mist:  '#E8EEF1',
-        paper: '#F6F8F9',
+        ink:   'rgb(var(--c-ink) / <alpha-value>)',
+        deep:  'rgb(var(--c-deep) / <alpha-value>)',
+        steel: 'rgb(var(--c-steel) / <alpha-value>)',
+        sky:   'rgb(var(--c-sky) / <alpha-value>)',
+        mist:  'rgb(var(--c-mist) / <alpha-value>)',
+        paper: 'rgb(var(--c-paper) / <alpha-value>)',
         didial: {
-          red:   '#E73C32',
-          rojo:  '#E73C32',
-          amber: '#F9C847',
-          dark:  '#0E0F12',
-          carbon:'#15171C'
+          red:   'rgb(var(--c-red) / <alpha-value>)',
+          rojo:  'rgb(var(--c-red) / <alpha-value>)',
+          amber: 'rgb(var(--c-amber) / <alpha-value>)',
+          dark:  'rgb(var(--c-dark) / <alpha-value>)',
+          carbon:'rgb(var(--c-carbon) / <alpha-value>)'
         }
       },
-      fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif']
-      }
+      fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] }
     }
   },
   plugins: []

@@ -260,3 +260,16 @@ export const ESTADOS_CAMPANA = {
 }
 export const estadoCampanaLabel = (e) => ESTADOS_CAMPANA[e]?.label || e
 export const estadoCampanaColor = (e) => ESTADOS_CAMPANA[e]?.color || '#64748b'
+
+// ---- v12: Estados de un envío de email -----------------------------
+export const ESTADOS_EMAIL = {
+  enviado:     { label: 'Enviado',     color: '#94a3b8' },
+  entregado:   { label: 'Entregado',   color: '#5B9BB5' },
+  abierto:     { label: 'Abierto',     color: '#185FA5' },
+  click:       { label: 'Clic',        color: '#1D9E75' },
+  rebote:      { label: 'Rebote',      color: '#A32D2D' },
+  no_suscrito: { label: 'No suscrito', color: '#C98A1B' },
+  spam:        { label: 'Spam',        color: '#7A5C8E' }
+}
+export const estadoEmailLabel = (e) => ESTADOS_EMAIL[e]?.label || e
+export const estadoEmailColor = (e) => ESTADOS_EMAIL[e]?.color || '#64748b'

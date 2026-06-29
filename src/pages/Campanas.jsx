@@ -78,16 +78,28 @@ export default function Campanas() {
   }
 
   async function enviarEmail() {
+    if (sel.estado !== 'activa') {
+      setResultadoEnvio('Solo las campañas activas pueden enviar emails. Activa la campaña primero.')
+      return
+    }
     if (!confirm('¿Enviar esta campaña por email a los clientes del segmento con correo registrado?')) return
     setEnviando(true); setResultadoEnvio('')
-    const { data, error } = await supabase.functions.invoke('enviar-campana', { body: { campana_id: sel.id } })
+    const { data, error } = await supabase.functions.invoke('enviar-email', {
+      body: {
+        asunto: sel.nombre,
+        cuerpo: sel.mensaje_plantilla || '',
+        segmento: sel.segmento || null,
+        dias_recientes: sel.dias_recientes || null,
+        campana_id: sel.id
+      }
+    })
     setEnviando(false)
     if (error || data?.error) {
       setResultadoEnvio('Error: ' + (data?.error || error.message) +
-        '. Verifica que la función y la clave de Brevo estén configuradas.')
+        '. Verifica que la función enviar-email y la clave de Brevo estén configuradas.')
       return
     }
-    setResultadoEnvio(`Enviados: ${data.enviados} de ${data.total || data.enviados} correos.`)
+    setResultadoEnvio(`Enviados: ${data.enviados} de ${data.total || data.enviados} correos. Su resultado (aperturas, clics) se mide en Email marketing → Reportes.`)
     cargar()
   }
 

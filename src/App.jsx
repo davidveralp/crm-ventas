@@ -7,6 +7,8 @@ import Clientes from './pages/Clientes'
 import ClienteDetalle from './pages/ClienteDetalle'
 import Pipeline from './pages/Pipeline'
 import Gestiones from './pages/Gestiones'
+import Email from './pages/Email'
+import NuevaOT from './pages/NuevaOT'
 import Agenda from './pages/Agenda'
 import Calendario from './pages/Calendario'
 import Informes from './pages/Informes'
@@ -34,8 +36,12 @@ export default function App() {
         <ProtectedRoute soloAdmin><Layout><Informes /></Layout></ProtectedRoute>
       } />
       <Route path="/campanas"    element={conLayout(<Campanas />)} />
+      <Route path="/email"       element={
+        <ProtectedRoute soloAdmin><Layout><Email /></Layout></ProtectedRoute>
+      } />
       <Route path="/presupuestos" element={conLayout(<Presupuestos />)} />
       <Route path="/datos"       element={conLayout(<Datos />)} />
+      <Route path="/nueva-ot"    element={conLayout(<NuevaOT />)} />
       <Route path="/usuarios"    element={
         <ProtectedRoute soloAdmin><Layout><Usuarios /></Layout></ProtectedRoute>
       } />

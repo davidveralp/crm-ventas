@@ -2,7 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { color-scheme: light; }
+:root {
+  color-scheme: light;
+  --c-ink: 10 11 12;
+  --c-deep: 28 67 87;
+  --c-steel: 44 90 114;
+  --c-sky: 127 179 199;
+  --c-mist: 232 238 241;
+  --c-paper: 246 248 249;
+  --c-red: 231 60 50;
+  --c-amber: 249 200 71;
+  --c-dark: 14 15 18;
+  --c-carbon: 21 23 28;
+}
 
 html, body, #root { height: 100%; }
 body {

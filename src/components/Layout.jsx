@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { useConfig } from '../context/ConfigContext'
 import Recordatorios from './Recordatorios'
 
 const ICONS = {
@@ -14,7 +15,9 @@ const ICONS = {
   presupuestos: 'M9 7h6m-6 4h6m-6 4h4M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z',
   datos:     'M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3',
   informes:  'M4 19V5m0 14h16M8 17V9m4 8V6m4 11v-5',
-  usuarios:  'M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4z'
+  usuarios:  'M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4z',
+  email:     'M4 6h16a1 1 0 011 1v10a1 1 0 01-1 1H4a1 1 0 01-1-1V7a1 1 0 011-1zM3.5 7.5l8.5 6 8.5-6',
+  nuevaot:   'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M12 11v6m-3-3h6'
 }
 
 const GRUPOS = [
@@ -22,28 +25,30 @@ const GRUPOS = [
     { to: '/', label: 'Dashboard', icon: 'dashboard' }
   ]},
   { titulo: 'Comercial', items: [
-    { to: '/clientes',   label: 'Clientes',   icon: 'clientes' },
-    { to: '/pipeline',   label: 'Pipeline',   icon: 'pipeline' },
-    { to: '/gestiones',  label: 'Gestiones',  icon: 'gestiones' },
-    { to: '/campanas',   label: 'Campañas',   icon: 'campanas' },
-    { to: '/calendario', label: 'Calendario', icon: 'calendario', alerta: true }
+    { to: '/clientes',   label: 'Clientes',   icon: 'clientes',   feature: 'crm' },
+    { to: '/pipeline',   label: 'Pipeline',   icon: 'pipeline',   feature: 'crm' },
+    { to: '/gestiones',  label: 'Gestiones',  icon: 'gestiones',  feature: 'crm' },
+    { to: '/campanas',   label: 'Campañas',   icon: 'campanas',   feature: 'campanas' },
+    { to: '/calendario', label: 'Calendario', icon: 'calendario', feature: 'agenda', alerta: true },
+    { to: '/nueva-ot',   label: 'Nueva OT',   icon: 'nuevaot',    feature: 'ot' }
   ]},
   { titulo: 'Datos', items: [
-    { to: '/presupuestos', label: 'Presupuestos', icon: 'presupuestos' },
-    { to: '/datos', label: 'Importar / Exportar', icon: 'datos' }
+    { to: '/presupuestos', label: 'Presupuestos', icon: 'presupuestos', feature: 'crm' },
+    { to: '/datos', label: 'Importar / Exportar', icon: 'datos', feature: 'crm' }
   ]}
 ]
 const GRUPO_ADMIN = { titulo: 'Administración', items: [
-  { to: '/informes', label: 'Informes', icon: 'informes' },
+  { to: '/email', label: 'Email marketing', icon: 'email', feature: 'marketing' },
+  { to: '/informes', label: 'Informes', icon: 'informes', feature: 'informes' },
   { to: '/usuarios', label: 'Usuarios', icon: 'usuarios' }
 ]}
 
 const MOVIL = [
   { to: '/', label: 'Inicio', icon: 'dashboard' },
-  { to: '/clientes', label: 'Clientes', icon: 'clientes' },
-  { to: '/gestiones', label: 'Gestiones', icon: 'gestiones' },
-  { to: '/calendario', label: 'Agenda', icon: 'calendario' },
-  { to: '/campanas', label: 'Campañas', icon: 'campanas' }
+  { to: '/clientes', label: 'Clientes', icon: 'clientes', feature: 'crm' },
+  { to: '/gestiones', label: 'Gestiones', icon: 'gestiones', feature: 'crm' },
+  { to: '/calendario', label: 'Agenda', icon: 'calendario', feature: 'agenda' },
+  { to: '/campanas', label: 'Campañas', icon: 'campanas', feature: 'campanas' }
 ]
 
 function Icon({ d }) {
@@ -57,6 +62,7 @@ function Icon({ d }) {
 
 export default function Layout({ children }) {
   const { perfil, esAdmin, logout } = useAuth()
+  const { tieneFeature, nombre } = useConfig()
   const navigate = useNavigate()
   const [alertas, setAlertas] = useState(0)
 
@@ -102,16 +108,20 @@ export default function Layout({ children }) {
     </NavLink>
   )
 
-  const grupo = (g) => (
-    <div key={g.titulo || 'main'} className="space-y-1">
-      {g.titulo && (
-        <div className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-sky/35">
-          {g.titulo}
-        </div>
-      )}
-      {g.items.map(item)}
-    </div>
-  )
+  const grupo = (g) => {
+    const items = g.items.filter((it) => !it.feature || tieneFeature(it.feature))
+    if (!items.length) return null
+    return (
+      <div key={g.titulo || 'main'} className="space-y-1">
+        {g.titulo && (
+          <div className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-sky/35">
+            {g.titulo}
+          </div>
+        )}
+        {items.map(item)}
+      </div>
+    )
+  }
 
   return (
     <div className="h-full flex">
@@ -119,9 +129,9 @@ export default function Layout({ children }) {
       {/* Sidebar */}
       <aside className="hidden md:flex w-64 shrink-0 flex-col carbon-sidebar text-white">
         <div className="px-5 py-5 border-b border-white/10 flex items-center gap-3">
-          <div className="grid place-items-center w-9 h-9 rounded-xl bg-didial-red text-white font-bold">D</div>
+          <div className="grid place-items-center w-9 h-9 rounded-xl bg-didial-red text-white font-bold">{(nombre || 'D').slice(0, 1).toUpperCase()}</div>
           <div>
-            <div className="text-base font-bold tracking-tight leading-none">DIDIAL</div>
+            <div className="text-base font-bold tracking-tight leading-none">{nombre || 'CRM'}</div>
             <div className="text-[11px] text-sky/60 mt-1">Gestión comercial</div>
           </div>
         </div>
@@ -149,13 +159,13 @@ export default function Layout({ children }) {
       {/* Contenido */}
       <div className="flex-1 flex flex-col min-w-0">
         <header className="md:hidden flex items-center justify-between carbon-sidebar text-white px-4 py-3">
-          <span className="font-bold tracking-tight">DIDIAL</span>
+          <span className="font-bold tracking-tight">{nombre || 'CRM'}</span>
           <button onClick={async () => { await logout(); navigate('/login') }}
                   className="text-sm text-sky/80">Salir</button>
         </header>
         <main className="flex-1 overflow-y-auto p-4 md:p-8">{children}</main>
         <nav className="md:hidden grid grid-cols-5 bg-white border-t border-slate-200">
-          {MOVIL.map(({ to, label, icon }) => (
+          {MOVIL.filter((m) => !m.feature || tieneFeature(m.feature)).map(({ to, label, icon }) => (
             <NavLink key={to} to={to} end={to === '/'}
               className={({ isActive }) =>
                 `flex flex-col items-center gap-0.5 py-2 text-[10px] ${isActive ? 'text-deep' : 'text-slate-400'}`
