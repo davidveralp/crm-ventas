@@ -9,6 +9,28 @@ import {
 } from '../lib/helpers'
 
 const hoy = () => new Date().toISOString().slice(0, 10)
+
+// Envía la OT a la planilla (Apps Script) con form POST + iframe oculto.
+// Es el mismo método de la app de registro: evita por completo el CORS
+// que Apps Script genera al llamarlo con fetch desde otro dominio.
+function enviarASheet(url, data) {
+  return new Promise((resolve) => {
+    const frameName = 'ot_sheet_' + Date.now()
+    const iframe = document.createElement('iframe')
+    iframe.name = frameName; iframe.style.display = 'none'
+    document.body.appendChild(iframe)
+    const form = document.createElement('form')
+    form.method = 'POST'; form.action = url; form.target = frameName
+    const input = document.createElement('input')
+    input.type = 'hidden'; input.name = 'payload'; input.value = JSON.stringify(data)
+    form.appendChild(input); document.body.appendChild(form)
+    let hecho = false
+    const limpiar = () => { if (hecho) return; hecho = true; try { form.remove(); iframe.remove() } catch {} ; resolve(true) }
+    iframe.onload = () => setTimeout(limpiar, 300)
+    setTimeout(limpiar, 2500) // respaldo
+    form.submit()
+  })
+}
 const VACIA = {
   ot_numero: '', fecha: hoy(), tipo_ingreso: 'Normal', sucursal: 'Toyota',
   tecnico_principal: '', tecnicos_secundarios: '',
@@ -49,6 +71,19 @@ export default function NuevaOT() {
   const [veh, setVeh] = useState(null)
   const [guardando, setGuardando] = useState(false)
   const [msg, setMsg] = useState(null)
+  const [sheetUrl, setSheetUrl] = useState('')
+  const [enviarSheet, setEnviarSheet] = useState(true)
+
+  // URL del Apps Script de la planilla (config por empresa)
+  useEffect(() => {
+    if (!perfil?.empresa_id) return
+    supabase.from('empresa_config').select('valor')
+      .eq('empresa_id', perfil.empresa_id).eq('clave', 'ot_sheet_url').maybeSingle()
+      .then(({ data }) => {
+        const v = data?.valor
+        setSheetUrl(typeof v === 'string' ? v : (v?.url || ''))
+      })
+  }, [perfil?.empresa_id])
 
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }))
   const esGarantia = OT_ES_GARANTIA(f.tipo_ingreso)
@@ -144,8 +179,36 @@ export default function NuevaOT() {
     }, { onConflict: 'empresa_id,ot_numero' })
     if (veh?.id && kmNum) await supabase.from('vehiculos').update({ km_ultimo: kmNum }).eq('id', veh.id)
 
+    // Envío a la planilla DIDIAL_Base_OT (mismo backend que la app de registro)
+    let aviso = `OT guardada — Total $${fmtMiles(total)}`
+    if (enviarSheet && sheetUrl) {
+      const payload = {
+        nroOT: fila.ot_numero || '', fechaIngreso: f.fecha,
+        asesor: perfil?.nombre || '', asesorEmail: perfil?.email || '', sucursal: f.sucursal,
+        tipoIngreso: f.tipo_ingreso, tecnicoPrincipal: f.tecnico_principal,
+        tecnicosSecundarios: f.tecnicos_secundarios,
+        patente: patFmt, marca: marcaFinal(), modelo: f.modelo, cilindrada: f.cilindrada,
+        anio: f.anio, km: f.km, tipoCliente: f.tipo_cliente, propietario: f.propietario,
+        telefono: f.telefono, email: f.email, ciudad: ciudadFinal(),
+        direccion: f.direccion, direccionRef: f.direccion_ref,
+        montoRepuestos: +f.repuestos || 0, montoLubricantes: +f.lubricantes || 0,
+        montoMO: +f.mo || 0, montoServicioExterno: +f.servicioExterno || 0,
+        descServicioExterno: f.descSE, descuento: +f.descuento || 0, totalReparacion: total,
+        tipoServicio1: f.tipo_servicio_1, tipoServicio2: f.tipo_servicio_2 || '',
+        unidadesNegocio: unidades.join('; '), estadoVehiculo: f.estado_vehiculo,
+        fechaEntrega: f.fecha_entrega, tipoDocumento: f.tipo_documento, nroDocumento: f.nro_documento,
+        presupSolicito: f.presup_solicito, presupNumero: f.presup_numero,
+        presupAprueba: f.presup_aprueba, presupDetalle: f.presup_detalle,
+        encuestaAplica: f.encuesta_aplica, encP1Tiempo: f.enc_p1, encP2Atencion: f.enc_p2,
+        encP3Servicio: f.enc_p3, encP4Recomienda: f.enc_p4, encConocio: f.enc_conocio,
+        otInicio: new Date().toISOString()
+      }
+      await enviarASheet(sheetUrl, payload)
+      aviso += ' · enviada a la planilla'
+    }
+
     setGuardando(false)
-    setMsg({ t: 'ok', m: `OT guardada — Total $${fmtMiles(total)}` })
+    setMsg({ t: 'ok', m: aviso })
     setF({ ...VACIA, fecha: hoy(), fecha_entrega: hoy() }); setVeh(null)
   }
 
@@ -332,7 +395,12 @@ export default function NuevaOT() {
       {msg && (
         <div className={`rounded-lg px-4 py-2.5 text-sm ${msg.t === 'ok' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>{msg.m}</div>
       )}
-      <div className="flex justify-end gap-3 sticky bottom-0 bg-paper/80 backdrop-blur py-3">
+      <div className="flex justify-between items-center gap-3 sticky bottom-0 bg-paper/80 backdrop-blur py-3">
+        <label className={`flex items-center gap-2 text-sm ${sheetUrl ? 'text-slate-600' : 'text-slate-300'}`}>
+          <input type="checkbox" checked={enviarSheet && !!sheetUrl} disabled={!sheetUrl}
+                 onChange={(e) => setEnviarSheet(e.target.checked)} />
+          Enviar también a la planilla DIDIAL_Base_OT
+        </label>
         <button type="submit" disabled={guardando} className="btn-primary px-6">
           {guardando ? 'Guardando…' : 'Guardar OT'}
         </button>
