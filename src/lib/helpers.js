@@ -293,3 +293,43 @@ export function cargarCatalogos(c = {}) {
     Object.entries(ESTADOS_GESTION).forEach(([k, v]) => { if (v.cierre) ES_CIERRE.push(k) })
   }
 }
+
+// ====================================================================
+// MÓDULO OT — réplica fiel del formato de la app de registro (v5.6)
+// ====================================================================
+export const OT_TIPO_INGRESO = ['Normal', 'Convenio', 'Garantía Mano de Obra', 'Garantía Repuestos']
+export const OT_ES_GARANTIA = (t) => t === 'Garantía Mano de Obra' || t === 'Garantía Repuestos'
+export const OT_TIPO_CLIENTE = ['Particular', 'Empresa', 'Interno']
+export const OT_ESTADO_VEHICULO = ['Entregado', 'Devolución']
+export const OT_TIPO_DOCUMENTO = ['Boleta', 'Factura', 'Sin Documento']
+
+export const OT_SVC_TALLER = ['MAN X PAUTA','MAN BASICA','EMBRAGUE','AMORTIGUADOR','CORREAS','DISTRIBUCION','REFRIGERACION','A/C RECARGA','A/C REPARACION','INYECCION','DPF','MOTOR REPARACION','MOTOR REEMPLAZO','ADMISION EGR','ALTERNADOR','ARRANQUE','FRENOS','TREN DELANTERO','DIAGNOSTICO','OTROS TALLER']
+export const OT_SVC_SR = ['REV EXPRESS','REV PREVENTIVA','CAMBIO DE ACEITE','VULCANIZACION','BALANCEO','ESCANER','ALINEACION','OTROS SERVICIO RÁPIDO']
+export const OT_SVC_DYP = ['DESABOLLADURA Y PINTURA','SINIESTRO ROBO','LIMPIEZA VEHICULO','LIMPIEZA DE MOTOR','LAVADO DE TAPIZ','PULIDO Y ENCERADO','OTROS DYP']
+export const OT_SVC_GRUPOS = [
+  { bu: 'Taller Mecánico', items: OT_SVC_TALLER },
+  { bu: 'Servicio Rápido', items: OT_SVC_SR },
+  { bu: 'DyP', items: OT_SVC_DYP }
+]
+export const otBU = (svc) =>
+  OT_SVC_DYP.includes(svc) ? 'DyP' :
+  OT_SVC_SR.includes(svc) ? 'Servicio Rápido' :
+  OT_SVC_TALLER.includes(svc) ? 'Taller Mecánico' : null
+
+export const OT_MARCAS = ['Toyota','Hyundai','Nissan','Suzuki','Chevrolet','Kia','Mitsubishi','Ford','Peugeot','Mazda','SsangYong','Subaru','JAC','Changan','Jeep','Chery','Volkswagen','Renault','Great Wall','Mahindra','MG','Samsung','Honda','Maxus','BAIC','Fiat','Dodge','RAM','Geely']
+export const OT_CIUDADES = ['La Serena','Coquimbo','Ovalle','Vicuña','Illapel','Salamanca','Los Vilos','Andacollo','Monte Patria','Punitaqui','Canela','Santiago','Viña del Mar','Antofagasta','Temuco','Puerto Montt']
+
+// Dinero estilo es-CL (1.234.567)
+export const fmtMiles = (n) => (Number(n) || 0).toLocaleString('es-CL')
+// Total reparación = repuestos + lubricantes + MO + servicio externo − descuento (mín. 0)
+export const otTotal = (m) =>
+  Math.max(0, (+m.repuestos || 0) + (+m.lubricantes || 0) + (+m.mo || 0) + (+m.servicioExterno || 0) - (+m.descuento || 0))
+
+// Teléfono chileno: "+56 9 XXXX XXXX" (misma regla que la app de OT)
+export function fmtFonoOT(value) {
+  const v = String(value || '').replace(/\s/g, '')
+  if (/^9\d{7,8}$/.test(v)) { const d = v.slice(1).slice(-8); return '+56 9 ' + d.slice(0, 4) + ' ' + d.slice(4) }
+  if (/^\d{8}$/.test(v)) return '+56 9 ' + v.slice(0, 4) + ' ' + v.slice(4)
+  if (v.startsWith('+569')) { const d = v.slice(4).slice(0, 8); return '+56 9 ' + d.slice(0, 4) + ' ' + d.slice(4) }
+  return value || ''
+}
