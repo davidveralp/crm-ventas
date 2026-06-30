@@ -5,7 +5,8 @@ import { useAuth } from '../context/AuthContext'
 import {
   formatPatente, patenteLimpia, fmtMiles, otTotal, fmtFonoOT,
   OT_TIPO_INGRESO, OT_ES_GARANTIA, OT_TIPO_CLIENTE, OT_ESTADO_VEHICULO,
-  OT_TIPO_DOCUMENTO, OT_SVC_GRUPOS, otBU, OT_MARCAS, OT_CIUDADES
+  OT_TIPO_DOCUMENTO, OT_SVC_GRUPOS, otBU, OT_MARCAS, OT_CIUDADES,
+  OT_TECNICOS, OT_CONOCIO, OT_ENCUESTA
 } from '../lib/helpers'
 
 const hoy = () => new Date().toISOString().slice(0, 10)
@@ -33,7 +34,7 @@ function enviarASheet(url, data) {
 }
 const VACIA = {
   ot_numero: '', fecha: hoy(), tipo_ingreso: 'Normal', sucursal: 'Toyota',
-  tecnico_principal: '', tecnicos_secundarios: '',
+  tecnico_principal: '', tecPrincipalOtro: '',
   patente: '', marca: '', marcaOtra: '', modelo: '', cilindrada: '', anio: '', km: '',
   tipo_cliente: 'Particular', propietario: '', telefono: '', email: '',
   ciudad: '', ciudadOtra: '', direccion: '', direccion_ref: '',
@@ -41,7 +42,7 @@ const VACIA = {
   tipo_servicio_1: '', tipo_servicio_2: '',
   estado_vehiculo: 'Entregado', fecha_entrega: hoy(), tipo_documento: 'Boleta', nro_documento: '',
   presup_solicito: 'No', presup_numero: '', presup_aprueba: '', presup_detalle: '',
-  encuesta_aplica: 'No', enc_p1: '', enc_p2: '', enc_p3: '', enc_p4: '', enc_conocio: ''
+  encuesta_aplica: 'No', enc_p1: '', enc_p2: '', enc_p3: '', enc_p4: '', enc_conocio: '', conocioOtro: ''
 }
 
 function Seccion({ n, titulo, children }) {
@@ -64,6 +65,23 @@ const Campo = ({ label, req, hint, full, children }) => (
   </div>
 )
 
+// Input de dinero con prefijo "$"
+const Monto = ({ value, onChange }) => (
+  <div className="relative">
+    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-medium">$</span>
+    <input className="input pl-7" type="number" min="0" value={value} onChange={onChange} placeholder="0" />
+  </div>
+)
+
+// Chip seleccionable (para técnicos secundarios y "cómo conoció")
+const Chip = ({ activo, onClick, children }) => (
+  <button type="button" onClick={onClick}
+    className={`px-3 py-1.5 rounded-lg border text-sm transition ${activo
+      ? 'bg-deep text-white border-deep' : 'bg-white text-slate-600 border-slate-200 hover:border-deep'}`}>
+    {children}
+  </button>
+)
+
 export default function NuevaOT() {
   const { perfil } = useAuth()
   const [params] = useSearchParams()
@@ -72,7 +90,8 @@ export default function NuevaOT() {
   const [guardando, setGuardando] = useState(false)
   const [msg, setMsg] = useState(null)
   const [sheetUrl, setSheetUrl] = useState('')
-  const [enviarSheet, setEnviarSheet] = useState(true)
+  const [secSel, setSecSel] = useState([])   // técnicos secundarios elegidos
+  const [secOtro, setSecOtro] = useState('') // técnico secundario "Otro"
 
   // URL del Apps Script de la planilla (config por empresa)
   useEffect(() => {
@@ -133,6 +152,16 @@ export default function NuevaOT() {
 
   const marcaFinal = () => (f.marca === '__otra__' ? f.marcaOtra.trim() : f.marca)
   const ciudadFinal = () => (f.ciudad === '__otra__' ? f.ciudadOtra.trim() : f.ciudad)
+  const tecPrincipalFinal = () => (f.tecnico_principal === 'Otro' ? f.tecPrincipalOtro.trim() : f.tecnico_principal)
+  const conocioFinal = () => (f.enc_conocio === 'Otro' ? f.conocioOtro.trim() : f.enc_conocio)
+  const tecSecFinal = () => {
+    const lista = [...secSel]
+    if (secSel.includes('Otro') && secOtro.trim()) {
+      const i = lista.indexOf('Otro'); lista[i] = secOtro.trim()
+    }
+    return lista.join('; ')
+  }
+  const toggleSec = (t) => setSecSel((s) => s.includes(t) ? s.filter((x) => x !== t) : [...s, t])
 
   async function guardar(e) {
     e.preventDefault()
@@ -151,7 +180,7 @@ export default function NuevaOT() {
       tipo_cliente: f.tipo_cliente, propietario: f.propietario.trim(),
       telefono: f.telefono.trim(), email: f.email.trim(), ciudad: ciudadFinal(),
       asesor: perfil?.nombre || '', tipo_ingreso: f.tipo_ingreso,
-      tecnico_principal: f.tecnico_principal.trim(), tecnicos_secundarios: f.tecnicos_secundarios.trim(),
+      tecnico_principal: tecPrincipalFinal(), tecnicos_secundarios: tecSecFinal(),
       monto_repuestos: +f.repuestos || 0, monto_lubricantes: +f.lubricantes || 0,
       monto_mano_obra: +f.mo || 0, monto_servicio_externo: +f.servicioExterno || 0,
       desc_servicio_externo: f.descSE.trim(), descuento: +f.descuento || 0, total_reparacion: total,
@@ -161,7 +190,7 @@ export default function NuevaOT() {
       tipo_documento: f.tipo_documento, nro_documento: f.nro_documento.trim(),
       sucursal: f.sucursal, email_asesor: perfil?.email || '',
       encuesta_aplica: f.encuesta_aplica,
-      enc_p1: f.enc_p1, enc_p2: f.enc_p2, enc_p3: f.enc_p3, enc_p4: f.enc_p4, enc_conocio: f.enc_conocio.trim(),
+      enc_p1: f.enc_p1, enc_p2: f.enc_p2, enc_p3: f.enc_p3, enc_p4: f.enc_p4, enc_conocio: conocioFinal(),
       presup_solicito: f.presup_solicito, presup_numero: f.presup_numero.trim(),
       presup_aprueba: f.presup_aprueba, presup_detalle: f.presup_detalle.trim(),
       direccion: f.direccion.trim(), direccion_ref: f.direccion_ref.trim()
@@ -181,12 +210,12 @@ export default function NuevaOT() {
 
     // Envío a la planilla DIDIAL_Base_OT (mismo backend que la app de registro)
     let aviso = `OT guardada — Total $${fmtMiles(total)}`
-    if (enviarSheet && sheetUrl) {
+    if (sheetUrl) {
       const payload = {
         nroOT: fila.ot_numero || '', fechaIngreso: f.fecha,
         asesor: perfil?.nombre || '', asesorEmail: perfil?.email || '', sucursal: f.sucursal,
-        tipoIngreso: f.tipo_ingreso, tecnicoPrincipal: f.tecnico_principal,
-        tecnicosSecundarios: f.tecnicos_secundarios,
+        tipoIngreso: f.tipo_ingreso, tecnicoPrincipal: tecPrincipalFinal(),
+        tecnicosSecundarios: tecSecFinal(),
         patente: patFmt, marca: marcaFinal(), modelo: f.modelo, cilindrada: f.cilindrada,
         anio: f.anio, km: f.km, tipoCliente: f.tipo_cliente, propietario: f.propietario,
         telefono: f.telefono, email: f.email, ciudad: ciudadFinal(),
@@ -200,16 +229,19 @@ export default function NuevaOT() {
         presupSolicito: f.presup_solicito, presupNumero: f.presup_numero,
         presupAprueba: f.presup_aprueba, presupDetalle: f.presup_detalle,
         encuestaAplica: f.encuesta_aplica, encP1Tiempo: f.enc_p1, encP2Atencion: f.enc_p2,
-        encP3Servicio: f.enc_p3, encP4Recomienda: f.enc_p4, encConocio: f.enc_conocio,
+        encP3Servicio: f.enc_p3, encP4Recomienda: f.enc_p4, encConocio: conocioFinal(),
         otInicio: new Date().toISOString()
       }
       await enviarASheet(sheetUrl, payload)
       aviso += ' · enviada a la planilla'
+    } else {
+      aviso += ' · (planilla no configurada)'
     }
 
     setGuardando(false)
     setMsg({ t: 'ok', m: aviso })
     setF({ ...VACIA, fecha: hoy(), fecha_entrega: hoy() }); setVeh(null)
+    setSecSel([]); setSecOtro('')
   }
 
   return (
@@ -243,11 +275,25 @@ export default function NuevaOT() {
           </select>
         </Campo>
         <Campo label="Técnico Principal">
-          <input className="input" value={f.tecnico_principal} onChange={(e) => set('tecnico_principal', e.target.value)} />
+          <select className="input" value={f.tecnico_principal} onChange={(e) => set('tecnico_principal', e.target.value)}>
+            <option value="">Seleccionar…</option>
+            {OT_TECNICOS.map((t) => <option key={t}>{t}</option>)}
+            <option>Otro</option>
+          </select>
+          {f.tecnico_principal === 'Otro' && (
+            <input className="input mt-2" value={f.tecPrincipalOtro} onChange={(e) => set('tecPrincipalOtro', e.target.value)} placeholder="Nombre del técnico…" autoFocus />
+          )}
         </Campo>
-        <Campo label="Técnicos Secundarios">
-          <input className="input" value={f.tecnicos_secundarios} onChange={(e) => set('tecnicos_secundarios', e.target.value)} placeholder="Separados por ;" />
-        </Campo>
+        <div className="sm:col-span-2">
+          <label className="label">Técnicos Secundarios <span className="text-slate-400 font-normal">(uno o más)</span></label>
+          <div className="flex flex-wrap gap-2">
+            {OT_TECNICOS.map((t) => <Chip key={t} activo={secSel.includes(t)} onClick={() => toggleSec(t)}>{t}</Chip>)}
+            <Chip activo={secSel.includes('Otro')} onClick={() => toggleSec('Otro')}>Otro</Chip>
+          </div>
+          {secSel.includes('Otro') && (
+            <input className="input mt-2" value={secOtro} onChange={(e) => setSecOtro(e.target.value)} placeholder="Nombre del técnico…" autoFocus />
+          )}
+        </div>
       </Seccion>
 
       <Seccion n={2} titulo="Datos del Vehículo">
@@ -302,18 +348,18 @@ export default function NuevaOT() {
       </Seccion>
 
       <Seccion n={4} titulo="Información de la Reparación">
-        <Campo label="Repuestos"><input className="input" type="number" min="0" value={f.repuestos} onChange={(e) => set('repuestos', e.target.value)} placeholder="0" /></Campo>
-        <Campo label="Lubricantes e Insumos"><input className="input" type="number" min="0" value={f.lubricantes} onChange={(e) => set('lubricantes', e.target.value)} placeholder="0" /></Campo>
+        <Campo label="Repuestos"><Monto value={f.repuestos} onChange={(e) => set('repuestos', e.target.value)} /></Campo>
+        <Campo label="Lubricantes e Insumos"><Monto value={f.lubricantes} onChange={(e) => set('lubricantes', e.target.value)} /></Campo>
         <Campo label="Mano de Obra" req={!esGarantia} hint={esGarantia ? '✓ Garantía: puede ser $0' : ''}>
-          <input className="input" type="number" min="0" value={f.mo} onChange={(e) => set('mo', e.target.value)} placeholder="0" />
+          <Monto value={f.mo} onChange={(e) => set('mo', e.target.value)} />
         </Campo>
-        <Campo label="Servicio Externo"><input className="input" type="number" min="0" value={f.servicioExterno} onChange={(e) => set('servicioExterno', e.target.value)} placeholder="0" /></Campo>
+        <Campo label="Servicio Externo"><Monto value={f.servicioExterno} onChange={(e) => set('servicioExterno', e.target.value)} /></Campo>
         {(+f.servicioExterno || 0) > 0 && (
           <Campo label="Detalle del Servicio Externo" req full>
             <input className="input" value={f.descSE} onChange={(e) => set('descSE', e.target.value)} placeholder="Proveedor y concepto…" />
           </Campo>
         )}
-        <Campo label="Descuento"><input className="input" type="number" min="0" value={f.descuento} onChange={(e) => set('descuento', e.target.value)} placeholder="0" /></Campo>
+        <Campo label="Descuento"><Monto value={f.descuento} onChange={(e) => set('descuento', e.target.value)} /></Campo>
         <Campo label="Total Reparación">
           <div className="input bg-mist font-bold text-deep">$ {fmtMiles(total)}</div>
         </Campo>
@@ -380,15 +426,38 @@ export default function NuevaOT() {
           </select>
         </Campo>
         {f.encuesta_aplica === 'Sí' && <>
-          {[['enc_p1', 'P1 · Entrega a tiempo'], ['enc_p2', 'P2 · Atención al cliente'], ['enc_p3', 'P3 · Servicio mecánico'], ['enc_p4', 'P4 · Recomendaría']].map(([k, lbl]) => (
-            <Campo key={k} label={lbl}>
-              <select className="input" value={f[k]} onChange={(e) => set(k, e.target.value)}>
-                <option value="">—</option>
-                {[1, 2, 3, 4, 5, 6, 7].map((n) => <option key={n}>{n}</option>)}
-              </select>
-            </Campo>
+          {OT_ENCUESTA.map((q) => (
+            <div key={q.k} className="sm:col-span-2">
+              <div className="text-sm font-medium text-ink mb-1.5">
+                <span className="text-deep font-bold mr-1">{q.n}.</span>{q.titulo}
+              </div>
+              <div className="flex gap-1.5">
+                {[1, 2, 3, 4, 5, 6, 7].map((n) => (
+                  <button type="button" key={n} onClick={() => set(q.k, String(n))}
+                    className={`w-9 h-9 rounded-lg border text-sm font-semibold transition ${String(n) === f[q.k]
+                      ? 'bg-deep text-white border-deep' : 'bg-white text-slate-500 border-slate-200 hover:border-deep'}`}>{n}</button>
+                ))}
+              </div>
+              <div className="flex justify-between text-[11px] text-slate-400 mt-1">
+                <span>1 — {q.izq}</span><span>7 — {q.der}</span>
+              </div>
+            </div>
           ))}
-          <Campo label="¿Cómo conoció DIDIAL?" full><input className="input" value={f.enc_conocio} onChange={(e) => set('enc_conocio', e.target.value)} /></Campo>
+          <div className="sm:col-span-2">
+            <label className="label">5. ¿Cómo conoció DIDIAL? <span className="text-slate-400 font-normal">(mide nuestras estrategias de marketing)</span></label>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {OT_CONOCIO.map((c) => (
+                <button type="button" key={c.v} onClick={() => set('enc_conocio', c.v)}
+                  className={`px-3 py-2 rounded-lg border text-sm transition text-center ${f.enc_conocio === c.v
+                    ? 'bg-deep text-white border-deep font-semibold' : 'bg-white text-slate-600 border-slate-200 hover:border-deep'}`}>
+                  {c.e} {c.v}
+                </button>
+              ))}
+            </div>
+            {f.enc_conocio === 'Otro' && (
+              <input className="input mt-2" value={f.conocioOtro} onChange={(e) => set('conocioOtro', e.target.value)} placeholder="Especifica cómo nos conoció…" autoFocus />
+            )}
+          </div>
         </>}
       </Seccion>
 
@@ -396,11 +465,9 @@ export default function NuevaOT() {
         <div className={`rounded-lg px-4 py-2.5 text-sm ${msg.t === 'ok' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>{msg.m}</div>
       )}
       <div className="flex justify-between items-center gap-3 sticky bottom-0 bg-paper/80 backdrop-blur py-3">
-        <label className={`flex items-center gap-2 text-sm ${sheetUrl ? 'text-slate-600' : 'text-slate-300'}`}>
-          <input type="checkbox" checked={enviarSheet && !!sheetUrl} disabled={!sheetUrl}
-                 onChange={(e) => setEnviarSheet(e.target.checked)} />
-          Enviar también a la planilla DIDIAL_Base_OT
-        </label>
+        <span className="text-xs text-slate-500">
+          {sheetUrl ? 'Se enviará a la planilla DIDIAL_Base_OT' : 'Planilla no configurada para esta empresa'}
+        </span>
         <button type="submit" disabled={guardando} className="btn-primary px-6">
           {guardando ? 'Guardando…' : 'Guardar OT'}
         </button>

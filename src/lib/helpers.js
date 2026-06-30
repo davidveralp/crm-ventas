@@ -333,3 +333,17 @@ export function fmtFonoOT(value) {
   if (v.startsWith('+569')) { const d = v.slice(4).slice(0, 8); return '+56 9 ' + d.slice(0, 4) + ' ' + d.slice(4) }
   return value || ''
 }
+
+// ---- OT · técnicos, encuesta y "cómo conoció" (réplica fiel) -------
+export const OT_TECNICOS = ['Ignacio', 'Shelmy', 'Felipe', 'Sergio', 'Gabriel', 'Javier', 'Wilson', 'Alexis', 'Andrés']
+export const OT_CONOCIO = [
+  { v: 'Recomendación', e: '🗣️' }, { v: 'Video de Instagram', e: '📸' },
+  { v: 'Facebook', e: '📘' }, { v: 'Google', e: '🔍' },
+  { v: 'De paso', e: '🚶' }, { v: 'Radio', e: '📻' }, { v: 'Otro', e: '💬' }
+]
+export const OT_ENCUESTA = [
+  { k: 'enc_p1', n: 1, titulo: '¿Su vehículo fue entregado justo a tiempo?', izq: 'No fue entregado a tiempo', der: 'Entregado a tiempo' },
+  { k: 'enc_p2', n: 2, titulo: '¿Cómo fue la atención al cliente?', izq: 'Mala atención', der: 'Excelente atención' },
+  { k: 'enc_p3', n: 3, titulo: '¿Cómo califica el servicio mecánico realizado vs. servicios anteriores?', izq: 'Mal servicio', der: 'Excelente servicio' },
+  { k: 'enc_p4', n: 4, titulo: '¿Recomendaría nuestros servicios?', izq: 'No lo recomiendo', der: 'Sí lo recomiendo' }
+]
