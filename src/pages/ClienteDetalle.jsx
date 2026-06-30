@@ -6,14 +6,13 @@ import { Pill, Modal, StatCard, SelectMarca, TimePicker } from '../components/UI
 import {
   segLabel, segColor, fmtCLP, fmtFecha, tipoClienteLabel, TIPOS_CLIENTE,
   TIPOS_ACTIVIDAD, RESULTADOS, VENTANAS, ESTADOS_PRESUPUESTO, ETAPAS_OPCIONALES,
-  buildOtUrl, formatRut, formatTelefono, formatPatente, patenteLimpia,
+  formatRut, formatTelefono, formatPatente, patenteLimpia,
   TIPOS_SERVICIO, tipoServicioLabel, RESULTADO_A_ETAPA, fmtHora,
   ESTADOS_GESTION, estadoGestionLabel, estadoGestionColor, ES_CIERRE,
   TIPOS_AGENDA, agendaLabel, colorAgenda,
   TIPOS_CONTACTO, MOTIVOS_CIERRE, motivoCierreLabel
 } from '../lib/helpers'
 
-const OT_URL = import.meta.env.VITE_REGISTRO_OT_URL || ''
 
 const ACT_VACIA = {
   tipo: 'llamada', resultado: 'pendiente', tipo_servicio: '',
@@ -254,22 +253,22 @@ export default function ClienteDetalle() {
     await supabase.from('vehiculos').delete().eq('id', vid); cargar()
   }
 
-  // Deriva a una nueva OT en el formulario externo, prellenando datos.
+  // Deriva a una nueva OT en el módulo interno del CRM, prellenando datos por URL.
   function nuevaOT(vehiculo) {
-    if (!OT_URL) {
-      alert('Configura la URL del registro de OT en VITE_REGISTRO_OT_URL (Vercel) para habilitar este botón.')
-      return
-    }
     const params = {
-      nombre: cliente.nombre, telefono: cliente.telefono, email: cliente.email,
-      ciudad: cliente.ciudad, documento: cliente.rut,
-      marca: vehiculo?.marca || cliente.marca_principal,
+      nombre: cliente.nombre || '', telefono: cliente.telefono || '', email: cliente.email || '',
+      ciudad: cliente.ciudad || '', documento: cliente.rut || '',
+      direccion: cliente.direccion || '',
+      marca: vehiculo?.marca || cliente.marca_principal || '',
       modelo: vehiculo?.modelo || '',
       anio: vehiculo?.anio || '',
-      patente: patenteLimpia(vehiculo?.patente),
+      patente: patenteLimpia(vehiculo?.patente) || '',
       km: vehiculo?.km_actual_estimado || vehiculo?.km_ultimo || ''
     }
-    window.open(buildOtUrl(OT_URL, params), '_blank', 'noopener')
+    const qs = new URLSearchParams(
+      Object.fromEntries(Object.entries(params).filter(([, v]) => v !== '' && v != null))
+    ).toString()
+    navigate(`/nueva-ot?${qs}`)
   }
 
   function abrirEditarVehiculo(v) {

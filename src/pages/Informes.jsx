@@ -3,9 +3,11 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from 
 import { supabase, fetchAllRows } from '../lib/supabase'
 import { StatCard } from '../components/UI'
 import { SEGMENTOS, segLabel, fmtCLP, TIPOS_SERVICIO } from '../lib/helpers'
+import PanelOperativo from './PanelOperativo'
 
 export default function Informes() {
   const [d, setD] = useState(null)
+  const [vista, setVista] = useState('operativo')
 
   useEffect(() => { cargar() }, [])
 
@@ -157,13 +159,36 @@ export default function Informes() {
              conversionGlobal: d.clientes.length ? Math.round((convTotal / d.clientes.length) * 100) : 0 }
   }, [d])
 
+  const Tabs = () => (
+    <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-sm">
+      <button onClick={() => setVista('operativo')} className={`px-3 py-1.5 ${vista === 'operativo' ? 'bg-deep text-white' : 'text-slate-500'}`}>Panel operativo</button>
+      <button onClick={() => setVista('comercial')} className={`px-3 py-1.5 ${vista === 'comercial' ? 'bg-deep text-white' : 'text-slate-500'}`}>Comercial</button>
+    </div>
+  )
+
+  if (vista === 'operativo') return (
+    <div className="space-y-5">
+      <div className="flex items-end justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-ink">Informes</h1>
+          <p className="text-sm text-slate-500">Panel operativo en vivo · administración</p>
+        </div>
+        <Tabs />
+      </div>
+      <PanelOperativo />
+    </div>
+  )
+
   if (!r) return <div className="text-slate-400 text-sm">Cargando informes…</div>
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-bold text-ink">Informes</h1>
-        <p className="text-sm text-slate-500">Resumen de gestión comercial · administración</p>
+      <div className="flex items-end justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-ink">Informes</h1>
+          <p className="text-sm text-slate-500">Resumen de gestión comercial · administración</p>
+        </div>
+        <Tabs />
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
