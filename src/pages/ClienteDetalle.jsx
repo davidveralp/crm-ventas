@@ -10,8 +10,10 @@ import {
   TIPOS_SERVICIO, tipoServicioLabel, RESULTADO_A_ETAPA, fmtHora,
   ESTADOS_GESTION, estadoGestionLabel, estadoGestionColor, ES_CIERRE,
   TIPOS_AGENDA, agendaLabel, colorAgenda,
-  TIPOS_CONTACTO, MOTIVOS_CIERRE, motivoCierreLabel
+  TIPOS_CONTACTO, MOTIVOS_CIERRE, motivoCierreLabel,
+  ESTADOS_TALLER
 } from '../lib/helpers'
+import { notificar } from '../lib/notificar'
 
 
 const ACT_VACIA = {
@@ -58,6 +60,9 @@ export default function ClienteDetalle() {
   const [expandida, setExpandida] = useState({}) // gestion_id -> bool
   const [cerrando, setCerrando] = useState(null)  // { g, estado } al cerrar una gestión
   const [motivoCierre, setMotivoCierre] = useState('venta_concretada')
+  const [trabajos, setTrabajos] = useState([])
+  const [modalTaller, setModalTaller] = useState(null) // vehículo a derivar
+  const [ft, setFt] = useState({ servicio: '', tareas: '', obs: '' })
 
   useEffect(() => { cargar() }, [id])
 
@@ -65,18 +70,20 @@ export default function ClienteDetalle() {
     const { data: c } = await supabase.from('clientes')
       .select('*, usuarios(nombre)').eq('id', id).single()
     setCliente(c)
-    const [vh, est, actv, pre, srv, ges] = await Promise.all([
+    const [vh, est, actv, pre, srv, ges, tt] = await Promise.all([
       supabase.from('vehiculos').select('*').eq('cliente_id', id).order('creado_en'),
       supabase.from('pipeline_estados').select('*').order('orden'),
       supabase.from('actividades').select('*').eq('cliente_id', id).order('fecha', { ascending: false }),
       supabase.from('presupuestos').select('*').eq('cliente_id', id).order('fecha_emision', { ascending: false }),
       supabase.from('servicios').select('*').eq('cliente_id', id).order('fecha', { ascending: false }),
       supabase.from('gestiones').select('*, vehiculos(marca,modelo,patente), campanas(nombre)')
-        .eq('cliente_id', id).order('creado_en', { ascending: false })
+        .eq('cliente_id', id).order('creado_en', { ascending: false }),
+      supabase.from('trabajos_taller').select('*').eq('cliente_id', id).order('creado_en', { ascending: false })
     ])
     setVehiculos(vh.data || []); setEstados(est.data || [])
     setActividades(actv.data || []); setPresupuestos(pre.data || [])
     setServicios(srv.data || []); setGestiones(ges.data || [])
+    setTrabajos(tt.data || [])
     if (esAdmin) {
       const { data: v } = await supabase.from('usuarios')
         .select('id,nombre').eq('rol', 'vendedor').eq('activo', true)
@@ -271,6 +278,32 @@ export default function ClienteDetalle() {
     navigate(`/nueva-ot?${qs}`)
   }
 
+  // Deriva el vehículo al taller: crea el trabajo operativo + tareas iniciales.
+  async function enviarAlTaller() {
+    const v = modalTaller
+    if (!ft.servicio.trim()) return alert('Indica el servicio solicitado.')
+    const titulo = [v?.patente, v?.marca, v?.modelo, cliente.nombre].filter(Boolean).join(' ')
+    const { data: t, error } = await supabase.from('trabajos_taller').insert({
+      empresa_id: perfil.empresa_id, cliente_id: cliente.id, vehiculo_id: v?.id || null,
+      titulo, servicio_solicitado: ft.servicio.trim(), observaciones_cliente: ft.obs.trim(),
+      asesor_id: perfil.id
+    }).select().single()
+    if (error) return alert('Error: ' + error.message)
+    const tareas = ft.tareas.split('\n').map((x) => x.trim()).filter(Boolean)
+    if (tareas.length) {
+      await supabase.from('tareas_taller').insert(tareas.map((titulo, i) => ({
+        empresa_id: perfil.empresa_id, trabajo_id: t.id, titulo, orden: i
+      })))
+    }
+    // Gestión comercial abierta pasa a "En taller"
+    const abierta = gestiones.find((g) => g.abierta)
+    if (abierta) await supabase.from('gestiones').update({ estado: 'en_taller' }).eq('id', abierta.id)
+    notificar({ empresa_id: perfil.empresa_id, rol: 'jefe_taller',
+      titulo: 'Nuevo vehículo derivado al taller', cuerpo: `${titulo} · ${ft.servicio}`, url: '/taller' })
+    setModalTaller(null); setFt({ servicio: '', tareas: '', obs: '' })
+    cargar()
+  }
+
   function abrirEditarVehiculo(v) {
     setVeh({
       id: v.id, patente: v.patente || '', marca: v.marca || '', modelo: v.modelo || '',
@@ -418,74 +451,6 @@ export default function ClienteDetalle() {
         )}
       </div>
 
-      {/* Vehículos + historial de mantención */}
-      <div className="card p-5">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold text-ink">Vehículos ({vehiculos.length})</h3>
-          <button className="btn-primary text-xs py-1.5"
-                  onClick={() => { setVeh(VEH_VACIO); setModalV(true) }}>+ Agregar vehículo</button>
-        </div>
-        {vehiculos.length ? (
-          <div className="space-y-3">
-            {vehiculos.map((v) => {
-              const km = v.km_actual_estimado || v.km_ultimo
-              return (
-                <div key={v.id} className="border border-slate-200 rounded-lg p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="font-medium text-ink">
-                        {v.marca} {v.modelo}{v.anio ? <span className="text-slate-400"> · {v.anio}</span> : null}
-                      </div>
-                      <div className="text-xs text-slate-400 mt-0.5">Patente {v.patente ? formatPatente(v.patente) : '—'}</div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {v.ventana && <Pill color={VENTANAS[v.ventana]?.color}>{VENTANAS[v.ventana]?.label}</Pill>}
-                      <button onClick={() => nuevaOT(v)} className="text-xs text-didial-red font-medium hover:underline">Nueva OT</button>
-                      <button onClick={() => abrirEditarVehiculo(v)} className="text-xs text-deep hover:underline">Editar</button>
-                      <button onClick={() => borrarVehiculo(v.id)} className="text-xs text-slate-300 hover:text-red-500">✕</button>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 mt-2 text-xs text-slate-500">
-                    <div><span className="text-slate-400">Km actual:</span> {km ? km.toLocaleString('es-CL') : '—'}</div>
-                    <div><span className="text-slate-400">Próx. servicio:</span> {v.proximo_servicio_km ? v.proximo_servicio_km.toLocaleString('es-CL') + ' km' : '—'}</div>
-                    <div><span className="text-slate-400">Mantención:</span> {MANT[v.tipo_mantencion] || '—'}</div>
-                  </div>
-                  {(() => {
-                    const hist = servicios.filter((s) =>
-                      s.vehiculo_id === v.id ||
-                      (s.patente && v.patente && patenteLimpia(s.patente) === patenteLimpia(v.patente)))
-                    if (!hist.length) return null
-                    return (
-                      <div className="mt-3 border-t border-slate-100 pt-2">
-                        <div className="text-[11px] font-semibold text-slate-400 mb-1">Historial de servicios ({hist.length})</div>
-                        <div className="space-y-1 max-h-40 overflow-y-auto">
-                          {hist.map((s) => (
-                            <div key={s.id} className="flex items-center justify-between gap-2 text-xs">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span className="text-slate-400 w-20 shrink-0">{s.fecha ? fmtFecha(s.fecha) : '—'}</span>
-                                <span className="text-ink truncate">
-                                  {tipoServicioLabel(s.tipo_servicio)}
-                                  {s.tipo_servicio_2 ? ` + ${tipoServicioLabel(s.tipo_servicio_2)}` : ''}
-                                  {s.descripcion ? ` · ${s.descripcion}` : ''}
-                                </span>
-                              </div>
-                              <span className="text-slate-500 shrink-0">{s.monto ? fmtCLP(s.monto) : ''}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )
-                  })()}
-                </div>
-              )
-            })}
-          </div>
-        ) : <p className="text-sm text-slate-400">Sin vehículos registrados.</p>}
-        <p className="text-[11px] text-slate-400 mt-3">
-          El historial de OT por patente se alimenta desde la base de OT (sincronización). Aquí ves la mantención vigente de cada vehículo.
-        </p>
-      </div>
-
       {/* Gestiones: procesos comerciales abiertos */}
       <div className="card p-5">
         <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
@@ -589,6 +554,112 @@ export default function ClienteDetalle() {
           </div>
         )}
       </div>
+      {/* Vehículos + historial de mantención */}
+      <div className="card p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold text-ink">Vehículos ({vehiculos.length})</h3>
+          <button className="btn-primary text-xs py-1.5"
+                  onClick={() => { setVeh(VEH_VACIO); setModalV(true) }}>+ Agregar vehículo</button>
+        </div>
+        {vehiculos.length ? (
+          <div className="space-y-3">
+            {vehiculos.map((v) => {
+              const km = v.km_actual_estimado || v.km_ultimo
+              return (
+                <div key={v.id} className="border border-slate-200 rounded-lg p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="font-medium text-ink">
+                        {v.marca} {v.modelo}{v.anio ? <span className="text-slate-400"> · {v.anio}</span> : null}
+                      </div>
+                      <div className="text-xs text-slate-400 mt-0.5">Patente {v.patente ? formatPatente(v.patente) : '—'}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {v.ventana && <Pill color={VENTANAS[v.ventana]?.color}>{VENTANAS[v.ventana]?.label}</Pill>}
+                      <button onClick={() => nuevaOT(v)} className="text-xs text-didial-red font-medium hover:underline">Nueva OT</button>
+                      <button onClick={() => { setModalTaller(v); setFt({ servicio: '', tareas: '', obs: '' }) }} className="text-xs text-deep font-medium hover:underline">→ Taller</button>
+                      <button onClick={() => abrirEditarVehiculo(v)} className="text-xs text-deep hover:underline">Editar</button>
+                      <button onClick={() => borrarVehiculo(v.id)} className="text-xs text-slate-300 hover:text-red-500">✕</button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 mt-2 text-xs text-slate-500">
+                    <div><span className="text-slate-400">Km actual:</span> {km ? km.toLocaleString('es-CL') : '—'}</div>
+                    <div><span className="text-slate-400">Próx. servicio:</span> {v.proximo_servicio_km ? v.proximo_servicio_km.toLocaleString('es-CL') + ' km' : '—'}</div>
+                    <div><span className="text-slate-400">Mantención:</span> {MANT[v.tipo_mantencion] || '—'}</div>
+                  </div>
+                  {(() => {
+                    const tt = trabajos.filter((t) => t.vehiculo_id === v.id && t.estado !== 'completada')
+                    if (!tt.length) return null
+                    const ORDEN = Object.keys(ESTADOS_TALLER)
+                    return tt.map((t) => {
+                      const idx = ORDEN.indexOf(t.estado)
+                      const fechaDe = (e) => {
+                        if (e === 'ingreso') return t.creado_en
+                        const h = (t.historial || []).filter((x) => x.estado === e).pop()
+                        return h?.fecha
+                      }
+                      return (
+                        <div key={t.id} className="mt-3 border-t border-slate-100 pt-2">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-[11px] font-semibold text-slate-400">EN TALLER · {t.servicio_solicitado || 'servicio'}</span>
+                            <Pill color={ESTADOS_TALLER[t.estado]?.color}>{ESTADOS_TALLER[t.estado]?.label}</Pill>
+                          </div>
+                          <div className="flex items-center gap-0 overflow-x-auto pb-1">
+                            {ORDEN.filter((e) => !['retroceso'].includes(e)).map((e, i, arr) => {
+                              const pos = ORDEN.indexOf(e)
+                              const pasado = pos <= idx
+                              const f = fechaDe(e)
+                              return (
+                                <div key={e} className="flex items-center shrink-0" title={ESTADOS_TALLER[e].label + (f ? ' · ' + new Date(f).toLocaleString('es-CL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '')}>
+                                  <span className={`w-3 h-3 rounded-full border-2 ${pasado ? 'border-transparent' : 'border-slate-200 bg-white'}`}
+                                        style={pasado ? { background: ESTADOS_TALLER[e].color } : {}} />
+                                  {i < arr.length - 1 && <span className={`w-5 h-0.5 ${pos < idx ? 'bg-deep/40' : 'bg-slate-200'}`} />}
+                                </div>
+                              )
+                            })}
+                          </div>
+                          {t.observaciones_cliente && <div className="text-[11px] text-slate-400 mt-1">💬 {t.observaciones_cliente}</div>}
+                        </div>
+                      )
+                    })
+                  })()}
+                  {(() => {
+                    const hist = servicios.filter((s) =>
+                      s.vehiculo_id === v.id ||
+                      (s.patente && v.patente && patenteLimpia(s.patente) === patenteLimpia(v.patente)))
+                    if (!hist.length) return null
+                    return (
+                      <div className="mt-3 border-t border-slate-100 pt-2">
+                        <div className="text-[11px] font-semibold text-slate-400 mb-1">Historial de servicios ({hist.length})</div>
+                        <div className="space-y-1 max-h-40 overflow-y-auto">
+                          {hist.map((s) => (
+                            <div key={s.id} className="flex items-center justify-between gap-2 text-xs">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="text-slate-400 w-20 shrink-0">{s.fecha ? fmtFecha(s.fecha) : '—'}</span>
+                                <span className="text-ink truncate">
+                                  {s.ot_numero ? <b className="text-deep">OT {s.ot_numero} · </b> : ''}
+                                  {tipoServicioLabel(s.tipo_servicio)}
+                                  {s.tipo_servicio_2 ? ` + ${tipoServicioLabel(s.tipo_servicio_2)}` : ''}
+                                  {s.descripcion ? ` · ${s.descripcion}` : ''}
+                                </span>
+                              </div>
+                              <span className="text-slate-500 shrink-0">{s.monto ? fmtCLP(s.monto) : ''}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })()}
+                </div>
+              )
+            })}
+          </div>
+        ) : <p className="text-sm text-slate-400">Sin vehículos registrados.</p>}
+        <p className="text-[11px] text-slate-400 mt-3">
+          El historial de OT por patente se alimenta desde la base de OT (sincronización). Aquí ves la mantención vigente de cada vehículo.
+        </p>
+      </div>
+
 
       {/* Modal registrar gestión: Contacto / Presupuesto / Agendamiento */}
       <Modal abierto={modal} onClose={() => setModal(false)}
@@ -861,6 +932,33 @@ export default function ClienteDetalle() {
             </div>
           </form>
         )}
+      </Modal>
+
+      {/* Modal derivar al taller */}
+      <Modal abierto={!!modalTaller} onClose={() => setModalTaller(null)}
+             titulo={`Enviar al taller · ${modalTaller?.patente || ''} ${modalTaller?.marca || ''} ${modalTaller?.modelo || ''}`}>
+        <div className="space-y-4">
+          <div>
+            <label className="label">Servicio solicitado <span className="text-red-500">*</span></label>
+            <input className="input" value={ft.servicio} onChange={(e) => setFt({ ...ft, servicio: e.target.value })}
+                   placeholder="Ej: Revisión preventiva, cambio de embrague…" autoFocus />
+          </div>
+          <div>
+            <label className="label">Tareas que implica <span className="text-slate-400 font-normal">(una por línea)</span></label>
+            <textarea className="input" rows={4} value={ft.tareas} onChange={(e) => setFt({ ...ft, tareas: e.target.value })}
+                      placeholder={'Diagnóstico con escáner\nRevisión tren delantero\nCambio de aceite'} />
+          </div>
+          <div>
+            <label className="label">Observaciones del cliente <span className="text-slate-400 font-normal">(dolor del cliente)</span></label>
+            <textarea className="input" rows={2} value={ft.obs} onChange={(e) => setFt({ ...ft, obs: e.target.value })}
+                      placeholder="Lo que el cliente describe: ruidos, síntomas, desde cuándo…" />
+          </div>
+          <p className="text-[11px] text-slate-400">Se notificará al Jefe de Taller para asignar las tareas a los técnicos. La gestión comercial abierta pasará a estado "En taller".</p>
+          <div className="flex justify-end gap-2">
+            <button className="btn-soft" onClick={() => setModalTaller(null)}>Cancelar</button>
+            <button className="btn-primary" onClick={enviarAlTaller}>Enviar al taller</button>
+          </div>
+        </div>
       </Modal>
 
       {/* Modal vehículo (agregar/editar) */}

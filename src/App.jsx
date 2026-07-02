@@ -10,6 +10,7 @@ import Gestiones from './pages/Gestiones'
 import Email from './pages/Email'
 import NuevaOT from './pages/NuevaOT'
 import Configuracion from './pages/Configuracion'
+import Taller from './pages/Taller'
 import Agenda from './pages/Agenda'
 import Calendario from './pages/Calendario'
 import Informes from './pages/Informes'
@@ -43,6 +44,7 @@ export default function App() {
       <Route path="/presupuestos" element={conLayout(<Presupuestos />)} />
       <Route path="/datos"       element={conLayout(<Datos />)} />
       <Route path="/nueva-ot"    element={conLayout(<NuevaOT />)} />
+      <Route path="/taller"      element={conLayout(<Taller />)} />
       <Route path="/configuracion" element={
         <ProtectedRoute soloAdmin><Layout><Configuracion /></Layout></ProtectedRoute>
       } />

@@ -47,6 +47,26 @@ export default function Clientes() {
     return [...set].sort()
   }, [lista])
 
+  // Búsqueda por patente o N° de OT: resuelve cliente_ids en vehiculos/servicios
+  const [idsExtra, setIdsExtra] = useState(null)
+  useEffect(() => {
+    const q = busca.trim()
+    if (q.length < 3) { setIdsExtra(null); return }
+    const timer = setTimeout(async () => {
+      const limpia = q.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
+      const [veh, srv] = await Promise.all([
+        supabase.from('vehiculos').select('cliente_id, patente').ilike('patente', `%${limpia.length >= 4 ? limpia.replace(/(..)(?=.)/g, '$1 ').trim() : q}%`).limit(50),
+        supabase.from('servicios').select('cliente_id, ot_numero').ilike('ot_numero', `%${q}%`).limit(50)
+      ])
+      // patente también sin espacios
+      const { data: veh2 } = await supabase.from('vehiculos').select('cliente_id, patente').ilike('patente', `%${q}%`).limit(50)
+      const ids = new Set([...(veh.data || []), ...(veh2 || []), ...(srv.data || [])]
+        .map((r) => r.cliente_id).filter(Boolean))
+      setIdsExtra(ids)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [busca])
+
   const filtrada = useMemo(() => {
     const q = busca.toLowerCase()
     return lista.filter((c) =>
@@ -57,9 +77,11 @@ export default function Clientes() {
         (estadoFiltro === 'sin' ? !c.estado_id : c.estado_id === estadoFiltro)) &&
       (!q || c.nombre?.toLowerCase().includes(q) ||
              c.telefono?.includes(q) ||
-             c.email?.toLowerCase().includes(q))
+             c.email?.toLowerCase().includes(q) ||
+             c.rut?.toLowerCase().includes(q) ||
+             (idsExtra && idsExtra.has(c.id)))
     )
-  }, [lista, busca, segFiltro, marcaFiltro, vendFiltro, estadoFiltro])
+  }, [lista, busca, segFiltro, marcaFiltro, vendFiltro, estadoFiltro, idsExtra])
 
   const estadoDe = (id) => estados.find((e) => e.id === id)
 
@@ -110,7 +132,7 @@ export default function Clientes() {
       </div>
 
       <div className="grid grid-cols-2 md:flex md:flex-wrap gap-3">
-        <input className="input md:max-w-xs col-span-2" placeholder="Buscar por nombre, teléfono o correo…"
+        <input className="input md:max-w-xs col-span-2" placeholder="Buscar por nombre, RUT, teléfono, patente o N° OT…"
                value={busca} onChange={(e) => setBusca(e.target.value)} />
         <select className="input md:max-w-[180px]" value={estadoFiltro} onChange={(e) => setEstadoFiltro(e.target.value)}>
           <option value="">Todos los estados</option>

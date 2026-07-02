@@ -217,6 +217,7 @@ export const ESTADOS_GESTION = {
   en_seguimiento:        { label: 'En seguimiento',        color: '#5B9BB5', cierre: false },
   agendada:              { label: 'Agendada',              color: '#B07A2E', cierre: false },
   asistio:               { label: 'Cliente asistió',       color: '#185FA5', cierre: false },
+  en_taller:             { label: 'En taller',             color: '#1f9d57', cierre: false },
   presupuesto_entregado: { label: 'Presupuesto entregado', color: '#7A5C8E', cierre: false },
   pendiente_decision:    { label: 'Pendiente decisión',    color: '#C98A1B', cierre: false },
   cerrada_ganada:        { label: 'Venta cerrada',         color: '#1D9E75', cierre: true },
@@ -347,3 +348,40 @@ export const OT_ENCUESTA = [
   { k: 'enc_p3', n: 3, titulo: '¿Cómo califica el servicio mecánico realizado vs. servicios anteriores?', izq: 'Mal servicio', der: 'Excelente servicio' },
   { k: 'enc_p4', n: 4, titulo: '¿Recomendaría nuestros servicios?', izq: 'No lo recomiendo', der: 'Sí lo recomiendo' }
 ]
+
+// ====================================================================
+// MÓDULO TALLER — pipeline operativo, tareas y notificaciones
+// ====================================================================
+export const ESTADOS_TALLER = {
+  por_designar:     { label: 'Por designar',            color: '#94a3b8' },
+  en_reparacion:    { label: 'En reparación',           color: '#2f6fb0' },
+  servicio_externo: { label: 'En rep. servicio externo',color: '#b46bc7' },
+  compra_repuestos: { label: 'Compra de repuestos',     color: '#3b82c4' },
+  pintura_dyp:      { label: 'Pintura/Desabolladura',   color: '#1aa88a' },
+  lavado:           { label: 'Lavado',                  color: '#8a8f98' },
+  alineacion:       { label: 'Alineación',              color: '#4aa3df' },
+  prueba_ruta:      { label: 'Prueba en ruta',          color: '#6b7a8a' },
+  retroceso:        { label: 'Retroceso',               color: '#5b6470' },
+  listo_entrega:    { label: 'Listo para entrega',      color: '#b0603a' },
+  completada:       { label: 'Completada',              color: '#1f9d57' }
+}
+export const PRIORIDADES_TALLER = {
+  normal:  { label: 'Normal',  color: '#94a3b8' },
+  alta:    { label: 'Alta',    color: '#e0a020' },
+  urgente: { label: 'Urgente', color: '#e0382b' }
+}
+export const ESTADOS_PRESUP_TALLER = {
+  solicitado: { label: 'Solicitado', color: '#94a3b8' },
+  cotizando:  { label: 'Cotizando',  color: '#4aa3df' },
+  enviado:    { label: 'Enviado al cliente', color: '#B07A2E' },
+  aprobado:   { label: 'Aprobado',   color: '#1f9d57' },
+  rechazado:  { label: 'Rechazado',  color: '#e0382b' },
+  parcial:    { label: 'Entrega parcial', color: '#7A5C8E' }
+}
+export const ROLES_TALLER = ['jefe_taller', 'tecnico', 'coordinador_adquisiciones', 'encargado_bodega']
+// hh:mm:ss para cronómetros
+export const fmtCrono = (seg) => {
+  const s = Math.max(0, Math.floor(seg || 0))
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60
+  return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' + String(x).padStart(2, '0')
+}

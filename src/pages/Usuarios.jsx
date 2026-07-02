@@ -3,8 +3,8 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { Pill, Modal } from '../components/UI'
 
-const ROLES = { admin: 'Administrador', vendedor: 'Vendedor', supervisor: 'Supervisor', postventa: 'Postventa' }
-const ROL_COLOR = { admin: '#1C4357', vendedor: '#185FA5', supervisor: '#7A5C8E', postventa: '#1D7A5F' }
+const ROLES = { admin: 'Administrador', vendedor: 'Vendedor / Asesor', supervisor: 'Supervisor', postventa: 'Postventa', jefe_taller: 'Jefe de Taller', tecnico: 'Técnico', coordinador_adquisiciones: 'Coordinador de Adquisiciones', encargado_bodega: 'Encargado de Bodega' }
+const ROL_COLOR = { admin: '#1C4357', vendedor: '#185FA5', supervisor: '#7A5C8E', postventa: '#1D7A5F', jefe_taller: '#b0603a', tecnico: '#2f6fb0', coordinador_adquisiciones: '#B07A2E', encargado_bodega: '#1aa88a' }
 const NUEVO = { nombre: '', email: '', password: '', rol: 'vendedor', activo: true }
 
 export default function Usuarios() {

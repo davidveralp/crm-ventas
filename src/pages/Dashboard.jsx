@@ -14,12 +14,14 @@ export default function Dashboard() {
   useEffect(() => { cargar() }, [])
 
   async function cargar() {
-    const [clientes, estados, actividades] = await Promise.all([
+    const inicioMes = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10)
+    const [clientes, estados, actividades, ventasMes] = await Promise.all([
       fetchAllRows('clientes', 'id,segmento,facturacion_total,estado_id,ultima_visita').then((d) => ({ data: d })),
       supabase.from('pipeline_estados').select('id,nombre,orden,color').order('orden'),
       supabase.from('actividades')
         .select('id,tipo,fecha,resultado,clientes(nombre)')
-        .order('fecha', { ascending: false }).limit(8)
+        .order('fecha', { ascending: false }).limit(8),
+      supabase.from('ordenes_trabajo').select('total_reparacion, asesor, fecha').gte('fecha', inicioMes)
     ])
 
     const cs = clientes.data || []
@@ -43,9 +45,14 @@ export default function Dashboard() {
     const cerrados = vendido ? cs.filter((c) => c.estado_id === vendido.id).length : 0
     const conversion = cs.length ? Math.round((cerrados / cs.length) * 100) : 0
 
+    // Ventas del mes en curso: del asesor logueado (o de todo el equipo si es admin)
+    const ots = ventasMes.data || []
+    const mias = esAdmin ? ots : ots.filter((o) => (o.asesor || '').toLowerCase() === (perfil?.nombre || '').toLowerCase())
+    const ventasAsesor = mias.reduce((a, o) => a + Number(o.total_reparacion || 0), 0)
+
     setM({
       totalClientes: cs.length,
-      facturacion: cs.reduce((a, c) => a + Number(c.facturacion_total || 0), 0),
+      ventasAsesor, otsMes: mias.length,
       conversion,
       embudo,
       segs,
@@ -66,8 +73,8 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard titulo="Clientes" valor={m.totalClientes} />
-        <StatCard titulo="Facturación cartera" valor={fmtCLP(m.facturacion)} />
-        <StatCard titulo="Tasa de conversión" valor={`${m.conversion}%`} sub="Vendidos / total" />
+        <StatCard titulo={esAdmin ? 'Ventas del equipo (mes)' : 'Mis ventas del mes'} valor={fmtCLP(m.ventasAsesor)} sub={`${m.otsMes} OT en el mes`} />
+        <StatCard titulo="Tasa de reconversión" valor={`${m.conversion}%`} sub="Clientes que vuelven a comprar" />
         <StatCard titulo="Actividades recientes" valor={m.actividades.length} />
       </div>
 

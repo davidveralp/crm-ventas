@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useConfig } from '../context/ConfigContext'
 import Recordatorios from './Recordatorios'
+import Campanita from './Campanita'
 
 const ICONS = {
   dashboard: 'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z',
@@ -18,12 +19,16 @@ const ICONS = {
   usuarios:  'M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4z',
   email:     'M4 6h16a1 1 0 011 1v10a1 1 0 01-1 1H4a1 1 0 01-1-1V7a1 1 0 011-1zM3.5 7.5l8.5 6 8.5-6',
   nuevaot:   'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M12 11v6m-3-3h6',
-  config:    'M4 8h9M17 8h3M4 16h3M11 16h9M13 6v4M7 14v4'
+  config:    'M4 8h9M17 8h3M4 16h3M11 16h9M13 6v4M7 14v4',
+  taller:    'M14.7 6.3a4 4 0 00-5.4 5.4L4 17v3h3l5.3-5.3a4 4 0 005.4-5.4l-2.4 2.4-2.3-2.3 2.7-2.1z'
 }
 
 const GRUPOS = [
   { titulo: null, items: [
     { to: '/', label: 'Dashboard', icon: 'dashboard' }
+  ]},
+  { titulo: 'Operación', items: [
+    { to: '/taller', label: 'Taller', icon: 'taller', feature: 'taller' }
   ]},
   { titulo: 'Comercial', items: [
     { to: '/clientes',   label: 'Clientes',   icon: 'clientes',   feature: 'crm' },
@@ -143,6 +148,7 @@ export default function Layout({ children }) {
         </nav>
         <div className="px-3 py-3 border-t border-white/10">
           <div className="flex items-center gap-3 px-2 mb-2">
+            <Campanita />
             <div className="grid place-items-center w-8 h-8 rounded-full bg-white/10 text-sm font-semibold">
               {(perfil?.nombre || '?').slice(0, 1).toUpperCase()}
             </div>
@@ -162,6 +168,9 @@ export default function Layout({ children }) {
       <div className="flex-1 flex flex-col min-w-0">
         <header className="md:hidden flex items-center justify-between carbon-sidebar text-white px-4 py-3">
           <span className="font-bold tracking-tight">{nombre || 'CRM'}</span>
+          <div className="flex items-center gap-2">
+            <Campanita />
+          </div>
           <button onClick={async () => { await logout(); navigate('/login') }}
                   className="text-sm text-sky/80">Salir</button>
         </header>
