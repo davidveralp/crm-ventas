@@ -103,10 +103,11 @@ export default function Presupuestos() {
                 <div className="text-xs font-semibold text-slate-400 uppercase mb-1">Detalle de ítems</div>
                 {(detalle.items || []).length ? (
                   <table className="w-full text-xs">
-                    <thead><tr className="text-slate-400 border-b"><th className="text-left py-1">Ítem</th><th className="text-right">Cant.</th><th className="text-right">Precio</th><th className="text-right">Stock</th></tr></thead>
+                    <thead><tr className="text-slate-400 border-b"><th className="text-left py-1">Cód.</th><th className="text-left">Descripción</th><th className="text-right">Cant.</th><th className="text-right">Monto</th><th className="text-right">Stock</th></tr></thead>
                     <tbody>
                       {detalle.items.map((x, i) => (
                         <tr key={i} className="border-b last:border-0">
+                          <td className="py-1.5 font-mono text-slate-500">{x.codigo || '—'}</td>
                           <td className="py-1.5"><span className="capitalize text-slate-400">{x.tipo}:</span> {x.detalle || '—'}</td>
                           <td className="text-right">{x.cant}</td>
                           <td className="text-right">{x.en_stock ? '—' : fmtCLP((+x.precio || 0) * (+x.cant || 1))}</td>

@@ -28,7 +28,9 @@ const GRUPOS = [
     { to: '/', label: 'Dashboard', icon: 'dashboard' }
   ]},
   { titulo: 'Operación', items: [
-    { to: '/taller', label: 'Taller', icon: 'taller', feature: 'taller' }
+    { to: '/taller', label: 'Taller', icon: 'taller', feature: 'taller' },
+    { to: '/presupuestos', label: 'Presupuestos', icon: 'presupuestos', feature: 'crm' },
+    { to: '/control-ot', label: 'Control OT', icon: 'datos', feature: 'ot' }
   ]},
   { titulo: 'Comercial', items: [
     { to: '/clientes',   label: 'Clientes',   icon: 'clientes',   feature: 'crm' },
@@ -39,7 +41,6 @@ const GRUPOS = [
     { to: '/nueva-ot',   label: 'Nueva OT',   icon: 'nuevaot',    feature: 'ot' }
   ]},
   { titulo: 'Datos', items: [
-    { to: '/presupuestos', label: 'Presupuestos', icon: 'presupuestos', feature: 'crm' },
     { to: '/datos', label: 'Importar / Exportar', icon: 'datos', feature: 'crm' }
   ]}
 ]

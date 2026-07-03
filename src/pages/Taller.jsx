@@ -69,6 +69,8 @@ export default function Taller() {
     const lbl = ESTADOS_TALLER[estado]?.label || estado
     if (estado === 'listo_entrega' && t.asesor_id) {
       notificar({ empresa_id: perfil.empresa_id, usuario_id: t.asesor_id, titulo: 'Vehículo listo para retiro', cuerpo: tituloDe(t), url: '/taller' })
+    } else if (estado === 'esperando_aprobacion' && t.asesor_id) {
+      notificar({ empresa_id: perfil.empresa_id, usuario_id: t.asesor_id, titulo: 'Presupuesto listo · conversar con el cliente', cuerpo: tituloDe(t), url: '/taller' })
     } else if (estado === 'compra_repuestos') {
       notificar({ empresa_id: perfil.empresa_id, rol: 'coordinador_adquisiciones', titulo: 'Gestionar adquisición de repuestos', cuerpo: tituloDe(t), url: '/taller' })
     } else if (t.asesor_id) {
@@ -132,7 +134,9 @@ export default function Taller() {
     const done = ts.filter((x) => x.estado === 'terminada').length
     const vencida = t.fecha_limite && !t.cerrado_en && new Date(t.fecha_limite) < new Date()
     return (
-      <button onClick={() => setSel(t)} className="w-full text-left card p-3 hover:shadow-md transition space-y-1.5">
+      <button onClick={() => setSel(t)} draggable={esJefe}
+        onDragStart={(e) => { e.dataTransfer.setData('text/trabajo', t.id); e.dataTransfer.effectAllowed = 'move' }}
+        className="w-full text-left card p-3 hover:shadow-md transition space-y-1.5 cursor-grab active:cursor-grabbing">
         <div className="text-[13px] font-semibold text-ink uppercase leading-snug">{tituloDe(t)}</div>
         <div className="flex items-center gap-2 flex-wrap text-[11px] text-slate-500">
           <span className="font-mono">⏱ {fmtCrono(crono(t, now))}</span>
@@ -193,7 +197,15 @@ export default function Taller() {
           {ORDEN_ESTADOS.map((e) => {
             const col = trabajos.filter((t) => t.estado === e)
             return (
-              <div key={e} className="min-w-[250px] w-[250px] shrink-0 rounded-xl bg-mist/50 p-2">
+              <div key={e} className="min-w-[250px] w-[250px] shrink-0 rounded-xl bg-mist/50 p-2"
+                   onDragOver={(ev) => { if (esJefe) { ev.preventDefault(); ev.dataTransfer.dropEffect = 'move' } }}
+                   onDrop={(ev) => {
+                     if (!esJefe) return
+                     ev.preventDefault()
+                     const id = ev.dataTransfer.getData('text/trabajo')
+                     const tr = trabajos.find((x) => x.id === id)
+                     if (tr && tr.estado !== e) moverEstado(tr, e)
+                   }}>
                 <div className="flex items-center gap-2 px-1 py-1.5">
                   <span className="pill text-white text-[10px]" style={{ background: ESTADOS_TALLER[e].color }}>{ESTADOS_TALLER[e].label.toUpperCase()}</span>
                   <span className="text-xs text-slate-400">{col.length}</span>
@@ -475,7 +487,7 @@ function PresupCard({ p, t, esJefe, esCompras, perfil, guardar, tituloDe }) {
   const est = ESTADOS_PRESUP_TALLER[p.estado] || {}
 
   const setItem = (i, campo, v) => { const n = items.map((x, j) => j === i ? { ...x, [campo]: v } : x); setItems(n) }
-  const agregar = (tipo) => setItems([...items, { tipo, detalle: '', cant: 1, precio: 0, en_stock: null }])
+  const agregar = (tipo) => setItems([...items, { tipo, codigo: '', detalle: '', cant: 1, precio: 0, en_stock: null }])
   const totalItems = items.reduce((s, x) => s + (x.en_stock ? 0 : (+x.precio || 0) * (+x.cant || 1)), 0)
 
   async function guardarItems(estado) {
@@ -504,7 +516,9 @@ function PresupCard({ p, t, esJefe, esCompras, perfil, guardar, tituloDe }) {
           {items.map((x, i) => (
             <div key={i} className="flex items-center gap-1.5 text-xs">
               <span className="pill bg-mist text-deep shrink-0 capitalize">{x.tipo}</span>
-              <input className="input text-xs flex-1" placeholder="Detalle…" value={x.detalle} disabled={!puedeEditar}
+              <input className="input text-xs w-24" placeholder="Cód." value={x.codigo || ''} disabled={!puedeEditar}
+                     onChange={(e) => setItem(i, 'codigo', e.target.value)} />
+              <input className="input text-xs flex-1" placeholder="Descripción del producto…" value={x.detalle} disabled={!puedeEditar}
                      onChange={(e) => setItem(i, 'detalle', e.target.value)} />
               <input className="input text-xs w-12" type="number" min="1" value={x.cant} disabled={!puedeEditar}
                      onChange={(e) => setItem(i, 'cant', e.target.value)} />

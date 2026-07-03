@@ -37,10 +37,13 @@ export default function Calendario() {
   }, [citas])
 
   const alertas = useMemo(() => {
+    // Solo alertamos vencidas recientes (14 días): las más antiguas son
+    // registros históricos importados, no seguimientos operativos vigentes.
+    const lim = iso(new Date(Date.now() - 14 * 864e5))
     const v = [], h = []
     citas.forEach((c) => {
       if (!ABIERTOS.includes(c.resultado)) return
-      if (c.proxima_fecha < hoy) v.push(c)
+      if (c.proxima_fecha < hoy && c.proxima_fecha >= lim) v.push(c)
       else if (c.proxima_fecha === hoy) h.push(c)
     })
     return { vencidas: v, hoy: h }

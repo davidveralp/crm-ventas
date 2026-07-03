@@ -354,6 +354,8 @@ export const OT_ENCUESTA = [
 // ====================================================================
 export const ESTADOS_TALLER = {
   por_designar:     { label: 'Por designar',            color: '#94a3b8' },
+  revision:         { label: 'En revisión / diagnóstico', color: '#7A5C8E' },
+  esperando_aprobacion: { label: 'Presupuesto en cliente', color: '#C98A1B' },
   en_reparacion:    { label: 'En reparación',           color: '#2f6fb0' },
   servicio_externo: { label: 'En rep. servicio externo',color: '#b46bc7' },
   compra_repuestos: { label: 'Compra de repuestos',     color: '#3b82c4' },

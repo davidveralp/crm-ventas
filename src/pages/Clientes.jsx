@@ -49,6 +49,7 @@ export default function Clientes() {
 
   // Búsqueda por patente o N° de OT: resuelve cliente_ids en vehiculos/servicios
   const [idsExtra, setIdsExtra] = useState(null)
+  const [orden, setOrden] = useState('fact_desc')
   useEffect(() => {
     const q = busca.trim()
     if (q.length < 3) { setIdsExtra(null); return }
@@ -67,6 +68,14 @@ export default function Clientes() {
     return () => clearTimeout(timer)
   }, [busca])
 
+  const ORDENES = {
+    fact_desc: { label: 'Facturación: mayor a menor', fn: (a, b) => (b.facturacion_total || 0) - (a.facturacion_total || 0) },
+    fact_asc:  { label: 'Facturación: menor a mayor', fn: (a, b) => (a.facturacion_total || 0) - (b.facturacion_total || 0) },
+    fecha_desc:{ label: 'Ingreso: más reciente',      fn: (a, b) => new Date(b.creado_en || 0) - new Date(a.creado_en || 0) },
+    fecha_asc: { label: 'Ingreso: más antiguo',       fn: (a, b) => new Date(a.creado_en || 0) - new Date(b.creado_en || 0) },
+    nombre:    { label: 'Nombre A→Z',                 fn: (a, b) => (a.nombre || '').localeCompare(b.nombre || '') }
+  }
+
   const filtrada = useMemo(() => {
     const q = busca.toLowerCase()
     return lista.filter((c) =>
@@ -80,8 +89,8 @@ export default function Clientes() {
              c.email?.toLowerCase().includes(q) ||
              c.rut?.toLowerCase().includes(q) ||
              (idsExtra && idsExtra.has(c.id)))
-    )
-  }, [lista, busca, segFiltro, marcaFiltro, vendFiltro, estadoFiltro, idsExtra])
+    ).sort(ORDENES[orden]?.fn || ORDENES.fact_desc.fn)
+  }, [lista, busca, segFiltro, marcaFiltro, vendFiltro, estadoFiltro, idsExtra, orden])
 
   const estadoDe = (id) => estados.find((e) => e.id === id)
 
@@ -132,6 +141,9 @@ export default function Clientes() {
       </div>
 
       <div className="grid grid-cols-2 md:flex md:flex-wrap gap-3">
+        <select className="input md:w-56" value={orden} onChange={(e) => setOrden(e.target.value)}>
+          {Object.entries(ORDENES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+        </select>
         <input className="input md:max-w-xs col-span-2" placeholder="Buscar por nombre, RUT, teléfono, patente o N° OT…"
                value={busca} onChange={(e) => setBusca(e.target.value)} />
         <select className="input md:max-w-[180px]" value={estadoFiltro} onChange={(e) => setEstadoFiltro(e.target.value)}>

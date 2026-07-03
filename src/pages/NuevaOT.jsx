@@ -92,6 +92,8 @@ export default function NuevaOT() {
   const [sheetUrl, setSheetUrl] = useState('')
   const [secSel, setSecSel] = useState([])   // técnicos secundarios elegidos
   const [secOtro, setSecOtro] = useState('') // técnico secundario "Otro"
+  const [presups, setPresups] = useState([])   // presupuestos de taller del vehículo
+  const [selItems, setSelItems] = useState({}) // "presupId:i" -> true
 
   // URL del Apps Script de la planilla (config por empresa)
   useEffect(() => {
@@ -147,7 +149,20 @@ export default function NuevaOT() {
     const { data } = await supabase.from('vehiculos')
       .select('id,marca,modelo,cliente_id,clientes(nombre)')
       .ilike('patente', `%${formatPatente(patente)}%`).limit(1)
-    setVeh(data?.[0] || null)
+    const v = data?.[0] || null
+    setVeh(v)
+    // Presupuestos del taller pendientes de decisión para este vehículo
+    if (v?.id) {
+      const { data: tt } = await supabase.from('trabajos_taller').select('id').eq('vehiculo_id', v.id)
+      const ids = (tt || []).map((x) => x.id)
+      if (ids.length) {
+        const { data: pp } = await supabase.from('presupuestos_taller')
+          .select('*').in('trabajo_id', ids).in('estado', ['enviado', 'cotizando', 'aprobado', 'parcial'])
+          .order('creado_en', { ascending: false })
+        setPresups(pp || []); setSelItems({}); return
+      }
+    }
+    setPresups([]); setSelItems({})
   }
 
   const marcaFinal = () => (f.marca === '__otra__' ? f.marcaOtra.trim() : f.marca)
@@ -162,6 +177,23 @@ export default function NuevaOT() {
     return lista.join('; ')
   }
   const toggleSec = (t) => setSecSel((s) => s.includes(t) ? s.filter((x) => x !== t) : [...s, t])
+
+  // Presupuesto de taller: completo o parcial punto a punto → llena los montos
+  function aplicarPresupuesto(sel) {
+    let rep = 0, lub = 0
+    presups.forEach((p) => (p.items || []).forEach((x, i) => {
+      if (!sel[p.id + ':' + i] || x.en_stock) return
+      const m = (+x.precio || 0) * (+x.cant || 1)
+      if (x.tipo === 'repuesto') rep += m; else lub += m
+    }))
+    setF((prev) => ({ ...prev, repuestos: rep ? String(rep) : prev.repuestos, lubricantes: lub ? String(lub) : prev.lubricantes }))
+  }
+  const toggleItem = (p, i) => { const k = p.id + ':' + i; const sel = { ...selItems, [k]: !selItems[k] }; setSelItems(sel); aplicarPresupuesto(sel) }
+  const toggleTodo = (p, marcar) => {
+    const sel = { ...selItems }
+    ;(p.items || []).forEach((_, i) => { sel[p.id + ':' + i] = marcar })
+    setSelItems(sel); aplicarPresupuesto(sel)
+  }
 
   async function guardar(e) {
     e.preventDefault()
@@ -207,6 +239,33 @@ export default function NuevaOT() {
       vehiculo_id: veh?.id || null, cliente_id: veh?.cliente_id || null
     }, { onConflict: 'empresa_id,ot_numero' })
     if (veh?.id && kmNum) await supabase.from('vehiculos').update({ km_ultimo: kmNum }).eq('id', veh.id)
+
+    // Presupuestos de taller: marca aprobado (completo) o parcial según selección
+    for (const p of presups) {
+      const n = (p.items || []).length
+      if (!n) continue
+      const marcados = (p.items || []).filter((_, i) => selItems[p.id + ':' + i]).length
+      if (!marcados) continue
+      await supabase.from('presupuestos_taller').update({
+        estado: marcados === n ? 'aprobado' : 'parcial',
+        resuelto_en: new Date().toISOString()
+      }).eq('id', p.id)
+    }
+
+    // Fidelización: seguimiento automático para el asesor a cargo (día siguiente)
+    if (veh?.cliente_id) {
+      const { data: cli } = await supabase.from('clientes')
+        .select('vendedor_id').eq('id', veh.cliente_id).maybeSingle()
+      const manana = new Date(Date.now() + 864e5).toISOString().slice(0, 10)
+      await supabase.from('actividades').insert({
+        empresa_id: perfil.empresa_id, cliente_id: veh.cliente_id,
+        tipo: 'llamada', resultado: 'pendiente',
+        fecha: hoy(), descripcion: `Seguimiento fidelización post-servicio · OT ${fila.ot_numero || ''}`.trim(),
+        proxima_accion: 'Llamar al cliente por su experiencia de servicio',
+        proxima_fecha: manana, agenda_tipo: 'llamada', recordatorio_min: 30,
+        vendedor_id: cli?.vendedor_id || perfil.id
+      })
+    }
 
     // Envío a la planilla DIDIAL_Base_OT (mismo backend que la app de registro)
     let aviso = `OT guardada — Total $${fmtMiles(total)}`
@@ -346,6 +405,42 @@ export default function NuevaOT() {
         <Campo label="Dirección (calle y número)"><input className="input" value={f.direccion} onChange={(e) => set('direccion', e.target.value)} placeholder="Ej: Av. Balmaceda 1234" /></Campo>
         <Campo label="Depto / Casa / Referencia" full><input className="input" value={f.direccion_ref} onChange={(e) => set('direccion_ref', e.target.value)} placeholder="Ej: Depto 502, Torre B" /></Campo>
       </Seccion>
+
+      {presups.length > 0 && (
+        <div className="card p-5 border-l-4 border-didial-amber">
+          <h2 className="font-semibold text-ink mb-1">Presupuesto del taller pendiente</h2>
+          <p className="text-xs text-slate-500 mb-3">Selecciona el presupuesto completo o punto a punto (parcial). Los montos se cargan automáticamente a la OT.</p>
+          <div className="space-y-3">
+            {presups.map((p) => {
+              const n = (p.items || []).length
+              const marcados = (p.items || []).filter((_, i) => selItems[p.id + ':' + i]).length
+              return (
+                <div key={p.id} className="rounded-lg border border-slate-100 p-3">
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
+                    <span className="text-sm font-semibold text-ink">Presupuesto {new Date(p.creado_en).toLocaleDateString('es-CL')}</span>
+                    <span className="text-xs text-slate-400">{marcados}/{n} ítems seleccionados</span>
+                    <div className="ml-auto flex gap-2">
+                      <button type="button" className="btn-soft text-xs" onClick={() => toggleTodo(p, true)}>Completo</button>
+                      <button type="button" className="btn-soft text-xs" onClick={() => toggleTodo(p, false)}>Ninguno</button>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    {(p.items || []).map((x, i) => (
+                      <label key={i} className="flex items-center gap-2 text-sm cursor-pointer">
+                        <input type="checkbox" checked={!!selItems[p.id + ':' + i]} onChange={() => toggleItem(p, i)} />
+                        {x.codigo && <span className="font-mono text-xs text-slate-400">{x.codigo}</span>}
+                        <span className="flex-1 text-ink">{x.detalle || x.tipo}</span>
+                        <span className="text-xs text-slate-400">x{x.cant}</span>
+                        <span className="text-xs font-semibold text-ink w-24 text-right">{x.en_stock ? 'Bodega' : '$' + fmtMiles((+x.precio || 0) * (+x.cant || 1))}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       <Seccion n={4} titulo="Información de la Reparación">
         <Campo label="Repuestos"><Monto value={f.repuestos} onChange={(e) => set('repuestos', e.target.value)} /></Campo>

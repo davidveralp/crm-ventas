@@ -37,7 +37,7 @@ const ICONO = { llamada: '📞', whatsapp: '💬', email: '✉️', presencial: 
 export default function ClienteDetalle() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { esAdmin } = useAuth()
+  const { esAdmin, perfil } = useAuth()
   const [cliente, setCliente] = useState(null)
   const [vehiculos, setVehiculos] = useState([])
   const [estados, setEstados] = useState([])
@@ -62,7 +62,7 @@ export default function ClienteDetalle() {
   const [motivoCierre, setMotivoCierre] = useState('venta_concretada')
   const [trabajos, setTrabajos] = useState([])
   const [modalTaller, setModalTaller] = useState(null) // vehículo a derivar
-  const [ft, setFt] = useState({ servicio: '', tareas: '', obs: '' })
+  const [ft, setFt] = useState({ servicio: '', tareas: [''], obs: '' })
 
   useEffect(() => { cargar() }, [id])
 
@@ -289,7 +289,7 @@ export default function ClienteDetalle() {
       asesor_id: perfil.id
     }).select().single()
     if (error) return alert('Error: ' + error.message)
-    const tareas = ft.tareas.split('\n').map((x) => x.trim()).filter(Boolean)
+    const tareas = ft.tareas.map((x) => x.trim()).filter(Boolean)
     if (tareas.length) {
       await supabase.from('tareas_taller').insert(tareas.map((titulo, i) => ({
         empresa_id: perfil.empresa_id, trabajo_id: t.id, titulo, orden: i
@@ -299,8 +299,8 @@ export default function ClienteDetalle() {
     const abierta = gestiones.find((g) => g.abierta)
     if (abierta) await supabase.from('gestiones').update({ estado: 'en_taller' }).eq('id', abierta.id)
     notificar({ empresa_id: perfil.empresa_id, rol: 'jefe_taller',
-      titulo: 'Nuevo vehículo derivado al taller', cuerpo: `${titulo} · ${ft.servicio}`, url: '/taller' })
-    setModalTaller(null); setFt({ servicio: '', tareas: '', obs: '' })
+      titulo: 'Vehículo enviado a revisión', cuerpo: `${titulo} · ${ft.servicio}`, url: '/taller' })
+    setModalTaller(null); setFt({ servicio: '', tareas: [''], obs: '' })
     cargar()
   }
 
@@ -577,7 +577,7 @@ export default function ClienteDetalle() {
                     <div className="flex items-center gap-2">
                       {v.ventana && <Pill color={VENTANAS[v.ventana]?.color}>{VENTANAS[v.ventana]?.label}</Pill>}
                       <button onClick={() => nuevaOT(v)} className="text-xs text-didial-red font-medium hover:underline">Nueva OT</button>
-                      <button onClick={() => { setModalTaller(v); setFt({ servicio: '', tareas: '', obs: '' }) }} className="text-xs text-deep font-medium hover:underline">→ Taller</button>
+                      <button onClick={() => { setModalTaller(v); setFt({ servicio: '', tareas: [''], obs: '' }) }} className="text-xs text-deep font-medium hover:underline">→ Revisión</button>
                       <button onClick={() => abrirEditarVehiculo(v)} className="text-xs text-deep hover:underline">Editar</button>
                       <button onClick={() => borrarVehiculo(v.id)} className="text-xs text-slate-300 hover:text-red-500">✕</button>
                     </div>
@@ -936,7 +936,7 @@ export default function ClienteDetalle() {
 
       {/* Modal derivar al taller */}
       <Modal abierto={!!modalTaller} onClose={() => setModalTaller(null)}
-             titulo={`Enviar al taller · ${modalTaller?.patente || ''} ${modalTaller?.marca || ''} ${modalTaller?.modelo || ''}`}>
+             titulo={`Enviar a revisión · ${modalTaller?.patente || ''} ${modalTaller?.marca || ''} ${modalTaller?.modelo || ''}`}>
         <div className="space-y-4">
           <div>
             <label className="label">Servicio solicitado <span className="text-red-500">*</span></label>
@@ -944,19 +944,33 @@ export default function ClienteDetalle() {
                    placeholder="Ej: Revisión preventiva, cambio de embrague…" autoFocus />
           </div>
           <div>
-            <label className="label">Tareas que implica <span className="text-slate-400 font-normal">(una por línea)</span></label>
-            <textarea className="input" rows={4} value={ft.tareas} onChange={(e) => setFt({ ...ft, tareas: e.target.value })}
-                      placeholder={'Diagnóstico con escáner\nRevisión tren delantero\nCambio de aceite'} />
+            <label className="label">Tareas que implica</label>
+            <div className="space-y-1.5">
+              {ft.tareas.map((t, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="w-4 h-4 rounded border-2 border-slate-300 shrink-0" />
+                  <input className="input flex-1" value={t} placeholder="Ej: Diagnóstico con escáner…"
+                         onChange={(e) => setFt({ ...ft, tareas: ft.tareas.map((x, j) => j === i ? e.target.value : x) })}
+                         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); setFt({ ...ft, tareas: [...ft.tareas, ''] }) } }} />
+                  {ft.tareas.length > 1 && (
+                    <button type="button" onClick={() => setFt({ ...ft, tareas: ft.tareas.filter((_, j) => j !== i) })}
+                            className="text-slate-300 hover:text-red-500">✕</button>
+                  )}
+                </div>
+              ))}
+              <button type="button" onClick={() => setFt({ ...ft, tareas: [...ft.tareas, ''] })}
+                      className="text-xs text-deep font-medium hover:underline">+ Agregar tarea</button>
+            </div>
           </div>
           <div>
-            <label className="label">Observaciones del cliente <span className="text-slate-400 font-normal">(dolor del cliente)</span></label>
+            <label className="label">Observaciones del cliente</label>
             <textarea className="input" rows={2} value={ft.obs} onChange={(e) => setFt({ ...ft, obs: e.target.value })}
                       placeholder="Lo que el cliente describe: ruidos, síntomas, desde cuándo…" />
           </div>
-          <p className="text-[11px] text-slate-400">Se notificará al Jefe de Taller para asignar las tareas a los técnicos. La gestión comercial abierta pasará a estado "En taller".</p>
+          <p className="text-[11px] text-slate-400">Se notificará al Jefe de Taller para asignar el técnico de la revisión. La gestión comercial abierta pasará a estado "En taller".</p>
           <div className="flex justify-end gap-2">
             <button className="btn-soft" onClick={() => setModalTaller(null)}>Cancelar</button>
-            <button className="btn-primary" onClick={enviarAlTaller}>Enviar al taller</button>
+            <button className="btn-primary" onClick={enviarAlTaller}>Enviar a Revisión</button>
           </div>
         </div>
       </Modal>
