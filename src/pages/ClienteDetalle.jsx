@@ -61,6 +61,8 @@ export default function ClienteDetalle() {
   const [cerrando, setCerrando] = useState(null)  // { g, estado } al cerrar una gestión
   const [motivoCierre, setMotivoCierre] = useState('venta_concretada')
   const [trabajos, setTrabajos] = useState([])
+  const [presupsTaller, setPresupsTaller] = useState([])
+  const [margenes, setMargenes] = useState({ ajuste_asesor_pct: 10 })
   const [modalTaller, setModalTaller] = useState(null) // vehículo a derivar
   const [ft, setFt] = useState({ servicio: '', tareas: [''], obs: '' })
 
@@ -84,6 +86,15 @@ export default function ClienteDetalle() {
     setActividades(actv.data || []); setPresupuestos(pre.data || [])
     setServicios(srv.data || []); setGestiones(ges.data || [])
     setTrabajos(tt.data || [])
+    const ids = (tt.data || []).map((x) => x.id)
+    if (ids.length) {
+      const [{ data: pp }, { data: mg }] = await Promise.all([
+        supabase.from('presupuestos_taller').select('*').in('trabajo_id', ids).order('creado_en', { ascending: false }),
+        supabase.from('empresa_config').select('valor').eq('empresa_id', perfil?.empresa_id).eq('clave', 'margenes').maybeSingle()
+      ])
+      setPresupsTaller(pp || [])
+      if (mg?.valor) setMargenes((m) => ({ ...m, ...mg.valor }))
+    } else setPresupsTaller([])
     if (esAdmin) {
       const { data: v } = await supabase.from('usuarios')
         .select('id,nombre').eq('rol', 'vendedor').eq('activo', true)
@@ -661,6 +672,19 @@ export default function ClienteDetalle() {
       </div>
 
 
+      {/* Presupuestos del taller: el asesor los conversa con el cliente */}
+      {presupsTaller.some((p) => p.estado === 'enviado') && (
+        <div className="card p-5 border-l-4 border-didial-amber">
+          <h3 className="font-semibold text-ink mb-1">Presupuestos del taller para conversar</h3>
+          <p className="text-xs text-slate-400 mb-3">Puedes ajustar el precio final de cada ítem hasta ±{margenes.ajuste_asesor_pct}% (rango autorizado por administración), generar el PDF y enviarlo por WhatsApp.</p>
+          <div className="space-y-3">
+            {presupsTaller.filter((p) => p.estado === 'enviado').map((p) => (
+              <PresupAsesor key={p.id} p={p} cliente={cliente} margenes={margenes} perfil={perfil} onChange={cargar} />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Modal registrar gestión: Contacto / Presupuesto / Agendamiento */}
       <Modal abierto={modal} onClose={() => setModal(false)}
              titulo={gestionTarget ? 'Continuar gestión' : 'Nueva gestión'} ancho="max-w-xl">
@@ -1035,6 +1059,102 @@ function Campo({ k, v }) {
     <div className="flex gap-2">
       <span className="text-slate-400 w-36 shrink-0">{k}</span>
       <span className="text-ink whitespace-pre-wrap">{v || '—'}</span>
+    </div>
+  )
+}
+
+
+/* ---- Presupuesto del taller en manos del asesor -------------------- */
+function PresupAsesor({ p, cliente, margenes, perfil, onChange }) {
+  const a = (margenes?.ajuste_asesor_pct ?? 10) / 100
+  const [precios, setPrecios] = useState(() =>
+    Object.fromEntries((p.items || []).map((x, i) => [i, x.precio_final ?? x.precio ?? 0])))
+  const cobrables = (p.items || []).map((x, i) => ({ ...x, i })).filter((x) => !x.en_stock)
+  const total = cobrables.reduce((s, x) => s + (+precios[x.i] || 0) * (+x.cant || 1), 0)
+
+  const clamp = (i, v) => {
+    const base = +(p.items?.[i]?.precio || 0)
+    const min = Math.round(base * (1 - a)), max = Math.round(base * (1 + a))
+    return Math.min(max, Math.max(min, Math.round(+v || 0)))
+  }
+
+  async function guardarAjuste() {
+    const items = (p.items || []).map((x, i) => ({ ...x, precio_final: clamp(i, precios[i]) }))
+    await supabase.from('presupuestos_taller').update({
+      items, monto: items.filter((x) => !x.en_stock).reduce((s, x) => s + (+x.precio_final || 0) * (+x.cant || 1), 0)
+    }).eq('id', p.id)
+    onChange?.()
+  }
+
+  function verPDF() {
+    const filas = cobrables.map((x) => `
+      <tr>
+        <td>${x.codigo || ''}</td><td>${(x.detalle || x.tipo || '').replace(/</g, '&lt;')}</td>
+        <td style="text-align:center">${x.cant}</td>
+        <td style="text-align:right">$${(+precios[x.i] || 0).toLocaleString('es-CL')}</td>
+        <td style="text-align:right">$${((+precios[x.i] || 0) * (+x.cant || 1)).toLocaleString('es-CL')}</td>
+      </tr>`).join('')
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Presupuesto</title>
+      <style>
+        body{font-family:Arial,Helvetica,sans-serif;color:#111922;margin:32px}
+        h1{font-size:20px;margin:0} .rojo{color:#e0382b}
+        .meta{color:#6b7a8a;font-size:12px;margin:2px 0}
+        table{width:100%;border-collapse:collapse;margin-top:18px;font-size:13px}
+        th{background:#1C4357;color:#fff;text-align:left;padding:7px 8px;font-size:11px;text-transform:uppercase}
+        td{border-bottom:1px solid #e6ebf0;padding:7px 8px}
+        .total{margin-top:14px;text-align:right;font-size:16px;font-weight:bold}
+        .pie{margin-top:26px;color:#6b7a8a;font-size:11px}
+      </style></head><body>
+      <h1>SERVICIO AUTOMOTRIZ <span class="rojo">DIDIAL</span></h1>
+      <div class="meta">Presupuesto de servicio · ${new Date().toLocaleDateString('es-CL')}</div>
+      <div class="meta"><b>Cliente:</b> ${cliente?.nombre || ''} · ${cliente?.rut || ''}</div>
+      <div class="meta"><b>Atendido por:</b> ${perfil?.nombre || ''}</div>
+      <table><thead><tr><th>Cód.</th><th>Descripción</th><th>Cant.</th><th>Precio</th><th>Subtotal</th></tr></thead>
+      <tbody>${filas}</tbody></table>
+      <div class="total">TOTAL: $${total.toLocaleString('es-CL')}</div>
+      <div class="pie">Presupuesto válido por 15 días. Precios incluyen los márgenes vigentes. No incluye trabajos adicionales no detectados en el diagnóstico.</div>
+      <script>window.print()</script></body></html>`
+    const w = window.open('', '_blank')
+    w.document.write(html); w.document.close()
+  }
+
+  function enviarWhatsApp() {
+    const fono = String(cliente?.telefono || '').replace(/[^0-9]/g, '')
+    const num = fono.startsWith('56') ? fono : fono.length === 9 ? '56' + fono : fono.length === 8 ? '569' + fono : fono
+    const lineas = cobrables.map((x) => `• ${x.detalle || x.tipo} x${x.cant}: $${((+precios[x.i] || 0) * (+x.cant || 1)).toLocaleString('es-CL')}`).join('%0A')
+    const msg = `Hola ${cliente?.nombre?.split(' ')[0] || ''}, te saluda ${perfil?.nombre?.split(' ')[0] || ''} de DIDIAL 👋%0A%0ATe comparto el presupuesto de tu vehículo:%0A${lineas}%0A%0A*Total: $${total.toLocaleString('es-CL')}*%0A%0AAdjunto el PDF con el detalle. ¿Lo conversamos?`
+    window.open(`https://wa.me/${num}?text=${msg}`, '_blank', 'noopener')
+  }
+
+  return (
+    <div className="rounded-lg border border-slate-100 p-3 space-y-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-sm font-semibold text-ink">Presupuesto {new Date(p.creado_en).toLocaleDateString('es-CL')}</span>
+        <span className="text-xs text-slate-400">{cobrables.length} ítems</span>
+        <span className="ml-auto font-bold text-ink">{'$' + total.toLocaleString('es-CL')}</span>
+      </div>
+      <div className="space-y-1">
+        {cobrables.map((x) => {
+          const base = +(x.precio || 0)
+          const min = Math.round(base * (1 - a)), max = Math.round(base * (1 + a))
+          return (
+            <div key={x.i} className="flex items-center gap-2 text-sm">
+              {x.codigo && <span className="font-mono text-xs text-slate-400 w-16 shrink-0">{x.codigo}</span>}
+              <span className="flex-1 text-ink truncate">{x.detalle || x.tipo}</span>
+              <span className="text-xs text-slate-400">x{x.cant}</span>
+              <input className="input text-xs w-28 text-right" type="number" min={min} max={max}
+                     value={precios[x.i]} title={`Rango autorizado: $${min.toLocaleString('es-CL')} – $${max.toLocaleString('es-CL')}`}
+                     onChange={(e) => setPrecios({ ...precios, [x.i]: e.target.value })}
+                     onBlur={(e) => setPrecios({ ...precios, [x.i]: clamp(x.i, e.target.value) })} />
+            </div>
+          )
+        })}
+      </div>
+      <div className="flex justify-end gap-2 flex-wrap pt-1">
+        <button className="btn-soft text-xs" onClick={guardarAjuste}>Guardar ajuste</button>
+        <button className="btn-soft text-xs" onClick={verPDF}>📄 Ver PDF</button>
+        <button className="text-xs px-3 py-1.5 rounded-lg text-white" style={{ background: '#1f9d57' }} onClick={enviarWhatsApp}>Enviar por WhatsApp</button>
+      </div>
     </div>
   )
 }

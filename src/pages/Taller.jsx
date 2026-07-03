@@ -33,6 +33,8 @@ export default function Taller() {
   const [trabajos, setTrabajos] = useState([])
   const [tareas, setTareas] = useState([])
   const [presups, setPresups] = useState([])
+  const [diags, setDiags] = useState([])
+  const [margenes, setMargenes] = useState({ repuesto: 35, lubricante: 30, filtro: 30, consumible: 25, ajuste_asesor_pct: 10 })
   const [usuarios, setUsuarios] = useState([])
   const [vista, setVista] = useState('tablero') // tablero | lista | tecnicos | indicadores
   const [sel, setSel] = useState(null)          // trabajo abierto en detalle
@@ -43,13 +45,17 @@ export default function Taller() {
   useEffect(() => { cargar() }, [])
 
   async function cargar() {
-    const [t, ta, pr, us] = await Promise.all([
+    const [t, ta, pr, us, dg, mg] = await Promise.all([
       supabase.from('trabajos_taller').select('*, clientes(nombre), vehiculos(patente,marca,modelo)').order('creado_en', { ascending: false }),
       supabase.from('tareas_taller').select('*').order('orden'),
       supabase.from('presupuestos_taller').select('*').order('creado_en', { ascending: false }),
-      supabase.from('usuarios').select('id,nombre,rol,activo')
+      supabase.from('usuarios').select('id,nombre,rol,activo'),
+      supabase.from('diagnosticos_taller').select('*').order('creado_en'),
+      supabase.from('empresa_config').select('valor').eq('empresa_id', perfil.empresa_id).eq('clave', 'margenes').maybeSingle()
     ])
     setTrabajos(t.data || []); setTareas(ta.data || []); setPresups(pr.data || [])
+    setDiags(dg.data || [])
+    if (mg.data?.valor) setMargenes((m) => ({ ...m, ...mg.data.valor }))
     setUsuarios((us.data || []).filter((u) => u.activo !== false))
     setCargando(false)
   }
@@ -62,8 +68,19 @@ export default function Taller() {
 
   /* ---- Acciones ---------------------------------------------------- */
   async function moverEstado(t, estado) {
+    // Compuerta de garantía: para reparar se exige presupuesto resuelto
+    // (aprobado o parcial) + OT firmada + video de respaldo enviado.
+    if (estado === 'en_reparacion') {
+      const resuelto = presupsDe(t.id).some((p) => ['aprobado', 'parcial'].includes(p.estado))
+      const faltas = []
+      if (!resuelto) faltas.push('presupuesto aprobado o parcial')
+      if (!t.respaldo_ot_firmada) faltas.push('OT firmada ✓')
+      if (!t.respaldo_video) faltas.push('video de respaldo enviado ✓')
+      if (faltas.length) { alert('Para pasar a Reparación falta: ' + faltas.join(', ') + '.'); return }
+    }
     const historial = [...(t.historial || []), { estado, fecha: ahoraISO(), por: perfil?.nombre }]
     const upd = { estado, historial }
+    if (estado === 'en_reparacion') { upd.autorizado_por = perfil.id; upd.autorizado_en = ahoraISO() }
     if (estado === 'completada') upd.cerrado_en = ahoraISO()
     await supabase.from('trabajos_taller').update(upd).eq('id', t.id)
     const lbl = ESTADOS_TALLER[estado]?.label || estado
@@ -113,6 +130,38 @@ export default function Taller() {
     await moverEstado(t, 'prueba_ruta')
   }
   async function eliminarTarea(tarea) { await supabase.from('tareas_taller').delete().eq('id', tarea.id); cargar() }
+
+  async function agregarDiag(t, d) {
+    if (!d.item?.trim()) return
+    await supabase.from('diagnosticos_taller').insert({
+      empresa_id: perfil.empresa_id, trabajo_id: t.id, item: d.item.trim(),
+      severidad: d.severidad || 'preventivo', recomendacion: (d.recomendacion || '').trim(),
+      tecnico_id: perfil.id
+    })
+    cargar()
+  }
+  async function borrarDiag(id) { await supabase.from('diagnosticos_taller').delete().eq('id', id); cargar() }
+
+  // Diagnóstico → presupuesto en un clic (hallazgos como ítems a cotizar)
+  async function diagAPresupuesto(t) {
+    const hallazgos = diags.filter((d) => d.trabajo_id === t.id && d.severidad !== 'ok')
+    if (!hallazgos.length) return alert('No hay hallazgos del diagnóstico para presupuestar.')
+    const items = hallazgos.map((d) => ({
+      tipo: 'repuesto', codigo: '', detalle: d.item + (d.recomendacion ? ' — ' + d.recomendacion : ''),
+      cant: 1, costo: 0, precio: 0, en_stock: null, severidad: d.severidad
+    }))
+    await supabase.from('presupuestos_taller').insert({
+      empresa_id: perfil.empresa_id, trabajo_id: t.id, items,
+      notas: 'Generado desde el diagnóstico', solicitado_por: perfil.id, estado: 'cotizando'
+    })
+    notificar({ empresa_id: perfil.empresa_id, rol: 'coordinador_adquisiciones', titulo: 'Diagnóstico listo · cotizar presupuesto', cuerpo: tituloDe(t), url: '/taller' })
+    notificar({ empresa_id: perfil.empresa_id, rol: 'encargado_bodega', titulo: 'Revisar stock para presupuesto', cuerpo: tituloDe(t), url: '/taller' })
+    cargar()
+  }
+
+  async function marcarRespaldo(t, campo, valor) {
+    await supabase.from('trabajos_taller').update({ [campo]: valor }).eq('id', t.id); cargar()
+  }
 
   async function solicitarPresupuesto(t, notas) {
     await supabase.from('presupuestos_taller').insert({
@@ -171,7 +220,27 @@ export default function Taller() {
     const cerrados = trabajos.filter((t) => t.cerrado_en)
     const promTrabajo = cerrados.length ? cerrados.reduce((s, t) => s + crono(t, now), 0) / cerrados.length : 0
     const vencidos = trabajos.filter((t) => t.fecha_limite && !t.cerrado_en && new Date(t.fecha_limite) < new Date()).length
-    return { tecArr, term: term.length, totalTareas: tareas.length, promTrabajo, vencidos,
+
+    // Tiempo promedio por ETAPA: recorre el historial de cada trabajo y
+    // acumula cuánto permaneció en cada estado (el actual cuenta hasta ahora).
+    const etapa = {}
+    trabajos.forEach((t) => {
+      const eventos = [{ estado: 'por_designar', fecha: t.creado_en }, ...(t.historial || [])]
+        .filter((h) => h.fecha).sort((a, b) => new Date(a.fecha) - new Date(b.fecha))
+      eventos.forEach((h, i) => {
+        const fin = i + 1 < eventos.length ? new Date(eventos[i + 1].fecha)
+          : (t.cerrado_en ? new Date(t.cerrado_en) : new Date(now))
+        const seg = Math.max(0, (fin - new Date(h.fecha)) / 1000)
+        if (!etapa[h.estado]) etapa[h.estado] = { seg: 0, n: 0 }
+        etapa[h.estado].seg += seg; etapa[h.estado].n++
+      })
+    })
+    const etapaArr = Object.entries(etapa)
+      .filter(([k]) => ESTADOS_TALLER[k])
+      .map(([k, v]) => ({ k, label: ESTADOS_TALLER[k].label, color: ESTADOS_TALLER[k].color, prom: v.seg / v.n, n: v.n }))
+      .sort((a, b) => b.prom - a.prom)
+
+    return { tecArr, term: term.length, totalTareas: tareas.length, promTrabajo, vencidos, etapaArr,
              enCurso: tareas.filter((x) => x.estado === 'en_curso').length }
   }, [tareas, trabajos, usuarios, now])
 
@@ -310,6 +379,26 @@ export default function Taller() {
             <div className="card p-4 border-t-4" style={{ borderTopColor: IND.vencidos ? '#e0382b' : '#1f9d57' }}><div className="text-xs text-slate-500">Trabajos atrasados</div><div className="text-2xl font-bold text-ink">{IND.vencidos}</div></div>
           </div>
           <div className="card p-4">
+            <h3 className="font-semibold text-ink mb-1">Tiempo promedio por etapa</h3>
+            <p className="text-[11px] text-slate-400 mb-3">Dónde pasan más tiempo los vehículos. Las etapas de espera largas son el primer lugar donde atacar la permanencia.</p>
+            <div className="space-y-1.5">
+              {(() => {
+                const max = Math.max(...IND.etapaArr.map((x) => x.prom), 1)
+                return IND.etapaArr.map((x) => (
+                  <div key={x.k} className="flex items-center gap-2 text-sm">
+                    <span className="w-44 shrink-0 text-slate-600 text-xs">{x.label}</span>
+                    <div className="flex-1 h-2.5 rounded bg-mist overflow-hidden">
+                      <div className="h-full rounded" style={{ width: `${Math.round((x.prom / max) * 100)}%`, background: x.color }} />
+                    </div>
+                    <span className="w-20 text-right font-mono text-xs text-ink">{fmtCrono(x.prom)}</span>
+                    <span className="w-10 text-right text-[10px] text-slate-400">{x.n}×</span>
+                  </div>
+                ))
+              })()}
+              {!IND.etapaArr.length && <p className="text-sm text-slate-400">Aún no hay historial de etapas.</p>}
+            </div>
+          </div>
+          <div className="card p-4">
             <h3 className="font-semibold text-ink mb-2">Rendimiento por técnico</h3>
             <table className="w-full text-sm">
               <thead><tr className="text-slate-400 text-xs border-b">
@@ -337,15 +426,16 @@ export default function Taller() {
       {sel && (
         <Detalle t={trabajos.find((x) => x.id === sel.id) || sel} onClose={() => setSel(null)}
           tareas={tareasDe(sel.id)} presups={presupsDe(sel.id)} tecnicos={tecnicos} nombreDe={nombreDe}
+          diags={diags.filter((d) => d.trabajo_id === sel.id)} margenes={margenes}
           esJefe={esJefe} esTecnico={esTecnico} esCompras={esCompras} perfil={perfil} now={now} tituloDe={tituloDe}
-          acciones={{ moverEstado, guardarTrabajo, agregarTarea, asignarTarea, iniciarTarea, terminarTarea, terminarTodas, eliminarTarea, solicitarPresupuesto, guardarPresup }} />
+          acciones={{ moverEstado, guardarTrabajo, agregarTarea, asignarTarea, iniciarTarea, terminarTarea, terminarTodas, eliminarTarea, solicitarPresupuesto, guardarPresup, agregarDiag, borrarDiag, diagAPresupuesto, marcarRespaldo }} />
       )}
     </div>
   )
 }
 
 /* ================= Detalle del trabajo ================= */
-function Detalle({ t, onClose, tareas, presups, tecnicos, nombreDe, esJefe, esTecnico, esCompras, perfil, now, tituloDe, acciones }) {
+function Detalle({ t, onClose, tareas, presups, tecnicos, nombreDe, diags, margenes, esJefe, esTecnico, esCompras, perfil, now, tituloDe, acciones }) {
   const [nueva, setNueva] = useState(''); const [nuevaTec, setNuevaTec] = useState('')
   const [obs, setObs] = useState({})       // observación por tarea al terminar
   const [notaPresup, setNotaPresup] = useState('')
@@ -395,6 +485,29 @@ function Detalle({ t, onClose, tareas, presups, tecnicos, nombreDe, esJefe, esTe
               </span>
             ))}
             <span className="pill bg-deep text-white text-[10px] font-mono">⏱ {fmtCrono((t.cerrado_en ? new Date(t.cerrado_en).getTime() : now) / 1000 - new Date(t.creado_en).getTime() / 1000)}</span>
+          </div>
+        </div>
+
+        {/* Diagnóstico técnico */}
+        <SeccionDiag t={t} diags={diags} esJefe={esJefe} esTecnico={esTecnico} nombreDe={nombreDe} acciones={acciones} />
+
+        {/* Respaldos de garantía */}
+        <div className="rounded-lg border border-slate-100 p-3">
+          <div className="text-xs font-semibold text-slate-400 uppercase mb-2">Respaldo de garantía <span className="normal-case font-normal">(requisito para reparar)</span></div>
+          <div className="flex flex-wrap gap-4">
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="checkbox" checked={!!t.respaldo_ot_firmada}
+                     onChange={(e) => acciones.marcarRespaldo(t, 'respaldo_ot_firmada', e.target.checked)} />
+              OT firmada por el cliente
+            </label>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="checkbox" checked={!!t.respaldo_video}
+                     onChange={(e) => acciones.marcarRespaldo(t, 'respaldo_video', e.target.checked)} />
+              Video enviado al grupo de respaldo
+            </label>
+            {t.autorizado_en && (
+              <span className="text-[11px] text-slate-400 self-center">Reparación autorizada por {nombreDe(t.autorizado_por)} · {new Date(t.autorizado_en).toLocaleString('es-CL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+            )}
           </div>
         </div>
 
@@ -461,7 +574,7 @@ function Detalle({ t, onClose, tareas, presups, tecnicos, nombreDe, esJefe, esTe
           <div className="space-y-2">
             {presups.map((p) => (
               <PresupCard key={p.id} p={p} t={t} esJefe={esJefe} esCompras={esCompras} perfil={perfil}
-                          guardar={acciones.guardarPresup} tituloDe={tituloDe} />
+                          guardar={acciones.guardarPresup} tituloDe={tituloDe} margenes={margenes} />
             ))}
             {!presups.length && <p className="text-sm text-slate-400">Sin presupuestos solicitados.</p>}
           </div>
@@ -479,7 +592,7 @@ function Detalle({ t, onClose, tareas, presups, tecnicos, nombreDe, esJefe, esTe
 }
 
 /* ---- Presupuesto de taller: cotización, ítems, stock y resolución ---- */
-function PresupCard({ p, t, esJefe, esCompras, perfil, guardar, tituloDe }) {
+function PresupCard({ p, t, esJefe, esCompras, perfil, guardar, tituloDe, margenes }) {
   const [abierto, setAbierto] = useState(false)
   const [items, setItems] = useState(p.items || [])
   const [monto, setMonto] = useState(p.monto || 0)
@@ -487,7 +600,13 @@ function PresupCard({ p, t, esJefe, esCompras, perfil, guardar, tituloDe }) {
   const est = ESTADOS_PRESUP_TALLER[p.estado] || {}
 
   const setItem = (i, campo, v) => { const n = items.map((x, j) => j === i ? { ...x, [campo]: v } : x); setItems(n) }
-  const agregar = (tipo) => setItems([...items, { tipo, codigo: '', detalle: '', cant: 1, precio: 0, en_stock: null }])
+  const agregar = (tipo) => setItems([...items, { tipo, codigo: '', detalle: '', cant: 1, costo: 0, precio: 0, en_stock: null }])
+  // Margen de administración: precio = costo * (1 + margen%)
+  const conMargen = (tipo, costo) => Math.round((+costo || 0) * (1 + ((margenes?.[tipo] ?? 30) / 100)))
+  const setCosto = (i, v) => {
+    const n = items.map((x, j) => j === i ? { ...x, costo: v, precio: conMargen(x.tipo, v) } : x)
+    setItems(n)
+  }
   const totalItems = items.reduce((s, x) => s + (x.en_stock ? 0 : (+x.precio || 0) * (+x.cant || 1)), 0)
 
   async function guardarItems(estado) {
@@ -522,7 +641,9 @@ function PresupCard({ p, t, esJefe, esCompras, perfil, guardar, tituloDe }) {
                      onChange={(e) => setItem(i, 'detalle', e.target.value)} />
               <input className="input text-xs w-12" type="number" min="1" value={x.cant} disabled={!puedeEditar}
                      onChange={(e) => setItem(i, 'cant', e.target.value)} />
-              <input className="input text-xs w-24" type="number" min="0" placeholder="$ unit." value={x.precio} disabled={!puedeEditar || x.en_stock}
+              <input className="input text-xs w-20" type="number" min="0" placeholder="$ costo" title="Costo neto (proveedor)" value={x.costo ?? ''} disabled={!puedeEditar || x.en_stock}
+                     onChange={(e) => setCosto(i, e.target.value)} />
+              <input className="input text-xs w-24 bg-mist/60" type="number" min="0" placeholder="$ venta" title={`Precio venta (margen ${margenes?.[x.tipo] ?? 30}% aplicado)`} value={x.precio} disabled={!puedeEditar || x.en_stock}
                      onChange={(e) => setItem(i, 'precio', e.target.value)} />
               <button type="button" disabled={!puedeEditar} title="¿Hay stock en bodega?"
                       onClick={() => setItem(i, 'en_stock', !x.en_stock)}
@@ -553,6 +674,58 @@ function PresupCard({ p, t, esJefe, esCompras, perfil, guardar, tituloDe }) {
               </>}
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+const SEVERIDADES = {
+  critico:    { label: 'Crítico',    color: '#e0382b' },
+  pronto:     { label: 'Atender pronto', color: '#e0a020' },
+  preventivo: { label: 'Preventivo', color: '#2f6fb0' },
+  ok:         { label: 'En buen estado', color: '#1f9d57' }
+}
+
+function SeccionDiag({ t, diags, esJefe, esTecnico, nombreDe, acciones }) {
+  const [d, setD] = useState({ item: '', severidad: 'preventivo', recomendacion: '' })
+  const puede = esJefe || esTecnico
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-xs font-semibold text-slate-400 uppercase">Diagnóstico técnico ({diags.length})</div>
+        {esJefe && diags.some((x) => x.severidad !== 'ok') && (
+          <button className="btn-soft text-xs" onClick={() => acciones.diagAPresupuesto(t)}>→ Pasar a presupuesto</button>
+        )}
+      </div>
+      <div className="space-y-1.5">
+        {diags.map((x) => (
+          <div key={x.id} className="flex items-start gap-2 rounded-lg border border-slate-100 px-2.5 py-2 text-sm">
+            <span className="pill text-white text-[10px] shrink-0 mt-0.5" style={{ background: SEVERIDADES[x.severidad]?.color }}>
+              {SEVERIDADES[x.severidad]?.label}
+            </span>
+            <div className="flex-1 min-w-0">
+              <div className="text-ink">{x.item}</div>
+              {x.recomendacion && <div className="text-xs text-slate-500">↳ {x.recomendacion}</div>}
+              <div className="text-[10px] text-slate-300">{nombreDe(x.tecnico_id)}</div>
+            </div>
+            {puede && <button onClick={() => acciones.borrarDiag(x.id)} className="text-slate-300 hover:text-red-500">✕</button>}
+          </div>
+        ))}
+        {!diags.length && <p className="text-sm text-slate-400">Sin hallazgos registrados aún.</p>}
+      </div>
+      {puede && (
+        <div className="mt-2 grid sm:grid-cols-[1fr_auto] gap-2">
+          <input className="input" placeholder="Hallazgo (ej: pastillas de freno al 10%)…" value={d.item}
+                 onChange={(e) => setD({ ...d, item: e.target.value })} />
+          <select className="input" value={d.severidad} onChange={(e) => setD({ ...d, severidad: e.target.value })}>
+            {Object.entries(SEVERIDADES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+          </select>
+          <input className="input sm:col-span-2" placeholder="Recomendación (ej: reemplazar pastillas y rectificar discos)…" value={d.recomendacion}
+                 onChange={(e) => setD({ ...d, recomendacion: e.target.value })}
+                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); acciones.agregarDiag(t, d); setD({ item: '', severidad: 'preventivo', recomendacion: '' }) } }} />
+          <button className="btn-soft sm:col-span-2" onClick={() => { acciones.agregarDiag(t, d); setD({ item: '', severidad: 'preventivo', recomendacion: '' }) }}>+ Agregar hallazgo</button>
         </div>
       )}
     </div>
