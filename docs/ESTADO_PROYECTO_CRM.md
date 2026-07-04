@@ -62,6 +62,7 @@ CRM comercial y operativo para **Servicio Automotriz Didial Ltda.** (La Serena, 
 - **Tareas predefinidas por servicio** (`tareas_servicio`): MAN X PAUTA cargada (32 tareas); catálogo editable por tenant para agregar más servicios.
 - **Presupuestos**: 4 secciones oficiales, PDF imprimible formato DIDIAL, asesor ajusta precios con indicador de rango (ámbar fuera de rango, sin bloqueo).
 - **Sincronización bidireccional**: editar contacto/vehículo en el CRM actualiza las filas de la base de OT (Apps Script nuevo `crm_actualizar_ot.gs`, URL en `empresa_config.sheet_update_url`); la planilla → CRM solo completa campos vacíos (no pisa ediciones del CRM).
+- **Fix búsqueda por N° de OT** (v21.1): las OT de clientes nunca importados quedaban huérfanas (sin cliente_id) y no aparecían en el buscador; el sync ahora crea cliente+vehículo automáticamente y los vincula. El buscador avisa cuando encuentra una OT huérfana pendiente de sync.
 - **Bug del historial corregido**: OT con "—" sin descripción/monto era causado por OT duplicadas en la planilla cuya fila más reciente venía incompleta y pisaba a la completa; `sincronizar_servicios.gs` v2 fusiona duplicados prefiriendo el dato no vacío. Re-ejecutar el sync repara el historial.
 - **Boleta/factura por OT**: el historial de servicios muestra tipo y N° de documento (respaldo de garantía), sincronizado desde la planilla y guardado también por la Nueva OT del CRM.
 - Guía completa de despliegue: `docs/ACTUALIZACION_v21.md`.
@@ -97,7 +98,8 @@ Idempotentes, se ejecutan en orden en el SQL Editor. Estado según lo conversado
 | 23 (v19) | `control_ot_revision` + config `control_ots` (**reemplazar GID_CONTROL_OTS por el gid real**) + **recálculo facturacion_total desde servicios** | ⚠️ |
 | 24 (v20) | `diagnosticos_taller`, respaldos/autorización en trabajos, config `margenes` | ⚠️ |
 | 25 (v21) | apellidos, tipo_vehiculo, documento en servicios, `tareas_servicio` (seed MAN X PAUTA), `precios_base`, RPC `crm_aplicar_datos_ot`, re-vinculación por patente | 🆕 pendiente |
-| 26 (v21) | Seed base de precios (985 filas, precios 09-04-2026) | 🆕 pendiente |
+| 26 (v21.1) | Seed base de precios (985 filas, precios 09-04-2026; fix celdas combinadas; AC13 quedó "(nombre por completar)") | 🆕 pendiente |
+| 27 (v21.1) | `crm_aplicar_datos_ot` v2: crea clientes/vehículos faltantes desde la base de OT, vincula servicios huérfanos (fix búsqueda por N° OT, ej. 13199) y recalcula facturación/num_ot/última visita | 🆕 pendiente |
 
 **Regla de enums en Postgres:** `ALTER TYPE ... ADD VALUE` debe correr solo, en una ejecución separada del resto del script (error 55P04 si no).
 

@@ -8,7 +8,8 @@ Esta versión incluye: separación Nueva OT / Solicitar servicio, tareas predefi
 ## 1. Migraciones SQL (SQL Editor de Supabase, en orden)
 
 1. **`database/25_actualizacion_v21.sql`** — columnas nuevas (apellidos, tipo_vehiculo, documento en servicios), tabla `tareas_servicio` con las 32 tareas de MAN X PAUTA, tabla `precios_base`, función `crm_aplicar_datos_ot` y re-vinculación de servicios por patente.
-2. **`database/26_seed_precios_v21.sql`** — carga las 985 filas de la base de precios (921 servicios aplicables por tipo de vehículo + 55 precios fijos + 9 insumos, actualización de precios 09-04-2026). Es idempotente: borra y recarga.
+2. **`database/26_seed_precios_v21.sql`** (v21.1) — carga las 985 filas de la base de precios (servicios aplicables por tipo de vehículo + 55 precios fijos + 9 insumos, precios 09-04-2026). Idempotente: borra y recarga. **Fix**: propaga nombres de servicios en celdas combinadas del xlsx. **Ojo**: el código **AC13** (A.C-CALEFACCION, MO $238.000, Aplica=Sí) no tiene nombre en ninguna fila de tu Excel; quedó cargado como "A.C-CALEFACCION AC13 (nombre por completar)" — corrígelo en el xlsx y vuelve a pedir el seed, o edítalo directo en la tabla `precios_base`.
+3. **`database/27_actualizacion_v21_1.sql`** — corrige la búsqueda por N° de OT (ej. OT 13199): las OT de clientes que nunca existieron en el CRM quedaban sin cliente vinculado y no aparecían en el buscador. Ahora `crm_aplicar_datos_ot` v2 **crea automáticamente el cliente y el vehículo** cuando la patente no existe (reutiliza clientes por teléfono o nombre para no duplicar), vincula todas sus OT y recalcula facturación/N° OT/última visita. La migración además vincula de inmediato lo ya sincronizado y muestra cuántas OT siguen huérfanas. **Después de ejecutarla, corre `crmSyncServicios()` una vez**: ahí se crean los clientes faltantes.
 
 ## 2. Apps Script — planilla DIDIAL_Base_OT
 

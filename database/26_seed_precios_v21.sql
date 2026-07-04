@@ -1,7 +1,8 @@
 -- =====================================================================
--- SEED v21 · BASE DE PRECIOS DIDIAL (generado desde Base_Datos_Precios_DIDIAL.xlsx, actualización 09-04-2026)
--- Requiere haber ejecutado 25_actualizacion_v21.sql.
--- Idempotente: borra y recarga la base de precios completa del tenant.
+-- SEED v21.1 · BASE DE PRECIOS DIDIAL (desde Base_Datos_Precios_DIDIAL.xlsx, precios 09-04-2026)
+-- Fix: celdas combinadas (nombre de servicio propagado dentro del mismo
+-- código) y nombres faltantes con placeholder "(nombre por completar)".
+-- Requiere 25_actualizacion_v21.sql. Idempotente: borra y recarga.
 -- =====================================================================
 delete from precios_base where empresa_id = '00000000-0000-0000-0000-000000000001';
 
@@ -892,10 +893,10 @@ insert into precios_base (empresa_id,tipo,categoria,codigo,nombre,tipo_vehiculo,
 ('00000000-0000-0000-0000-000000000001','servicio','A.C-CALEFACCION','AC12','Ext y mont de flexible','SUV',1,47600,null,null,null,null,'1'),
 ('00000000-0000-0000-0000-000000000001','servicio','A.C-CALEFACCION','AC12','Ext y mont de flexible','PICK UP',1,47600,null,null,null,null,'1'),
 ('00000000-0000-0000-0000-000000000001','servicio','A.C-CALEFACCION','AC12','Ext y mont de flexible','VAN/FURGON/CAMION',1,47600,null,null,null,null,'1'),
-('00000000-0000-0000-0000-000000000001','servicio','A.C-CALEFACCION','AC13',null,'AUTO',5,238000,null,null,null,null,null),
-('00000000-0000-0000-0000-000000000001','servicio','A.C-CALEFACCION','AC13',null,'SUV',5,238000,null,null,null,null,null),
-('00000000-0000-0000-0000-000000000001','servicio','A.C-CALEFACCION','AC13',null,'PICK UP',5,238000,null,null,null,null,null),
-('00000000-0000-0000-0000-000000000001','servicio','A.C-CALEFACCION','AC13',null,'VAN/FURGON/CAMION',5,238000,null,null,null,null,null),
+('00000000-0000-0000-0000-000000000001','servicio','A.C-CALEFACCION','AC13','A.C-CALEFACCION AC13 (nombre por completar)','AUTO',5,238000,null,null,null,null,null),
+('00000000-0000-0000-0000-000000000001','servicio','A.C-CALEFACCION','AC13','A.C-CALEFACCION AC13 (nombre por completar)','SUV',5,238000,null,null,null,null,null),
+('00000000-0000-0000-0000-000000000001','servicio','A.C-CALEFACCION','AC13','A.C-CALEFACCION AC13 (nombre por completar)','PICK UP',5,238000,null,null,null,null,null),
+('00000000-0000-0000-0000-000000000001','servicio','A.C-CALEFACCION','AC13','A.C-CALEFACCION AC13 (nombre por completar)','VAN/FURGON/CAMION',5,238000,null,null,null,null,null),
 ('00000000-0000-0000-0000-000000000001','servicio','INYECCION','IC1','Extracción y montaje inyectoresTY-hilux 05-10 Ni-Navara','SUV',2.5,119000,null,null,null,null,'2'),
 ('00000000-0000-0000-0000-000000000001','servicio','INYECCION','IC1','Extracción y montaje inyectoresTY-hilux 05-10 Ni-Navara','PICK UP',2.5,119000,null,null,null,null,'2'),
 ('00000000-0000-0000-0000-000000000001','servicio','INYECCION','IC1','Extracción y montaje inyectoresTY-hilux 05-10 Ni-Navara','VAN/FURGON/CAMION',2.5,119000,null,null,null,null,'2'),

@@ -49,6 +49,7 @@ export default function Clientes() {
 
   // Búsqueda por patente o N° de OT: resuelve cliente_ids en vehiculos/servicios
   const [idsExtra, setIdsExtra] = useState(null)
+  const [otHuerfana, setOtHuerfana] = useState(null) // OT encontrada pero sin cliente vinculado
   const [orden, setOrden] = useState('fact_desc')
   useEffect(() => {
     const q = busca.trim()
@@ -64,6 +65,10 @@ export default function Clientes() {
       const ids = new Set([...(veh.data || []), ...(veh2 || []), ...(srv.data || [])]
         .map((r) => r.cliente_id).filter(Boolean))
       setIdsExtra(ids)
+      // v21.1: la OT existe en el historial pero sin cliente vinculado
+      // (cliente aún no creado en el CRM; se resuelve al correr el sync v2)
+      const huerfanas = (srv.data || []).filter((r) => !r.cliente_id)
+      setOtHuerfana(ids.size === 0 && huerfanas.length ? huerfanas[0].ot_numero : null)
     }, 300)
     return () => clearTimeout(timer)
   }, [busca])
@@ -167,6 +172,13 @@ export default function Clientes() {
         )}
       </div>
 
+      {otHuerfana && (
+        <div className="card p-3 text-xs text-slate-600 border-l-4" style={{ borderLeftColor: 'rgb(var(--c-amber))' }}>
+          ⚠ La <b>OT {otHuerfana}</b> existe en el historial sincronizado, pero su cliente aún no está creado en el CRM
+          (viene de la base de OT). Se crea automáticamente al ejecutar la sincronización
+          (<code>crmSyncServicios()</code> v2) — o agrégalo manualmente con "+ Nuevo cliente" usando su patente.
+        </div>
+      )}
       {filtrada.length === 0 ? (
         <EmptyState titulo="Sin clientes que coincidan"
                     mensaje="Ajusta la búsqueda o los filtros." />
