@@ -47,6 +47,13 @@ Reemplazo total del repo con el zip (como siempre: GitHub Desktop o git push, nu
 4. El asesor ajusta precios libremente para negociar; si sale del rango de referencia queda marcado en ámbar (no se bloquea). El **PDF** sale con el formato oficial DIDIAL (secciones, subtotales, NETO/IVA/TOTAL — valores IVA incluido, desglose hacia atrás con IVA 19%).
 5. El formulario de contacto ahora exige: Nombre(s), Apellido(s), RUT, teléfono, correo, dirección, comuna, ciudad y tipo (Persona/Empresa/Interno). Marca ya no es dato de contacto. Aplica de aquí en adelante; los clientes antiguos conservan su nombre completo en "Nombre(s)" hasta que se editen.
 
+## 4b. OT sin cliente (v21.2 · pestaña nueva en Control de OT)
+El diagnóstico arrojó **2.929 OT sin cliente vinculado**. El módulo **Control de OT** ahora tiene dos pestañas:
+- **OT sin cliente**: agrupa esas OT por patente (con total facturado, rango de fechas y lista de OT), con buscador por patente o N° de OT. Por cada patente puedes **crear la ficha del cliente** (formulario de contacto + datos del vehículo; solo el nombre es obligatorio aquí para poder recuperar la ficha) o **vincularla a un cliente existente** (búsqueda por nombre/RUT/teléfono, evita duplicados). Al guardar se enlazan todas las OT de esa patente y se recalculan facturación, N° de OT, ticket y última visita; luego te lleva a la ficha.
+- **OT faltantes en la base**: la funcionalidad original (hoja Control_OTs).
+
+Importante: ejecuta primero **`crmSyncServicios()` v2** — las OT cuya fila en la planilla trae nombre de propietario se crean solas, y las 2.929 deberían bajar bastante. Lo que quede (filas sin propietario en la planilla) se resuelve a mano en esta pestaña.
+
 ## 5. Pendiente conocido
 - Los encabezados opcionales de la planilla (documento, propietario, teléfono…) se detectan por nombre; verificar con `crmVerificarColumnas()` y ajustar `COL_OPC`/`CRM_UPD_COLS` si tu planilla usa otros títulos.
 - Otros servicios con tareas predefinidas: cuando tengas los listados, se cargan como filas en `tareas_servicio` (o pídelo en una sesión y se genera el SQL).
