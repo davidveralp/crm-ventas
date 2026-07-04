@@ -3,7 +3,9 @@
 // =====================================================================
 // Envía un correo a los clientes de un segmento (con email) vía Brevo,
 // registrando cada envío en email_envios para poder medir su resultado.
-//   { asunto, cuerpo, segmento?, dias_recientes?, campana_id? }
+//   { asunto, cuerpo, es_html?, cliente_ids?, segmento?, dias_recientes?, campana_id? }
+//   v22: cliente_ids (audiencia explícita calculada por audiencia_campana)
+//        y es_html (la plantilla ya viene en HTML, no convertir saltos).
 // Solo lo puede invocar un admin.
 //
 // Despliegue:  supabase functions deploy enviar-email
@@ -38,7 +40,7 @@ Deno.serve(async (req) => {
     const { data: perfil } = await service.from('usuarios').select('rol, empresa_id').eq('id', uid).single()
     if (!perfil || perfil.rol !== 'admin') return json({ error: 'Solo un administrador puede enviar emails' }, 403)
 
-    const { asunto, cuerpo, segmento, dias_recientes, campana_id } = await req.json()
+    const { asunto, cuerpo, es_html, cliente_ids, segmento, dias_recientes, campana_id } = await req.json()
     if (!asunto || !cuerpo) return json({ error: 'Faltan asunto o cuerpo' }, 400)
 
     // Remitente configurado por empresa (config sobre código)
@@ -49,11 +51,14 @@ Deno.serve(async (req) => {
       email: emp?.remitente_email || 'administracion@didial.cl'
     }
 
-    // Audiencia: clientes del segmento con email
-    let q = service.from('clientes').select('id,nombre,email')
+    // Audiencia: lista explícita (campañas con criterio) o por segmento
+    let q = service.from('clientes').select('id,nombre,apellidos,email')
       .eq('empresa_id', perfil.empresa_id).not('email', 'is', null)
-    if (segmento) q = q.eq('segmento', segmento)
-    if (dias_recientes) q = q.gte('creado_en', new Date(Date.now() - dias_recientes * 864e5).toISOString())
+    if (Array.isArray(cliente_ids) && cliente_ids.length) q = q.in('id', cliente_ids.slice(0, 2000))
+    else {
+      if (segmento) q = q.eq('segmento', segmento)
+      if (dias_recientes) q = q.gte('creado_en', new Date(Date.now() - dias_recientes * 864e5).toISOString())
+    }
     const { data: clientes } = await q.limit(2000)
     const dest = (clientes || []).filter((x) => x.email && x.email.includes('@'))
     if (!dest.length) return json({ ok: true, enviados: 0, motivo: 'Sin clientes con email en este segmento' })
@@ -68,8 +73,11 @@ Deno.serve(async (req) => {
     }).select('id').single()
     if (eb) return json({ error: 'No se pudo crear la tanda: ' + eb.message }, 500)
 
-    // Cuerpo con personalización {nombre} -> {{params.nombre}}
-    const htmlBase = `<div style="font-family:Arial,sans-serif;font-size:15px;color:#1A1C20;line-height:1.6">
+    // Cuerpo con personalización {nombre} -> {{params.nombre}}.
+    // Si es_html, la plantilla ya trae su propio layout (no tocar saltos).
+    const htmlBase = es_html
+      ? String(cuerpo).replace(/\{nombre\}/g, '{{params.nombre}}')
+      : `<div style="font-family:Arial,sans-serif;font-size:15px;color:#1A1C20;line-height:1.6">
       ${String(cuerpo).replace(/\{nombre\}/g, '{{params.nombre}}').replace(/\n/g, '<br>')}
       <br><br><span style="color:#6B7280;font-size:12px">DIDIAL Servicio Automotriz · La Serena</span>
     </div>`

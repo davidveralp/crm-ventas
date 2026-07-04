@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import TareasCampana from '../components/TareasCampana'
 import { Pill, Modal, EmptyState, SelectMarca } from '../components/UI'
 import { SEGMENTOS, TIPOS_CLIENTE, segLabel, segColor, fmtCLP, formatRut, formatTelefono, formatPatente } from '../lib/helpers'
 
@@ -15,6 +16,7 @@ const VACIO = {
 
 export default function Clientes() {
   const { esAdmin, perfil } = useAuth()
+  const [vistaTab, setVistaTab] = useState('clientes') // clientes | tareas
   const navigate = useNavigate()
   const [lista, setLista]   = useState([])
   const [vendedores, setVendedores] = useState([])
@@ -137,13 +139,20 @@ export default function Clientes() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-xl font-bold text-ink">Clientes</h1>
-          <p className="text-sm text-slate-500">{filtrada.length} de {lista.length}</p>
+          <p className="text-sm text-slate-500">{vistaTab === 'clientes' ? `${filtrada.length} de ${lista.length}` : 'Tareas de campaña asignadas'}</p>
         </div>
-        <button className="btn-primary" onClick={() => setModal(true)}>+ Nuevo cliente</button>
+        <div className="flex items-center gap-2">
+          <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-sm">
+            <button onClick={() => setVistaTab('clientes')} className={`px-3 py-1.5 ${vistaTab === 'clientes' ? 'bg-deep text-white' : 'text-slate-500'}`}>Clientes</button>
+            <button onClick={() => setVistaTab('tareas')} className={`px-3 py-1.5 ${vistaTab === 'tareas' ? 'bg-deep text-white' : 'text-slate-500'}`}>📋 Tareas</button>
+          </div>
+          <button className="btn-primary" onClick={() => setModal(true)}>+ Nuevo cliente</button>
+        </div>
       </div>
+      {vistaTab === 'tareas' ? <TareasCampana perfil={perfil} esAdmin={esAdmin} /> : (<>
 
       <div className="grid grid-cols-2 md:flex md:flex-wrap gap-3">
         <select className="input md:w-56" value={orden} onChange={(e) => setOrden(e.target.value)}>
@@ -226,6 +235,8 @@ export default function Clientes() {
         </div>
       )}
 
+      </>)}
+
       <Modal abierto={modal} onClose={() => setModal(false)} titulo="Nuevo cliente" ancho="max-w-xl">
         <form onSubmit={guardar} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
@@ -285,8 +296,10 @@ export default function Clientes() {
                 <option value="">Sin asignar</option>
                 {vendedores.map((v) => <option key={v.id} value={v.id}>{v.nombre}</option>)}
               </select>
+              <p className="text-[10px] text-slate-400 mt-0.5">Administración puede reasignar el cliente en cualquier momento desde su ficha.</p>
             </div>
           )}
+          {!esAdmin && <p className="text-[11px] text-slate-400">El cliente ingresa con segmento <b>Nuevo cliente</b> (el sistema lo reclasifica después) y quedará asignado a ti como vendedor.</p>}
 
           <div className="border-t border-slate-100 pt-3">
             <div className="text-xs font-semibold text-slate-500 mb-2">Dirección *</div>

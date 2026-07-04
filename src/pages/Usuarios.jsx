@@ -41,7 +41,13 @@ export default function Usuarios() {
       body: { action: 'crear', ...form }
     })
     setGuardando(false)
-    if (err || data?.error) { setError(data?.error || err.message); return }
+    if (err || data?.error) {
+      const m = data?.error || err.message
+      setError(/Failed to send a request|FunctionsFetchError|not found/i.test(m)
+        ? 'La Edge Function "gestionar-usuario" NO está desplegada en Supabase (por eso falla la creación). Despliégala así: Dashboard de Supabase → Edge Functions → Deploy new function → nombre exacto gestionar-usuario → pega el contenido de supabase/functions/gestionar-usuario/index.ts del repo → Deploy. Los secrets se configuran solos. Guía completa: DESPLEGAR_FUNCIONES.md. (Plan B manual: Authentication → Add user y luego insertar la fila en la tabla usuarios.)'
+        : m)
+      return
+    }
     setModal(false); setForm(NUEVO); cargar()
   }
 

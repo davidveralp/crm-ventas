@@ -57,3 +57,40 @@ Importante: ejecuta primero **`crmSyncServicios()` v2** — las OT cuya fila en 
 ## 5. Pendiente conocido
 - Los encabezados opcionales de la planilla (documento, propietario, teléfono…) se detectan por nombre; verificar con `crmVerificarColumnas()` y ajustar `COL_OPC`/`CRM_UPD_COLS` si tu planilla usa otros títulos.
 - Otros servicios con tareas predefinidas: cuando tengas los listados, se cargan como filas en `tareas_servicio` (o pídelo en una sesión y se genera el SQL).
+
+
+---
+
+# ACTUALIZACIÓN v22 · Campañas bien definidas + email marketing precargado
+
+## Migración
+Ejecutar **`database/28_actualizacion_v22.sql`**. Hace tres cosas:
+1. **Limpia el calendario y las gestiones**: las tareas que la activación de la campaña insertó como actividades (las 696 "vencidas" y los eventos con texto plantilla en Gestiones) se **migran** a la nueva tabla `tareas_campana` y se eliminan del calendario. No se pierde nada: quedan como tareas pendientes de la campaña. Las que un asesor ya gestionó se conservan como historial real.
+2. Crea `tareas_campana` y la función `audiencia_campana` (audiencias calculadas desde el historial de servicios).
+3. Precarga **6 campañas de email marketing** en borrador, con asunto, plantilla HTML institucional DIDIAL y criterio de audiencia.
+
+## Nuevo flujo de campañas (definición corregida)
+- **Activar** una campaña no carga nada a nadie: solo la habilita.
+- **"Cargar a asesores"** asigna una **tarea de campaña** por cliente al vendedor de su cartera (los sin vendedor quedan "Sin asignar" para que administración los reparta). NO toca el calendario ni las gestiones.
+- El vendedor trabaja su lista en **Clientes → pestaña Tareas** (vista tipo tabla con filtros por estado/campaña/vendedor, búsqueda, comentarios y export CSV). Al marcar una tarea como **Agendado**, ahí sí se crea el agendamiento y aparece en el Calendario.
+- Las **Gestiones** vuelven a ser exclusivamente lo que el asesor registra en la ficha del cliente.
+
+## Campañas de email precargadas (listas para enviar con un botón)
+| Campaña | Audiencia (calculada del historial) | Gancho |
+|---|---|---|
+| Mantención próxima | Última mantención hace 150–180 días, sin visitas posteriores | 10% dcto · código MANT10-DIDIAL |
+| Fidelización post-reparación | Última visita (60–180 días) fue reparación, no mantención | Encuesta + inspección de cortesía |
+| Mantención vencida | Última mantención hace 181–365 días, sin visitas posteriores | 10% dcto · código MANT10-DIDIAL |
+| Fidelizados | 3+ visitas en los últimos 12 meses | Tips de mecánica preventiva + inspección de cortesía |
+| Recupero importante | +1 año sin venir y (3+ visitas históricas o facturación ≥ $500.000) | "Te extrañamos" + 10% dcto · VUELVE10-DIDIAL |
+| Recupero masivo | +1 año sin venir, pocas visitas y montos menores | Revisión general con diagnóstico honesto |
+
+Detección de mantención: tipo de servicio que comienza con "MAN". Los umbrales (días, visitas, montos) viven en el campo `criterio` (jsonb) de cada campaña y se ajustan por SQL sin tocar código. Los códigos de descuento van escritos en la plantilla (edítalos ahí si cambian).
+
+En **Campañas**, al abrir una de email verás su audiencia calculada en vivo, la vista previa HTML y el botón **Enviar email**. Requisito para enviar: desplegar la Edge Function `enviar-email` (v22, ahora acepta audiencia explícita y HTML) con el secret `BREVO_API_KEY`, y activar la campaña.
+
+## Nuevo cliente
+El segmento entra predefinido como **Nuevo cliente** (el sistema lo reclasifica después) y el vendedor por defecto es quien lo ingresa; administración puede reasignarlo desde la ficha.
+
+## Usuarios (bug pendiente de tu lado)
+"Failed to send a request to the Edge Function" significa que **`gestionar-usuario` sigue sin desplegarse** en Supabase — no es un bug del código del CRM, y no puedo desplegarla por ti. Pasos exactos: Dashboard de Supabase → **Edge Functions → Deploy new function** → nombre exacto `gestionar-usuario` → pegar el contenido de `supabase/functions/gestionar-usuario/index.ts` → Deploy (los secrets se configuran solos). El modal ahora te muestra estas instrucciones cuando detecta ese error.

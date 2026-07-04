@@ -26,8 +26,27 @@ export default function Campanas() {
   }
 
   async function abrir(c) {
-    setSel(c); setResultadoEnvio('')
-    let q = supabase.from('clientes').select('id,nombre,telefono,segmento,vendedor_id,creado_en')
+    setSel(c); setResultadoEnvio(''); setCoincidencias([])
+    // v22: las campañas de email con criterio calculan su audiencia desde el
+    // historial real de servicios (función audiencia_campana)
+    if (c.criterio) {
+      const { data, error } = await supabase.rpc('audiencia_campana', { p_campana: c.id })
+      if (error) { setResultadoEnvio('Error calculando audiencia: ' + error.message); return }
+      // trae vendedor_id para poder asignar tareas
+      const ids = (data || []).map((x) => x.cliente_id)
+      let vend = {}
+      if (ids.length) {
+        const { data: cl } = await supabase.from('clientes').select('id,vendedor_id').in('id', ids.slice(0, 1000))
+        vend = Object.fromEntries((cl || []).map((x) => [x.id, x.vendedor_id]))
+      }
+      setCoincidencias((data || []).map((x) => ({
+        id: x.cliente_id, nombre: [x.nombre, x.apellidos].filter(Boolean).join(' '),
+        telefono: x.telefono, email: x.email, vendedor_id: vend[x.cliente_id] || null,
+        ultima_visita: x.ultima_visita
+      })))
+      return
+    }
+    let q = supabase.from('clientes').select('id,nombre,apellidos,telefono,segmento,vendedor_id,creado_en')
     if (c.segmento) q = q.eq('segmento', c.segmento)
     if (c.dias_recientes) {
       const desde = new Date(Date.now() - c.dias_recientes * 864e5).toISOString()
@@ -42,39 +61,27 @@ export default function Campanas() {
     cargar(); if (sel?.id === id) setSel({ ...sel, estado })
   }
 
-  // Crea tareas pendientes (actividades) para cada cliente del segmento,
-  // asignadas a su vendedor y etiquetadas con la campaña. Evita duplicar.
+  // v22: crea TAREAS DE CAMPAÑA (tabla tareas_campana) asignadas al
+  // vendedor de cada cliente. Ya NO se insertan actividades: el calendario
+  // solo recibe los agendamientos que el asesor haga al trabajar su tarea,
+  // y las gestiones quedan solo con lo registrado efectivamente por él.
   async function cargarAAsesores() {
     if (sel.estado !== 'activa') {
       setResultadoEnvio('Solo las campañas activas pueden asignar clientes. Activa la campaña primero.')
       return
     }
-    if (!coincidencias.length) { setResultadoEnvio('No hay clientes en este segmento.'); return }
-    if (!confirm(`Se generarán tareas de seguimiento para ${coincidencias.length} cliente(s), asignadas a su vendedor. ¿Continuar?`)) return
+    if (!coincidencias.length) { setResultadoEnvio('No hay clientes que coincidan con esta campaña.'); return }
+    if (!confirm(`Se asignarán ${coincidencias.length} tarea(s) de campaña a los vendedores según su cartera. ¿Continuar?`)) return
     setCargandoAsesores(true); setResultadoEnvio('')
-
-    // Clientes que ya tienen una tarea de esta campaña (para no duplicar)
-    const ids = coincidencias.map((c) => c.id)
-    const { data: existentes } = await supabase.from('actividades')
-      .select('cliente_id').eq('campana_id', sel.id).in('cliente_id', ids)
-    const yaCargados = new Set((existentes || []).map((a) => a.cliente_id))
-
-    const hoy = new Date().toISOString().slice(0, 10)
-    const tipo = CANAL_A_TIPO[sel.canal] || 'llamada'
-    const filas = coincidencias
-      .filter((c) => !yaCargados.has(c.id))
-      .map((c) => ({
-        empresa_id: perfil.empresa_id, cliente_id: c.id, vendedor_id: c.vendedor_id || null,
-        tipo, resultado: 'pendiente', fecha: hoy, proxima_fecha: hoy,
-        campana_id: sel.id, proxima_accion: `Campaña: ${sel.nombre}`,
-        descripcion: sel.mensaje_plantilla || ''
-      }))
-
-    if (!filas.length) { setCargandoAsesores(false); setResultadoEnvio('Todos los clientes ya tenían tarea de esta campaña.'); return }
-    const { error } = await supabase.from('actividades').insert(filas)
+    const filas = coincidencias.map((c) => ({
+      empresa_id: perfil.empresa_id, campana_id: sel.id, cliente_id: c.id,
+      vendedor_id: c.vendedor_id || null, canal: sel.canal || null, estado: 'pendiente'
+    }))
+    const { error } = await supabase.from('tareas_campana')
+      .upsert(filas, { onConflict: 'campana_id,cliente_id', ignoreDuplicates: true })
     setCargandoAsesores(false)
     if (error) { setResultadoEnvio('Error: ' + error.message); return }
-    setResultadoEnvio(`Listo: ${filas.length} tarea(s) cargada(s) a los asesores (visibles en su Calendario y Pipeline).`)
+    setResultadoEnvio(`Listo: ${filas.length} tarea(s) asignada(s). Cada vendedor las ve en Clientes → pestaña Tareas (los clientes sin vendedor quedan para que administración los reasigne).`)
   }
 
   async function enviarEmail() {
@@ -86,8 +93,10 @@ export default function Campanas() {
     setEnviando(true); setResultadoEnvio('')
     const { data, error } = await supabase.functions.invoke('enviar-email', {
       body: {
-        asunto: sel.nombre,
+        asunto: sel.asunto || sel.nombre,
         cuerpo: sel.mensaje_plantilla || '',
+        es_html: /<[a-z][\s\S]*>/i.test(sel.mensaje_plantilla || ''),
+        cliente_ids: sel.criterio ? coincidencias.map((c) => c.id) : null,
         segmento: sel.segmento || null,
         dias_recientes: sel.dias_recientes || null,
         campana_id: sel.id
@@ -142,7 +151,11 @@ export default function Campanas() {
 
             <div>
               <div className="label">Mensaje plantilla</div>
-              <div className="rounded-lg bg-paper p-3 text-sm text-slate-700 whitespace-pre-wrap">{sel.mensaje_plantilla}</div>
+              {sel.asunto && <div className="text-xs text-slate-500 mb-1"><b>Asunto:</b> {sel.asunto}</div>}
+              {/<[a-z][\s\S]*>/i.test(sel.mensaje_plantilla || '')
+                ? <div className="rounded-lg border border-slate-200 overflow-hidden max-h-96 overflow-y-auto"
+                       dangerouslySetInnerHTML={{ __html: sel.mensaje_plantilla }} />
+                : <div className="rounded-lg bg-paper p-3 text-sm text-slate-700 whitespace-pre-wrap">{sel.mensaje_plantilla}</div>}
             </div>
 
             <div>
@@ -187,7 +200,7 @@ export default function Campanas() {
             )}
 
             <p className="text-[11px] text-slate-400">
-              "Cargar a asesores" genera una tarea de seguimiento por cliente, asignada a su vendedor y visible en su Calendario y Pipeline.
+              "Cargar a asesores" asigna una tarea de campaña por cliente a su vendedor (Clientes → Tareas). El calendario solo recibe los agendamientos que el asesor cree al gestionarla. "Enviar email" envía la plantilla a toda la audiencia con correo.
             </p>
           </div>
         )}
