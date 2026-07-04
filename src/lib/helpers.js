@@ -387,3 +387,53 @@ export const fmtCrono = (seg) => {
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60
   return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' + String(x).padStart(2, '0')
 }
+
+// ====================================================================
+// v21 — Tipo de vehículo, secciones de presupuesto y utilitarios
+// ====================================================================
+export const TIPOS_VEHICULO = ['AUTO', 'SUV', 'PICK UP', 'VAN/FURGON/CAMION']
+
+// Secciones del presupuesto (formato oficial DIDIAL). Los tipos antiguos
+// (lubricante/filtro/consumible) se agrupan bajo "Lubricantes y Otros Insumos".
+export const SECCIONES_PRESUP = {
+  repuesto:         'Repuestos',
+  insumo:           'Lubricantes y Otros Insumos',
+  mano_obra:        'Mano de Obra',
+  servicio_externo: 'Servicios Externos'
+}
+export const seccionDe = (tipo) =>
+  ['lubricante', 'filtro', 'consumible', 'insumo'].includes(tipo) ? 'insumo'
+  : SECCIONES_PRESUP[tipo] ? tipo : 'repuesto'
+
+// Nombre completo (nombres + apellidos, con fallback a registros antiguos)
+export const nombreCompleto = (c) => [c?.nombre, c?.apellidos].filter(Boolean).join(' ').trim()
+
+// IVA chileno: los precios de la base van con IVA incluido.
+// El presupuesto impreso desglosa NETO / IVA / TOTAL hacia atrás.
+export const IVA_PCT = 19
+export const desgloseIVA = (total) => {
+  const neto = Math.round((+total || 0) / (1 + IVA_PCT / 100))
+  return { neto, iva: (+total || 0) - neto, total: +total || 0 }
+}
+
+// Envía un payload a un Apps Script (form POST + iframe oculto, sin CORS).
+// Mismo mecanismo que la app de registro de OT. Fire-and-forget.
+export function enviarASheet(url, data) {
+  return new Promise((resolve) => {
+    if (!url) return resolve(false)
+    const frameName = 'ot_sheet_' + Date.now() + '_' + Math.floor(Math.random() * 1e4)
+    const iframe = document.createElement('iframe')
+    iframe.name = frameName; iframe.style.display = 'none'
+    document.body.appendChild(iframe)
+    const form = document.createElement('form')
+    form.method = 'POST'; form.action = url; form.target = frameName
+    const input = document.createElement('input')
+    input.type = 'hidden'; input.name = 'payload'; input.value = JSON.stringify(data)
+    form.appendChild(input); document.body.appendChild(form)
+    let hecho = false
+    const limpiar = () => { if (hecho) return; hecho = true; try { form.remove(); iframe.remove() } catch {} ; resolve(true) }
+    iframe.onload = () => setTimeout(limpiar, 300)
+    setTimeout(limpiar, 2500)
+    form.submit()
+  })
+}

@@ -6,32 +6,11 @@ import {
   formatPatente, patenteLimpia, fmtMiles, otTotal, fmtFonoOT,
   OT_TIPO_INGRESO, OT_ES_GARANTIA, OT_TIPO_CLIENTE, OT_ESTADO_VEHICULO,
   OT_TIPO_DOCUMENTO, OT_SVC_GRUPOS, otBU, OT_MARCAS, OT_CIUDADES,
-  OT_TECNICOS, OT_CONOCIO, OT_ENCUESTA
+  OT_TECNICOS, OT_CONOCIO, OT_ENCUESTA, enviarASheet
 } from '../lib/helpers'
 
 const hoy = () => new Date().toISOString().slice(0, 10)
 
-// Envía la OT a la planilla (Apps Script) con form POST + iframe oculto.
-// Es el mismo método de la app de registro: evita por completo el CORS
-// que Apps Script genera al llamarlo con fetch desde otro dominio.
-function enviarASheet(url, data) {
-  return new Promise((resolve) => {
-    const frameName = 'ot_sheet_' + Date.now()
-    const iframe = document.createElement('iframe')
-    iframe.name = frameName; iframe.style.display = 'none'
-    document.body.appendChild(iframe)
-    const form = document.createElement('form')
-    form.method = 'POST'; form.action = url; form.target = frameName
-    const input = document.createElement('input')
-    input.type = 'hidden'; input.name = 'payload'; input.value = JSON.stringify(data)
-    form.appendChild(input); document.body.appendChild(form)
-    let hecho = false
-    const limpiar = () => { if (hecho) return; hecho = true; try { form.remove(); iframe.remove() } catch {} ; resolve(true) }
-    iframe.onload = () => setTimeout(limpiar, 300)
-    setTimeout(limpiar, 2500) // respaldo
-    form.submit()
-  })
-}
 const VACIA = {
   ot_numero: '', fecha: hoy(), tipo_ingreso: 'Normal', sucursal: 'Toyota',
   tecnico_principal: '', tecPrincipalOtro: '',
@@ -147,7 +126,7 @@ export default function NuevaOT() {
     const limpia = patenteLimpia(patente)
     if (limpia.length < 5) { setVeh(null); return }
     const { data } = await supabase.from('vehiculos')
-      .select('id,marca,modelo,cliente_id,clientes(nombre)')
+      .select('id,marca,modelo,cliente_id,clientes(nombre,apellidos)')
       .ilike('patente', `%${formatPatente(patente)}%`).limit(1)
     const v = data?.[0] || null
     setVeh(v)
@@ -236,6 +215,7 @@ export default function NuevaOT() {
       empresa_id: perfil.empresa_id, ot_numero: fila.ot_numero, fecha: fila.fecha,
       patente: patenteLimpia(f.patente), tipo_servicio: f.tipo_servicio_1,
       tipo_servicio_2: f.tipo_servicio_2 || null, monto: total, km: kmNum,
+      tipo_documento: f.tipo_documento || null, nro_documento: f.nro_documento.trim() || null,
       vehiculo_id: veh?.id || null, cliente_id: veh?.cliente_id || null
     }, { onConflict: 'empresa_id,ot_numero' })
     if (veh?.id && kmNum) await supabase.from('vehiculos').update({ km_ultimo: kmNum }).eq('id', veh.id)
@@ -360,7 +340,7 @@ export default function NuevaOT() {
           <input className="input" value={f.patente} maxLength={9}
                  onChange={(e) => { set('patente', formatPatente(e.target.value)); buscarVehiculo(e.target.value) }}
                  placeholder="XX XX XX" />
-          {veh && <p className="text-xs text-green-600 mt-1">Vehículo encontrado: {veh.clientes?.nombre || 'cliente'}</p>}
+          {veh && <p className="text-xs text-green-600 mt-1">Vehículo encontrado: {[veh.clientes?.nombre, veh.clientes?.apellidos].filter(Boolean).join(' ') || 'cliente'}</p>}
         </Campo>
         <Campo label="Año"><input className="input" value={f.anio} onChange={(e) => set('anio', e.target.value)} placeholder="Ej: 2019" /></Campo>
         <Campo label="Marca" req>

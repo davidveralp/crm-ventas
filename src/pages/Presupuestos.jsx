@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { Pill, StatCard, EmptyState } from '../components/UI'
-import { fmtCLP, fmtFecha, ESTADOS_PRESUPUESTO, ESTADOS_PRESUP_TALLER } from '../lib/helpers'
+import { fmtCLP, fmtFecha, ESTADOS_PRESUPUESTO, ESTADOS_PRESUP_TALLER, SECCIONES_PRESUP, seccionDe } from '../lib/helpers'
 
 export default function Presupuestos() {
   const navigate = useNavigate()
@@ -17,10 +17,10 @@ export default function Presupuestos() {
   async function cargar() {
     const [{ data }, { data: pt }] = await Promise.all([
       supabase.from('presupuestos')
-        .select('*, clientes(nombre)')
+        .select('*, clientes(nombre,apellidos)')
         .order('proxima_gestion', { ascending: true, nullsFirst: false }),
       supabase.from('presupuestos_taller')
-        .select('*, trabajos_taller(titulo, servicio_solicitado, clientes(nombre))')
+        .select('*, trabajos_taller(titulo, servicio_solicitado, clientes(nombre,apellidos))')
         .order('creado_en', { ascending: false })
     ])
     setLista(data || []); setPTaller(pt || [])
@@ -108,7 +108,7 @@ export default function Presupuestos() {
                       {detalle.items.map((x, i) => (
                         <tr key={i} className="border-b last:border-0">
                           <td className="py-1.5 font-mono text-slate-500">{x.codigo || '—'}</td>
-                          <td className="py-1.5"><span className="capitalize text-slate-400">{x.tipo}:</span> {x.detalle || '—'}</td>
+                          <td className="py-1.5"><span className="text-slate-400">{SECCIONES_PRESUP[seccionDe(x.tipo)]}:</span> {x.detalle || '—'}</td>
                           <td className="text-right">{x.cant}</td>
                           <td className="text-right">{x.en_stock ? '—' : fmtCLP((+x.precio || 0) * (+x.cant || 1))}</td>
                           <td className="text-right">{x.en_stock ? '✓ Bodega' : 'Cotizar'}</td>
@@ -167,7 +167,7 @@ export default function Presupuestos() {
                 return (
                   <tr key={p.id} className="hover:bg-paper cursor-pointer"
                       onClick={() => navigate(`/clientes/${p.cliente_id}`)}>
-                    <td className="px-4 py-3 font-medium text-ink">{p.clientes?.nombre}</td>
+                    <td className="px-4 py-3 font-medium text-ink">{[p.clientes?.nombre, p.clientes?.apellidos].filter(Boolean).join(' ')}</td>
                     <td className="px-4 py-3 hidden md:table-cell text-slate-500 max-w-xs truncate">
                       {p.descripcion || '—'}
                     </td>

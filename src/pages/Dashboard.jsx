@@ -19,7 +19,7 @@ export default function Dashboard() {
       fetchAllRows('clientes', 'id,segmento,facturacion_total,estado_id,ultima_visita').then((d) => ({ data: d })),
       supabase.from('pipeline_estados').select('id,nombre,orden,color').order('orden'),
       supabase.from('actividades')
-        .select('id,tipo,fecha,resultado,clientes(nombre)')
+        .select('id,tipo,fecha,resultado,clientes(nombre,apellidos)')
         .order('fecha', { ascending: false }).limit(8),
       supabase.from('ordenes_trabajo').select('total_reparacion, asesor, fecha').gte('fecha', inicioMes)
     ])
@@ -125,7 +125,7 @@ export default function Dashboard() {
               <div key={a.id} className="flex items-center justify-between py-2.5">
                 <div>
                   <span className="text-sm font-medium text-ink">
-                    {a.clientes?.nombre || 'Cliente'}
+                    {[a.clientes?.nombre, a.clientes?.apellidos].filter(Boolean).join(' ') || 'Cliente'}
                   </span>
                   <span className="text-sm text-slate-500"> · {TIPOS_ACTIVIDAD[a.tipo] || a.tipo}</span>
                 </div>

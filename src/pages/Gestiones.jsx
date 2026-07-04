@@ -17,7 +17,7 @@ export default function Gestiones() {
   async function cargar() {
     const [{ data: g }, { data: a }] = await Promise.all([
       supabase.from('gestiones')
-        .select('*, clientes(nombre), usuarios(nombre)')
+        .select('*, clientes(nombre,apellidos), usuarios(nombre)')
         .order('creado_en', { ascending: false }).limit(1000),
       supabase.from('actividades')
         .select('gestion_id, proxima_fecha')
@@ -102,7 +102,7 @@ export default function Gestiones() {
                     className="w-full text-left px-4 py-3 hover:bg-paper flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-medium text-ink truncate">{g.clientes?.nombre || 'Cliente'}</span>
+                  <span className="font-medium text-ink truncate">{[g.clientes?.nombre, g.clientes?.apellidos].filter(Boolean).join(' ') || 'Cliente'}</span>
                   <span className="text-xs px-2 py-0.5 rounded-full font-medium"
                         style={{ color: estadoGestionColor(g.estado), background: estadoGestionColor(g.estado) + '18' }}>
                     {estadoGestionLabel(g.estado)}

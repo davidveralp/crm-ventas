@@ -6,7 +6,7 @@ import { Pill, Modal, EmptyState, SelectMarca } from '../components/UI'
 import { SEGMENTOS, TIPOS_CLIENTE, segLabel, segColor, fmtCLP, formatRut, formatTelefono, formatPatente } from '../lib/helpers'
 
 const VACIO = {
-  nombre: '', rut: '', email: '', telefono: '', ciudad: 'La Serena',
+  nombre: '', apellidos: '', rut: '', email: '', telefono: '', ciudad: 'La Serena',
   direccion: '', comuna: '',
   tipo: 'PERSONA', segmento: 'nuevo', marca_principal: '', vendedor_id: '',
   // datos del primer vehículo (opcionales)
@@ -84,7 +84,7 @@ export default function Clientes() {
       (!vendFiltro || c.vendedor_id === vendFiltro) &&
       (!estadoFiltro ||
         (estadoFiltro === 'sin' ? !c.estado_id : c.estado_id === estadoFiltro)) &&
-      (!q || c.nombre?.toLowerCase().includes(q) ||
+      (!q || c.nombre?.toLowerCase().includes(q) || c.apellidos?.toLowerCase().includes(q) ||
              c.telefono?.includes(q) ||
              c.email?.toLowerCase().includes(q) ||
              c.rut?.toLowerCase().includes(q) ||
@@ -99,7 +99,7 @@ export default function Clientes() {
     setGuardando(true)
     const asignado = estados.find((e) => e.clave === 'asignado' || e.nombre === 'Asignado')
     const payload = {
-      nombre: form.nombre, email: form.email,
+      nombre: form.nombre.trim(), apellidos: form.apellidos.trim(), email: form.email,
       telefono: form.telefono ? formatTelefono(form.telefono) : null,
       ciudad: form.ciudad, tipo: form.tipo, segmento: form.segmento,
       direccion: form.direccion || null, comuna: form.comuna || null,
@@ -191,7 +191,7 @@ export default function Clientes() {
                   <tr key={c.id} className="hover:bg-paper cursor-pointer"
                       onClick={() => navigate(`/clientes/${c.id}`)}>
                     <td className="px-4 py-3">
-                      <div className="font-medium text-ink">{c.nombre}</div>
+                      <div className="font-medium text-ink">{[c.nombre, c.apellidos].filter(Boolean).join(' ')}</div>
                       <div className="text-xs text-slate-400">{c.telefono ? formatTelefono(c.telefono) : (c.email || '—')}</div>
                     </td>
                     <td className="px-4 py-3 hidden sm:table-cell text-slate-600">{c.marca_principal || '—'}</td>
@@ -218,13 +218,18 @@ export default function Clientes() {
         <form onSubmit={guardar} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="label">Nombre *</label>
+              <label className="label">Nombre(s) *</label>
               <input className="input" required value={form.nombre}
                      onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
             </div>
             <div>
-              <label className="label">RUT</label>
-              <input className="input" value={form.rut}
+              <label className="label">Apellido(s) *</label>
+              <input className="input" required value={form.apellidos}
+                     onChange={(e) => setForm({ ...form, apellidos: e.target.value })} />
+            </div>
+            <div>
+              <label className="label">RUT *</label>
+              <input className="input" required value={form.rut}
                      onChange={(e) => setForm({ ...form, rut: e.target.value })}
                      onBlur={(e) => setForm({ ...form, rut: formatRut(e.target.value) })}
                      placeholder="12.345.678-9" />
@@ -232,15 +237,15 @@ export default function Clientes() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="label">Teléfono</label>
-              <input className="input" value={form.telefono}
+              <label className="label">Teléfono *</label>
+              <input className="input" required value={form.telefono}
                      onChange={(e) => setForm({ ...form, telefono: e.target.value })}
                      onBlur={(e) => setForm({ ...form, telefono: formatTelefono(e.target.value) })}
                      placeholder="+56 9 XXXX XXXX" />
             </div>
             <div>
-              <label className="label">Correo</label>
-              <input className="input" type="email" value={form.email}
+              <label className="label">Correo *</label>
+              <input className="input" type="email" required value={form.email}
                      onChange={(e) => setForm({ ...form, email: e.target.value })} />
             </div>
           </div>
@@ -272,19 +277,19 @@ export default function Clientes() {
           )}
 
           <div className="border-t border-slate-100 pt-3">
-            <div className="text-xs font-semibold text-slate-500 mb-2">Dirección (opcional)</div>
+            <div className="text-xs font-semibold text-slate-500 mb-2">Dirección *</div>
             <div className="space-y-3">
-              <input className="input" placeholder="Calle y número" value={form.direccion}
+              <input className="input" required placeholder="Calle y número" value={form.direccion}
                      onChange={(e) => setForm({ ...form, direccion: e.target.value })} />
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="label">Comuna</label>
-                  <input className="input" value={form.comuna}
+                  <label className="label">Comuna *</label>
+                  <input className="input" required value={form.comuna}
                          onChange={(e) => setForm({ ...form, comuna: e.target.value })} />
                 </div>
                 <div>
-                  <label className="label">Ciudad</label>
-                  <input className="input" value={form.ciudad}
+                  <label className="label">Ciudad *</label>
+                  <input className="input" required value={form.ciudad}
                          onChange={(e) => setForm({ ...form, ciudad: e.target.value })} />
                 </div>
               </div>

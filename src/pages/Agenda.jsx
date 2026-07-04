@@ -12,7 +12,7 @@ export default function Agenda() {
   async function cargar() {
     const hoy = new Date().toISOString().slice(0, 10)
     const { data } = await supabase.from('actividades')
-      .select('*, clientes(nombre,telefono)')
+      .select('*, clientes(nombre,apellidos,telefono)')
       .gte('proxima_fecha', hoy)
       .order('proxima_fecha').order('hora')
     setCitas(data || [])
@@ -33,7 +33,7 @@ export default function Agenda() {
       ics += 'BEGIN:VEVENT\n'
       ics += `UID:${c.id}@didial\n`
       ics += `DTSTART:${f}T${h}\n`
-      ics += `SUMMARY:${TIPOS_ACTIVIDAD[c.tipo]} · ${c.clientes?.nombre || ''}\n`
+      ics += `SUMMARY:${TIPOS_ACTIVIDAD[c.tipo]} · ${[c.clientes?.nombre, c.clientes?.apellidos].filter(Boolean).join(' ')}\n`
       ics += `DESCRIPTION:${(c.descripcion || '').replace(/\n/g, ' ')}\n`
       ics += 'END:VEVENT\n'
     })
@@ -75,7 +75,7 @@ export default function Agenda() {
                         {c.hora ? c.hora.slice(0, 5) : '—'}
                       </span>
                       <div>
-                        <div className="text-sm font-medium text-ink">{c.clientes?.nombre}</div>
+                        <div className="text-sm font-medium text-ink">{[c.clientes?.nombre, c.clientes?.apellidos].filter(Boolean).join(' ')}</div>
                         <div className="text-xs text-slate-400">{TIPOS_ACTIVIDAD[c.tipo]}{c.clientes?.telefono ? ` · ${c.clientes.telefono}` : ''}</div>
                       </div>
                     </div>

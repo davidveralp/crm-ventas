@@ -11,7 +11,8 @@ import {
   ESTADOS_GESTION, estadoGestionLabel, estadoGestionColor, ES_CIERRE,
   TIPOS_AGENDA, agendaLabel, colorAgenda,
   TIPOS_CONTACTO, MOTIVOS_CIERRE, motivoCierreLabel,
-  ESTADOS_TALLER
+  ESTADOS_TALLER, OT_SVC_GRUPOS, TIPOS_VEHICULO,
+  SECCIONES_PRESUP, seccionDe, nombreCompleto, desgloseIVA, enviarASheet
 } from '../lib/helpers'
 import { notificar } from '../lib/notificar'
 
@@ -29,7 +30,7 @@ const PRESUP_VACIO = {
 }
 const VEH_VACIO = {
   id: null, patente: '', marca: '', modelo: '', anio: '',
-  km: '', proximo_servicio_km: '', tipo_mantencion: ''
+  km: '', proximo_servicio_km: '', tipo_mantencion: '', tipo_vehiculo: ''
 }
 const MANT = { basica: 'Básica', intermedia: 'Intermedia', mayor: 'Mayor' }
 const ICONO = { llamada: '📞', whatsapp: '💬', email: '✉️', presencial: '🏢', visita: '🚗', propuesta: '📄', agendamiento: '📅' }
@@ -65,6 +66,8 @@ export default function ClienteDetalle() {
   const [margenes, setMargenes] = useState({ ajuste_asesor_pct: 10 })
   const [modalTaller, setModalTaller] = useState(null) // vehículo a derivar
   const [ft, setFt] = useState({ servicio: '', tareas: [''], obs: '' })
+  const [sheetUpdateUrl, setSheetUpdateUrl] = useState('')
+  const [tareasCat, setTareasCat] = useState({}) // servicio -> [titulos]
 
   useEffect(() => { cargar() }, [id])
 
@@ -100,6 +103,15 @@ export default function ClienteDetalle() {
         .select('id,nombre').eq('rol', 'vendedor').eq('activo', true)
       setVendedores(v || [])
     }
+    // v21: URL del Apps Script de actualización de la planilla + tareas predefinidas
+    const [{ data: su }, { data: ts }] = await Promise.all([
+      supabase.from('empresa_config').select('valor').eq('empresa_id', perfil?.empresa_id).eq('clave', 'sheet_update_url').maybeSingle(),
+      supabase.from('tareas_servicio').select('servicio,titulo,orden').order('orden')
+    ])
+    if (su?.valor) setSheetUpdateUrl(typeof su.valor === 'string' ? su.valor : su.valor.url || '')
+    const cat = {}
+    ;(ts || []).forEach((t) => { (cat[t.servicio] = cat[t.servicio] || []).push(t.titulo) })
+    setTareasCat(cat)
   }
 
   // --- Línea de tiempo de estado -------------------------------------
@@ -229,7 +241,7 @@ export default function ClienteDetalle() {
   }
 
   async function eliminarCliente() {
-    if (!confirm(`¿Eliminar al cliente "${cliente.nombre}" y todos sus vehículos, actividades y presupuestos? Esta acción no se puede deshacer.`)) return
+    if (!confirm(`¿Eliminar al cliente "${nombreCompleto(cliente)}" y todos sus vehículos, actividades y presupuestos? Esta acción no se puede deshacer.`)) return
     const { error } = await supabase.from('clientes').delete().eq('id', id)
     if (error) { alert('No se pudo eliminar: ' + error.message); return }
     navigate('/clientes')
@@ -237,32 +249,60 @@ export default function ClienteDetalle() {
 
   async function guardarContacto(e) {
     e.preventDefault()
-    const { error } = await supabase.from('clientes').update({
-      nombre: contacto.nombre, email: contacto.email,
+    const datos = {
+      nombre: contacto.nombre.trim(), apellidos: (contacto.apellidos || '').trim(),
+      email: contacto.email.trim(),
       telefono: contacto.telefono ? formatTelefono(contacto.telefono) : null,
-      ciudad: contacto.ciudad, tipo: contacto.tipo, marca_principal: contacto.marca_principal,
-      direccion: contacto.direccion || null, comuna: contacto.comuna || null,
+      ciudad: contacto.ciudad.trim(), tipo: contacto.tipo,
+      direccion: contacto.direccion.trim(), comuna: contacto.comuna.trim(),
       rut: contacto.rut ? formatRut(contacto.rut) : null
-    }).eq('id', id)
+    }
+    const { error } = await supabase.from('clientes').update(datos).eq('id', id)
     if (error) { alert('Error: ' + error.message); return }
+    // CRM -> planilla: actualiza los datos de contacto en TODAS las filas de
+    // la base de OT relacionadas con este cliente (por patente y por N° OT).
+    if (sheetUpdateUrl) {
+      const patentes = vehiculos.map((v) => patenteLimpia(v.patente)).filter(Boolean)
+      const ots = servicios.map((s) => s.ot_numero).filter(Boolean)
+      enviarASheet(sheetUpdateUrl, {
+        accion: 'actualizar_cliente', patentes, ots,
+        propietario: [datos.nombre, datos.apellidos].filter(Boolean).join(' '),
+        telefono: datos.telefono || '', email: datos.email || '',
+        ciudad: datos.ciudad || '', direccion: datos.direccion || '',
+        rut: datos.rut || '', tipo_cliente: tipoClienteLabel(datos.tipo)
+      })
+    }
     setModalC(false); cargar()
   }
 
   async function guardarVehiculo(e) {
     e.preventDefault()
     const km = Number(veh.km) || null
+    const anterior = veh.id ? vehiculos.find((x) => x.id === veh.id) : null
     const payload = {
       cliente_id: id, empresa_id: cliente.empresa_id,
       patente: veh.patente ? formatPatente(veh.patente) : null, marca: veh.marca || null,
       modelo: veh.modelo || null, anio: Number(veh.anio) || null,
       km_ultimo: km, km_actual_estimado: km,
       proximo_servicio_km: Number(veh.proximo_servicio_km) || null,
-      tipo_mantencion: veh.tipo_mantencion || null
+      tipo_mantencion: veh.tipo_mantencion || null,
+      tipo_vehiculo: veh.tipo_vehiculo || null
     }
     const { error } = veh.id
       ? await supabase.from('vehiculos').update(payload).eq('id', veh.id)
       : await supabase.from('vehiculos').insert(payload)
     if (error) { alert('Error: ' + error.message); return }
+    // CRM -> planilla: actualiza marca/modelo/año en las filas de la base
+    // de OT que correspondan a esta patente (busca por la patente anterior
+    // por si acabas de corregirla).
+    if (sheetUpdateUrl && veh.id && (payload.patente || anterior?.patente)) {
+      enviarASheet(sheetUpdateUrl, {
+        accion: 'actualizar_vehiculo',
+        patentes: [patenteLimpia(anterior?.patente || ''), patenteLimpia(payload.patente || '')].filter(Boolean),
+        patente_nueva: payload.patente || '',
+        marca: payload.marca || '', modelo: payload.modelo || '', anio: payload.anio || ''
+      })
+    }
     setModalV(false); setVeh(VEH_VACIO); cargar()
   }
 
@@ -274,7 +314,7 @@ export default function ClienteDetalle() {
   // Deriva a una nueva OT en el módulo interno del CRM, prellenando datos por URL.
   function nuevaOT(vehiculo) {
     const params = {
-      nombre: cliente.nombre || '', telefono: cliente.telefono || '', email: cliente.email || '',
+      nombre: nombreCompleto(cliente) || '', telefono: cliente.telefono || '', email: cliente.email || '',
       ciudad: cliente.ciudad || '', documento: cliente.rut || '',
       direccion: cliente.direccion || '',
       marca: vehiculo?.marca || cliente.marca_principal || '',
@@ -292,8 +332,8 @@ export default function ClienteDetalle() {
   // Deriva el vehículo al taller: crea el trabajo operativo + tareas iniciales.
   async function enviarAlTaller() {
     const v = modalTaller
-    if (!ft.servicio.trim()) return alert('Indica el servicio solicitado.')
-    const titulo = [v?.patente, v?.marca, v?.modelo, cliente.nombre].filter(Boolean).join(' ')
+    if (!ft.servicio.trim()) return alert('Selecciona el servicio solicitado.')
+    const titulo = [v?.patente, v?.marca, v?.modelo, nombreCompleto(cliente)].filter(Boolean).join(' ')
     const { data: t, error } = await supabase.from('trabajos_taller').insert({
       empresa_id: perfil.empresa_id, cliente_id: cliente.id, vehiculo_id: v?.id || null,
       titulo, servicio_solicitado: ft.servicio.trim(), observaciones_cliente: ft.obs.trim(),
@@ -319,7 +359,8 @@ export default function ClienteDetalle() {
     setVeh({
       id: v.id, patente: v.patente || '', marca: v.marca || '', modelo: v.modelo || '',
       anio: v.anio || '', km: v.km_actual_estimado || v.km_ultimo || '',
-      proximo_servicio_km: v.proximo_servicio_km || '', tipo_mantencion: v.tipo_mantencion || ''
+      proximo_servicio_km: v.proximo_servicio_km || '', tipo_mantencion: v.tipo_mantencion || '',
+      tipo_vehiculo: v.tipo_vehiculo || ''
     })
     setModalV(true)
   }
@@ -337,7 +378,7 @@ export default function ClienteDetalle() {
       <div className="card p-6">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-2xl font-bold text-ink">{cliente.nombre}</h1>
+            <h1 className="text-2xl font-bold text-ink">{nombreCompleto(cliente)}</h1>
             <div className="flex items-center gap-2 mt-2 flex-wrap">
               {cliente.segmento && <Pill color={segColor(cliente.segmento)}>{segLabel(cliente.segmento)}</Pill>}
               <span className="pill bg-mist text-deep">{tipoClienteLabel(cliente.tipo)}</span>
@@ -357,9 +398,11 @@ export default function ClienteDetalle() {
               </button>
               <button className="btn-soft text-xs py-1.5"
                       onClick={() => { setContacto({
-                        nombre: cliente.nombre, email: cliente.email || '', telefono: cliente.telefono || '',
-                        ciudad: cliente.ciudad || '', tipo: cliente.tipo || 'PERSONA',
-                        marca_principal: cliente.marca_principal || '', rut: cliente.rut || '',
+                        nombre: cliente.nombre || '', apellidos: cliente.apellidos || '',
+                        email: cliente.email || '', telefono: cliente.telefono || '',
+                        ciudad: cliente.ciudad || '',
+                        tipo: cliente.tipo === 'PARTICULAR' ? 'PERSONA' : (cliente.tipo || 'PERSONA'),
+                        rut: cliente.rut || '',
                         direccion: cliente.direccion || '', comuna: cliente.comuna || ''
                       }); setModalC(true) }}>
                 Editar
@@ -585,15 +628,22 @@ export default function ClienteDetalle() {
                       </div>
                       <div className="text-xs text-slate-400 mt-0.5">Patente {v.patente ? formatPatente(v.patente) : '—'}</div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       {v.ventana && <Pill color={VENTANAS[v.ventana]?.color}>{VENTANAS[v.ventana]?.label}</Pill>}
-                      <button onClick={() => nuevaOT(v)} className="text-xs text-didial-red font-medium hover:underline">Nueva OT</button>
-                      <button onClick={() => { setModalTaller(v); setFt({ servicio: '', tareas: [''], obs: '' }) }} className="text-xs text-deep font-medium hover:underline">→ Revisión</button>
+                      <button onClick={() => nuevaOT(v)}
+                              className="text-xs font-medium px-2.5 py-1 rounded-lg border border-didial-red/40 text-didial-red hover:bg-didial-red hover:text-white transition-colors">
+                        Nueva OT
+                      </button>
+                      <button onClick={() => { setModalTaller(v); setFt({ servicio: '', tareas: [''], obs: '' }) }}
+                              className="text-xs font-medium px-2.5 py-1 rounded-lg border border-deep/40 text-deep hover:bg-deep hover:text-white transition-colors">
+                        Solicitar servicio
+                      </button>
                       <button onClick={() => abrirEditarVehiculo(v)} className="text-xs text-deep hover:underline">Editar</button>
                       <button onClick={() => borrarVehiculo(v.id)} className="text-xs text-slate-300 hover:text-red-500">✕</button>
                     </div>
                   </div>
-                  <div className="grid grid-cols-3 gap-2 mt-2 text-xs text-slate-500">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2 text-xs text-slate-500">
+                    <div><span className="text-slate-400">Tipo:</span> {v.tipo_vehiculo || '—'}</div>
                     <div><span className="text-slate-400">Km actual:</span> {km ? km.toLocaleString('es-CL') : '—'}</div>
                     <div><span className="text-slate-400">Próx. servicio:</span> {v.proximo_servicio_km ? v.proximo_servicio_km.toLocaleString('es-CL') + ' km' : '—'}</div>
                     <div><span className="text-slate-400">Mantención:</span> {MANT[v.tipo_mantencion] || '—'}</div>
@@ -643,20 +693,29 @@ export default function ClienteDetalle() {
                       <div className="mt-3 border-t border-slate-100 pt-2">
                         <div className="text-[11px] font-semibold text-slate-400 mb-1">Historial de servicios ({hist.length})</div>
                         <div className="space-y-1 max-h-40 overflow-y-auto">
-                          {hist.map((s) => (
-                            <div key={s.id} className="flex items-center justify-between gap-2 text-xs">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span className="text-slate-400 w-20 shrink-0">{s.fecha ? fmtFecha(s.fecha) : '—'}</span>
-                                <span className="text-ink truncate">
-                                  {s.ot_numero ? <b className="text-deep">OT {s.ot_numero} · </b> : ''}
-                                  {tipoServicioLabel(s.tipo_servicio)}
-                                  {s.tipo_servicio_2 ? ` + ${tipoServicioLabel(s.tipo_servicio_2)}` : ''}
-                                  {s.descripcion ? ` · ${s.descripcion}` : ''}
-                                </span>
+                          {hist.map((s) => {
+                            const partes = [
+                              s.tipo_servicio ? tipoServicioLabel(s.tipo_servicio) : null,
+                              s.tipo_servicio_2 ? tipoServicioLabel(s.tipo_servicio_2) : null
+                            ].filter(Boolean).join(' + ')
+                            const doc = s.nro_documento
+                              ? `${s.tipo_documento && s.tipo_documento !== 'Sin Documento' ? s.tipo_documento : 'Doc'} N° ${s.nro_documento}`
+                              : null
+                            return (
+                              <div key={s.id} className="flex items-center justify-between gap-2 text-xs">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="text-slate-400 w-20 shrink-0">{s.fecha ? fmtFecha(s.fecha) : '—'}</span>
+                                  <span className="text-ink truncate">
+                                    {s.ot_numero ? <b className="text-deep">OT {s.ot_numero}</b> : ''}
+                                    {partes ? ` · ${partes}` : (s.ot_numero ? '' : '—')}
+                                    {s.descripcion ? ` · ${s.descripcion}` : ''}
+                                    {doc ? <span className="text-slate-400"> · {doc}</span> : null}
+                                  </span>
+                                </div>
+                                <span className="text-slate-500 shrink-0">{s.monto ? fmtCLP(s.monto) : ''}</span>
                               </div>
-                              <span className="text-slate-500 shrink-0">{s.monto ? fmtCLP(s.monto) : ''}</span>
-                            </div>
-                          ))}
+                            )
+                          })}
                         </div>
                       </div>
                     )
@@ -676,10 +735,11 @@ export default function ClienteDetalle() {
       {presupsTaller.some((p) => p.estado === 'enviado') && (
         <div className="card p-5 border-l-4 border-didial-amber">
           <h3 className="font-semibold text-ink mb-1">Presupuestos del taller para conversar</h3>
-          <p className="text-xs text-slate-400 mb-3">Puedes ajustar el precio final de cada ítem hasta ±{margenes.ajuste_asesor_pct}% (rango autorizado por administración), generar el PDF y enviarlo por WhatsApp.</p>
+          <p className="text-xs text-slate-400 mb-3">Ajusta los precios para negociar: los repuestos muestran su rango económico–premium de la base de precios y el resto una referencia de ±{margenes.ajuste_asesor_pct}%. Si sales del rango queda marcado en ámbar (no se bloquea). Genera el PDF listo para imprimir o envíalo por WhatsApp.</p>
           <div className="space-y-3">
             {presupsTaller.filter((p) => p.estado === 'enviado').map((p) => (
-              <PresupAsesor key={p.id} p={p} cliente={cliente} margenes={margenes} perfil={perfil} onChange={cargar} />
+              <PresupAsesor key={p.id} p={p} cliente={cliente} margenes={margenes} perfil={perfil}
+                            trabajos={trabajos} vehiculos={vehiculos} onChange={cargar} />
             ))}
           </div>
         </div>
@@ -897,59 +957,66 @@ export default function ClienteDetalle() {
           <form onSubmit={guardarContacto} className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="label">Nombre *</label>
+                <label className="label">Nombre(s) *</label>
                 <input className="input" required value={contacto.nombre}
                        onChange={(e) => setContacto({ ...contacto, nombre: e.target.value })} />
               </div>
               <div>
-                <label className="label">RUT</label>
-                <input className="input" value={contacto.rut}
-                       onChange={(e) => setContacto({ ...contacto, rut: e.target.value })}
-                       onBlur={(e) => setContacto({ ...contacto, rut: formatRut(e.target.value) })}
-                       placeholder="12.345.678-9" />
+                <label className="label">Apellido(s) *</label>
+                <input className="input" required value={contacto.apellidos}
+                       onChange={(e) => setContacto({ ...contacto, apellidos: e.target.value })} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="label">Teléfono</label>
-                <input className="input" value={contacto.telefono}
-                       onChange={(e) => setContacto({ ...contacto, telefono: e.target.value })} />
+                <label className="label">RUT *</label>
+                <input className="input" required value={contacto.rut}
+                       onChange={(e) => setContacto({ ...contacto, rut: e.target.value })}
+                       onBlur={(e) => setContacto({ ...contacto, rut: formatRut(e.target.value) })}
+                       placeholder="12.345.678-9" />
               </div>
               <div>
-                <label className="label">Correo</label>
-                <input className="input" type="email" value={contacto.email}
-                       onChange={(e) => setContacto({ ...contacto, email: e.target.value })} />
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="label">Ciudad</label>
-                <input className="input" value={contacto.ciudad}
-                       onChange={(e) => setContacto({ ...contacto, ciudad: e.target.value })} />
-              </div>
-              <div>
-                <label className="label">Tipo</label>
-                <select className="input" value={contacto.tipo}
+                <label className="label">Tipo *</label>
+                <select className="input" required value={contacto.tipo}
                         onChange={(e) => setContacto({ ...contacto, tipo: e.target.value })}>
+                  <option value="">Seleccionar…</option>
                   {Object.entries(TIPOS_CLIENTE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
               </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="label">Marca</label>
-                <input className="input" value={contacto.marca_principal}
-                       onChange={(e) => setContacto({ ...contacto, marca_principal: e.target.value.toUpperCase() })} />
+                <label className="label">Teléfono *</label>
+                <input className="input" required value={contacto.telefono}
+                       onChange={(e) => setContacto({ ...contacto, telefono: e.target.value })} />
+              </div>
+              <div>
+                <label className="label">Correo *</label>
+                <input className="input" type="email" required value={contacto.email}
+                       onChange={(e) => setContacto({ ...contacto, email: e.target.value })} />
               </div>
             </div>
             <div>
-              <label className="label">Dirección</label>
-              <input className="input" value={contacto.direccion} placeholder="Calle y número"
+              <label className="label">Dirección *</label>
+              <input className="input" required value={contacto.direccion} placeholder="Calle y número"
                      onChange={(e) => setContacto({ ...contacto, direccion: e.target.value })} />
             </div>
-            <div>
-              <label className="label">Comuna</label>
-              <input className="input" value={contacto.comuna}
-                     onChange={(e) => setContacto({ ...contacto, comuna: e.target.value })} />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label">Comuna *</label>
+                <input className="input" required value={contacto.comuna}
+                       onChange={(e) => setContacto({ ...contacto, comuna: e.target.value })} />
+              </div>
+              <div>
+                <label className="label">Ciudad *</label>
+                <input className="input" required value={contacto.ciudad}
+                       onChange={(e) => setContacto({ ...contacto, ciudad: e.target.value })} />
+              </div>
             </div>
+            <p className="text-[11px] text-slate-400">
+              La marca ya no es dato de contacto: es segmentación interna y se toma de los vehículos del cliente.
+              Al guardar, los cambios se replican en las filas de la base de OT relacionadas.
+            </p>
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" className="btn-soft" onClick={() => setModalC(false)}>Cancelar</button>
               <button className="btn-primary">Guardar cambios</button>
@@ -958,18 +1025,36 @@ export default function ClienteDetalle() {
         )}
       </Modal>
 
-      {/* Modal derivar al taller */}
+      {/* Modal solicitar servicio (deriva al taller) */}
       <Modal abierto={!!modalTaller} onClose={() => setModalTaller(null)}
-             titulo={`Enviar a revisión · ${modalTaller?.patente || ''} ${modalTaller?.marca || ''} ${modalTaller?.modelo || ''}`}>
+             titulo={`Solicitar servicio · ${modalTaller?.patente || ''} ${modalTaller?.marca || ''} ${modalTaller?.modelo || ''}`}>
         <div className="space-y-4">
           <div>
             <label className="label">Servicio solicitado <span className="text-red-500">*</span></label>
-            <input className="input" value={ft.servicio} onChange={(e) => setFt({ ...ft, servicio: e.target.value })}
-                   placeholder="Ej: Revisión preventiva, cambio de embrague…" autoFocus />
+            <select className="input" value={ft.servicio} autoFocus
+                    onChange={(e) => {
+                      const svc = e.target.value
+                      // Autocompleta las tareas predefinidas del servicio (el
+                      // asesor puede eliminarlas o agregar otras).
+                      const pred = tareasCat[svc]
+                      setFt({ ...ft, servicio: svc, tareas: pred?.length ? [...pred, ''] : [''] })
+                    }}>
+              <option value="">Seleccionar servicio…</option>
+              {OT_SVC_GRUPOS.map((g) => (
+                <optgroup key={g.bu} label={g.bu}>
+                  {g.items.map((s) => <option key={s} value={s}>{s}</option>)}
+                </optgroup>
+              ))}
+            </select>
+            {!!tareasCat[ft.servicio]?.length && (
+              <p className="text-[11px] text-slate-400 mt-1">
+                Este servicio trae {tareasCat[ft.servicio].length} tareas predefinidas. Revísalas: puedes eliminar o agregar.
+              </p>
+            )}
           </div>
           <div>
             <label className="label">Tareas que implica</label>
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
               {ft.tareas.map((t, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <span className="w-4 h-4 rounded border-2 border-slate-300 shrink-0" />
@@ -991,10 +1076,10 @@ export default function ClienteDetalle() {
             <textarea className="input" rows={2} value={ft.obs} onChange={(e) => setFt({ ...ft, obs: e.target.value })}
                       placeholder="Lo que el cliente describe: ruidos, síntomas, desde cuándo…" />
           </div>
-          <p className="text-[11px] text-slate-400">Se notificará al Jefe de Taller para asignar el técnico de la revisión. La gestión comercial abierta pasará a estado "En taller".</p>
+          <p className="text-[11px] text-slate-400">Se notificará al Jefe de Taller para asignar el técnico. La gestión comercial abierta pasará a estado "En taller".</p>
           <div className="flex justify-end gap-2">
             <button className="btn-soft" onClick={() => setModalTaller(null)}>Cancelar</button>
-            <button className="btn-primary" onClick={enviarAlTaller}>Enviar a Revisión</button>
+            <button className="btn-primary" onClick={enviarAlTaller}>Solicitar servicio</button>
           </div>
         </div>
       </Modal>
@@ -1035,7 +1120,16 @@ export default function ClienteDetalle() {
               <input className="input" type="number" value={veh.proximo_servicio_km}
                      onChange={(e) => setVeh({ ...veh, proximo_servicio_km: e.target.value })} />
             </div>
-            <div className="col-span-2">
+            <div>
+              <label className="label">Tipo de vehículo</label>
+              <select className="input" value={veh.tipo_vehiculo}
+                      onChange={(e) => setVeh({ ...veh, tipo_vehiculo: e.target.value })}>
+                <option value="">—</option>
+                {TIPOS_VEHICULO.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <p className="text-[10px] text-slate-400 mt-0.5">Define los precios de MO en la base de precios.</p>
+            </div>
+            <div>
               <label className="label">Tipo de mantención</label>
               <select className="input" value={veh.tipo_mantencion}
                       onChange={(e) => setVeh({ ...veh, tipo_mantencion: e.target.value })}>
@@ -1065,21 +1159,40 @@ function Campo({ k, v }) {
 
 
 /* ---- Presupuesto del taller en manos del asesor -------------------- */
-function PresupAsesor({ p, cliente, margenes, perfil, onChange }) {
+// v21: ítems agrupados en las 4 secciones oficiales (Repuestos, Lubricantes
+// y Otros Insumos, Mano de Obra, Servicios Externos), precios editables por
+// el asesor con referencia de rango (eco/premium para repuestos, ±% para el
+// resto) y PDF imprimible con el formato oficial DIDIAL (NETO/IVA/TOTAL).
+function PresupAsesor({ p, cliente, margenes, perfil, trabajos = [], vehiculos = [], onChange }) {
   const a = (margenes?.ajuste_asesor_pct ?? 10) / 100
   const [precios, setPrecios] = useState(() =>
     Object.fromEntries((p.items || []).map((x, i) => [i, x.precio_final ?? x.precio ?? 0])))
+  const t = trabajos.find((x) => x.id === p.trabajo_id)
+  const v = vehiculos.find((x) => x.id === t?.vehiculo_id)
   const cobrables = (p.items || []).map((x, i) => ({ ...x, i })).filter((x) => !x.en_stock)
   const total = cobrables.reduce((s, x) => s + (+precios[x.i] || 0) * (+x.cant || 1), 0)
+  const porSeccion = Object.keys(SECCIONES_PRESUP).map((k) => ({
+    k, titulo: SECCIONES_PRESUP[k],
+    items: cobrables.filter((x) => seccionDe(x.tipo) === k)
+  })).filter((s) => s.items.length)
 
-  const clamp = (i, v) => {
-    const base = +(p.items?.[i]?.precio || 0)
-    const min = Math.round(base * (1 - a)), max = Math.round(base * (1 + a))
-    return Math.min(max, Math.max(min, Math.round(+v || 0)))
+  // Rango de referencia por ítem: eco/premium (repuestos de la base de
+  // precios) o ±ajuste% sobre el precio del coordinador. NO bloquea: el
+  // asesor puede negociar fuera del rango, pero queda marcado en ámbar.
+  const rangoDe = (x) => {
+    if (x.ref_eco || x.ref_premium) return { min: +x.ref_eco || 0, max: +x.ref_premium || Infinity, tipo: 'eco/premium' }
+    const base = +(x.precio || 0)
+    if (!base) return null
+    return { min: Math.round(base * (1 - a)), max: Math.round(base * (1 + a)), tipo: `±${margenes?.ajuste_asesor_pct ?? 10}%` }
+  }
+  const fueraDeRango = (x) => {
+    const r = rangoDe(x); if (!r) return false
+    const px = +precios[x.i] || 0
+    return px < r.min || px > r.max
   }
 
   async function guardarAjuste() {
-    const items = (p.items || []).map((x, i) => ({ ...x, precio_final: clamp(i, precios[i]) }))
+    const items = (p.items || []).map((x, i) => ({ ...x, precio_final: Math.max(0, Math.round(+precios[i] || 0)) }))
     await supabase.from('presupuestos_taller').update({
       items, monto: items.filter((x) => !x.en_stock).reduce((s, x) => s + (+x.precio_final || 0) * (+x.cant || 1), 0)
     }).eq('id', p.id)
@@ -1087,32 +1200,84 @@ function PresupAsesor({ p, cliente, margenes, perfil, onChange }) {
   }
 
   function verPDF() {
-    const filas = cobrables.map((x) => `
-      <tr>
-        <td>${x.codigo || ''}</td><td>${(x.detalle || x.tipo || '').replace(/</g, '&lt;')}</td>
-        <td style="text-align:center">${x.cant}</td>
-        <td style="text-align:right">$${(+precios[x.i] || 0).toLocaleString('es-CL')}</td>
-        <td style="text-align:right">$${((+precios[x.i] || 0) * (+x.cant || 1)).toLocaleString('es-CL')}</td>
-      </tr>`).join('')
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Presupuesto</title>
+    const num = (p.numero || String(p.id || '').replace(/-/g, '').slice(-6).toUpperCase())
+    const d = desgloseIVA(total)
+    const fmt = (n) => (Number(n) || 0).toLocaleString('es-CL')
+    const esc = (x) => String(x ?? '').replace(/</g, '&lt;')
+    const filaConCant = (x) => `
+      <tr><td class="cod">${esc(x.codigo)}</td><td>${esc(x.detalle || x.tipo)}</td>
+      <td class="c">${x.cant}</td><td class="r">${fmt(precios[x.i])}</td>
+      <td class="r">${fmt((+precios[x.i] || 0) * (+x.cant || 1))}</td></tr>`
+    const filaSolo = (x) => `
+      <tr><td colspan="4">${esc(x.detalle || x.tipo)}</td>
+      <td class="r">${fmt((+precios[x.i] || 0) * (+x.cant || 1))}</td></tr>`
+    const secciones = porSeccion.map((sec) => {
+      const sub = sec.items.reduce((s, x) => s + (+precios[x.i] || 0) * (+x.cant || 1), 0)
+      const conCant = ['repuesto', 'insumo'].includes(sec.k)
+      return `
+      <div class="sec">
+        <div class="sec-t">${sec.titulo}:</div>
+        <table>
+          ${conCant ? '<thead><tr><th class="cod">CÓDIGO</th><th>DETALLE</th><th class="c">CANTIDAD</th><th class="r">PRECIO</th><th class="r">TOTAL</th></tr></thead>' : ''}
+          <tbody>${sec.items.map(conCant ? filaConCant : filaSolo).join('')}</tbody>
+        </table>
+        <div class="sub">Subtotal ${sec.titulo}: <b>${fmt(sub)}</b></div>
+      </div>`
+    }).join('')
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Presupuesto ${num}</title>
       <style>
-        body{font-family:Arial,Helvetica,sans-serif;color:#111922;margin:32px}
-        h1{font-size:20px;margin:0} .rojo{color:#e0382b}
-        .meta{color:#6b7a8a;font-size:12px;margin:2px 0}
-        table{width:100%;border-collapse:collapse;margin-top:18px;font-size:13px}
-        th{background:#1C4357;color:#fff;text-align:left;padding:7px 8px;font-size:11px;text-transform:uppercase}
-        td{border-bottom:1px solid #e6ebf0;padding:7px 8px}
-        .total{margin-top:14px;text-align:right;font-size:16px;font-weight:bold}
-        .pie{margin-top:26px;color:#6b7a8a;font-size:11px}
+        body{font-family:Arial,Helvetica,sans-serif;color:#111922;margin:34px;font-size:13px}
+        .top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+        .emp{font-size:11px;line-height:1.45}
+        .emp b{font-size:12px}
+        .logo{font-size:30px;font-weight:900;letter-spacing:2px;color:#e0382b;text-align:center}
+        .logo small{display:block;font-size:10px;letter-spacing:5px;color:#111922;font-weight:600}
+        .ppto{font-size:14px;font-weight:bold;text-align:right}
+        .datos{margin-top:18px;border-bottom:1.5px solid #111922;padding-bottom:8px;
+               display:grid;grid-template-columns:1fr 1fr 1fr;gap:2px 14px;font-size:12px}
+        .sol{margin:12px 0 4px}
+        .sol b{display:block;margin-bottom:2px}
+        .sec{margin-top:14px;border-top:1px solid #9aa6b2;padding-top:8px}
+        .sec-t{font-weight:bold;margin-bottom:4px}
+        table{width:100%;border-collapse:collapse}
+        th{font-size:10px;text-align:left;padding:3px 6px;color:#111922;border-bottom:1px solid #d8dee5}
+        td{padding:3px 6px;font-size:12px}
+        .c{text-align:center}.r{text-align:right}.cod{width:80px}
+        th.r,th.c{text-align:inherit}
+        .sub{text-align:right;font-size:12px;margin-top:4px}
+        .tot{margin-top:18px;border-top:1.5px solid #111922;padding-top:10px;text-align:right;font-size:14px}
+        .tot div{margin:2px 0}
+        .pie{margin-top:30px;color:#6b7a8a;font-size:10px}
+        @media print{body{margin:14mm}}
       </style></head><body>
-      <h1>SERVICIO AUTOMOTRIZ <span class="rojo">DIDIAL</span></h1>
-      <div class="meta">Presupuesto de servicio · ${new Date().toLocaleDateString('es-CL')}</div>
-      <div class="meta"><b>Cliente:</b> ${cliente?.nombre || ''} · ${cliente?.rut || ''}</div>
-      <div class="meta"><b>Atendido por:</b> ${perfil?.nombre || ''}</div>
-      <table><thead><tr><th>Cód.</th><th>Descripción</th><th>Cant.</th><th>Precio</th><th>Subtotal</th></tr></thead>
-      <tbody>${filas}</tbody></table>
-      <div class="total">TOTAL: $${total.toLocaleString('es-CL')}</div>
-      <div class="pie">Presupuesto válido por 15 días. Precios incluyen los márgenes vigentes. No incluye trabajos adicionales no detectados en el diagnóstico.</div>
+      <div class="top">
+        <div class="emp">
+          <b>SERVICIO AUTOMOTRIZ DIDIAL LTDA</b><br>
+          AVDA. CUATRO ESQUINAS 759, LA SERENA<br>
+          serviciotecnico@didial.cl<br>+569 89748626
+        </div>
+        <div class="logo">DIDIAL<small>Servicio Automotriz</small></div>
+        <div class="ppto">PRESUPUESTO N° ${num}<br>FECHA: ${new Date().toLocaleDateString('es-CL')}</div>
+      </div>
+      <div class="datos">
+        <div><b>Patente:</b> ${esc(v?.patente ? formatPatente(v.patente) : '')}</div>
+        <div></div>
+        <div style="text-align:right"><b>R.U.T.:</b> ${esc(cliente?.rut || '')}</div>
+        <div><b>Nombre Cliente:</b> ${esc(nombreCompleto(cliente))}</div>
+        <div><b>Modelo:</b> ${esc(v?.modelo || '')}</div>
+        <div style="text-align:right"><b>Año:</b> ${esc(v?.anio || '')}</div>
+        <div><b>Marca:</b> ${esc(v?.marca || '')}</div>
+        <div><b>Atendido por:</b> ${esc(perfil?.nombre || '')}</div>
+        <div></div>
+      </div>
+      <div class="sol"><b>Cliente Solicita:</b>${esc(t?.servicio_solicitado || '')}</div>
+      ${secciones}
+      <div class="tot">
+        <div>NETO: <b>${fmt(d.neto)}</b></div>
+        <div>I.V.A.: <b>${fmt(d.iva)}</b></div>
+        <div style="font-size:16px">TOTAL: <b>${fmt(d.total)}</b></div>
+      </div>
+      <div class="pie">Presupuesto válido por 15 días. Valores en pesos chilenos, IVA incluido. No incluye trabajos adicionales no detectados en el diagnóstico.</div>
       <script>window.print()</script></body></html>`
     const w = window.open('', '_blank')
     w.document.write(html); w.document.close()
@@ -1121,8 +1286,11 @@ function PresupAsesor({ p, cliente, margenes, perfil, onChange }) {
   function enviarWhatsApp() {
     const fono = String(cliente?.telefono || '').replace(/[^0-9]/g, '')
     const num = fono.startsWith('56') ? fono : fono.length === 9 ? '56' + fono : fono.length === 8 ? '569' + fono : fono
-    const lineas = cobrables.map((x) => `• ${x.detalle || x.tipo} x${x.cant}: $${((+precios[x.i] || 0) * (+x.cant || 1)).toLocaleString('es-CL')}`).join('%0A')
-    const msg = `Hola ${cliente?.nombre?.split(' ')[0] || ''}, te saluda ${perfil?.nombre?.split(' ')[0] || ''} de DIDIAL 👋%0A%0ATe comparto el presupuesto de tu vehículo:%0A${lineas}%0A%0A*Total: $${total.toLocaleString('es-CL')}*%0A%0AAdjunto el PDF con el detalle. ¿Lo conversamos?`
+    const lineas = porSeccion.map((sec) => {
+      const sub = sec.items.reduce((s, x) => s + (+precios[x.i] || 0) * (+x.cant || 1), 0)
+      return `*${sec.titulo}*%0A` + sec.items.map((x) => `• ${x.detalle || x.tipo}${+x.cant > 1 ? ' x' + x.cant : ''}: $${(((+precios[x.i]) || 0) * (+x.cant || 1)).toLocaleString('es-CL')}`).join('%0A') + `%0ASubtotal: $${sub.toLocaleString('es-CL')}`
+    }).join('%0A%0A')
+    const msg = `Hola ${cliente?.nombre?.split(' ')[0] || ''}, te saluda ${perfil?.nombre?.split(' ')[0] || ''} de DIDIAL 👋%0A%0ATe comparto el presupuesto de tu ${v ? v.marca + ' ' + (v.modelo || '') : 'vehículo'}:%0A%0A${lineas}%0A%0A*TOTAL: $${total.toLocaleString('es-CL')}* (IVA incluido)%0A%0AAdjunto el PDF con el detalle. ¿Lo conversamos?`
     window.open(`https://wa.me/${num}?text=${msg}`, '_blank', 'noopener')
   }
 
@@ -1130,29 +1298,36 @@ function PresupAsesor({ p, cliente, margenes, perfil, onChange }) {
     <div className="rounded-lg border border-slate-100 p-3 space-y-2">
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-sm font-semibold text-ink">Presupuesto {new Date(p.creado_en).toLocaleDateString('es-CL')}</span>
+        {v && <span className="text-xs text-slate-400">{formatPatente(v.patente || '')} {v.marca}</span>}
         <span className="text-xs text-slate-400">{cobrables.length} ítems</span>
         <span className="ml-auto font-bold text-ink">{'$' + total.toLocaleString('es-CL')}</span>
       </div>
-      <div className="space-y-1">
-        {cobrables.map((x) => {
-          const base = +(x.precio || 0)
-          const min = Math.round(base * (1 - a)), max = Math.round(base * (1 + a))
-          return (
-            <div key={x.i} className="flex items-center gap-2 text-sm">
-              {x.codigo && <span className="font-mono text-xs text-slate-400 w-16 shrink-0">{x.codigo}</span>}
-              <span className="flex-1 text-ink truncate">{x.detalle || x.tipo}</span>
-              <span className="text-xs text-slate-400">x{x.cant}</span>
-              <input className="input text-xs w-28 text-right" type="number" min={min} max={max}
-                     value={precios[x.i]} title={`Rango autorizado: $${min.toLocaleString('es-CL')} – $${max.toLocaleString('es-CL')}`}
-                     onChange={(e) => setPrecios({ ...precios, [x.i]: e.target.value })}
-                     onBlur={(e) => setPrecios({ ...precios, [x.i]: clamp(x.i, e.target.value) })} />
-            </div>
-          )
-        })}
-      </div>
+      {porSeccion.map((sec) => (
+        <div key={sec.k}>
+          <div className="text-[11px] font-semibold text-slate-400 uppercase mt-1">{sec.titulo}</div>
+          <div className="space-y-1">
+            {sec.items.map((x) => {
+              const r = rangoDe(x)
+              const fuera = fueraDeRango(x)
+              return (
+                <div key={x.i} className="flex items-center gap-2 text-sm">
+                  {x.codigo && <span className="font-mono text-xs text-slate-400 w-16 shrink-0">{x.codigo}</span>}
+                  <span className="flex-1 text-ink truncate">{x.detalle || x.tipo}</span>
+                  <span className="text-xs text-slate-400">x{x.cant}</span>
+                  <input className={`input text-xs w-28 text-right ${fuera ? 'border-didial-amber bg-amber-50' : ''}`}
+                         type="number" min="0" value={precios[x.i]}
+                         title={r ? `Rango de referencia (${r.tipo}): $${r.min.toLocaleString('es-CL')} – ${isFinite(r.max) ? '$' + r.max.toLocaleString('es-CL') : 'sin tope'}` : 'Sin referencia de rango'}
+                         onChange={(e) => setPrecios({ ...precios, [x.i]: e.target.value })} />
+                  {fuera && <span className="text-[10px] text-didial-amber shrink-0" title="Fuera del rango de referencia">⚠ rango</span>}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      ))}
       <div className="flex justify-end gap-2 flex-wrap pt-1">
         <button className="btn-soft text-xs" onClick={guardarAjuste}>Guardar ajuste</button>
-        <button className="btn-soft text-xs" onClick={verPDF}>📄 Ver PDF</button>
+        <button className="btn-soft text-xs" onClick={verPDF}>📄 PDF para imprimir</button>
         <button className="text-xs px-3 py-1.5 rounded-lg text-white" style={{ background: '#1f9d57' }} onClick={enviarWhatsApp}>Enviar por WhatsApp</button>
       </div>
     </div>
