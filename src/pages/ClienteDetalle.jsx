@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import CotizacionRapida from '../components/CotizacionRapida'
 import { useAuth } from '../context/AuthContext'
 import { Pill, Modal, StatCard, SelectMarca, TimePicker } from '../components/UI'
 import {
@@ -11,7 +12,7 @@ import {
   ESTADOS_GESTION, estadoGestionLabel, estadoGestionColor, ES_CIERRE,
   TIPOS_AGENDA, agendaLabel, colorAgenda,
   TIPOS_CONTACTO, MOTIVOS_CIERRE, motivoCierreLabel,
-  ESTADOS_TALLER, OT_SVC_GRUPOS, TIPOS_VEHICULO,
+  ESTADOS_TALLER, ESTADOS_PRESUP_TALLER, OT_SVC_GRUPOS, TIPOS_VEHICULO,
   SECCIONES_PRESUP, seccionDe, nombreCompleto, desgloseIVA, enviarASheet
 } from '../lib/helpers'
 import { notificar } from '../lib/notificar'
@@ -65,6 +66,7 @@ export default function ClienteDetalle() {
   const [presupsTaller, setPresupsTaller] = useState([])
   const [margenes, setMargenes] = useState({ ajuste_asesor_pct: 10 })
   const [modalTaller, setModalTaller] = useState(null) // vehículo a derivar
+  const [modalCotiza, setModalCotiza] = useState(null) // vehículo a cotizar (rápida)
   const [ft, setFt] = useState({ servicio: '', tareas: [''], obs: '' })
   const [sheetUpdateUrl, setSheetUpdateUrl] = useState('')
   const [tareasCat, setTareasCat] = useState({}) // servicio -> [titulos]
@@ -92,7 +94,7 @@ export default function ClienteDetalle() {
     const ids = (tt.data || []).map((x) => x.id)
     if (ids.length) {
       const [{ data: pp }, { data: mg }] = await Promise.all([
-        supabase.from('presupuestos_taller').select('*').in('trabajo_id', ids).order('creado_en', { ascending: false }),
+        supabase.from('presupuestos_taller').select('*').or(`trabajo_id.in.(${ids.join(',') || '00000000-0000-0000-0000-000000000000'}),cliente_id.eq.${id}`).order('creado_en', { ascending: false }),
         supabase.from('empresa_config').select('valor').eq('empresa_id', perfil?.empresa_id).eq('clave', 'margenes').maybeSingle()
       ])
       setPresupsTaller(pp || [])
@@ -249,8 +251,11 @@ export default function ClienteDetalle() {
 
   async function guardarContacto(e) {
     e.preventDefault()
+    const esEmp = contacto.tipo === 'EMPRESA'
     const datos = {
-      nombre: contacto.nombre.trim(), apellidos: (contacto.apellidos || '').trim(),
+      nombre: contacto.nombre.trim(),
+      apellidos: esEmp ? null : (contacto.apellidos || '').trim(),
+      contacto_nombre: esEmp ? (contacto.contacto_nombre || '').trim() : null,
       email: contacto.email.trim(),
       telefono: contacto.telefono ? formatTelefono(contacto.telefono) : null,
       ciudad: contacto.ciudad.trim(), tipo: contacto.tipo,
@@ -379,6 +384,7 @@ export default function ClienteDetalle() {
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-2xl font-bold text-ink">{nombreCompleto(cliente)}</h1>
+              {cliente.contacto_nombre && <p className="text-xs text-slate-500">Contacto: {cliente.contacto_nombre}</p>}
             <div className="flex items-center gap-2 mt-2 flex-wrap">
               {cliente.segmento && <Pill color={segColor(cliente.segmento)}>{segLabel(cliente.segmento)}</Pill>}
               <span className="pill bg-mist text-deep">{tipoClienteLabel(cliente.tipo)}</span>
@@ -398,7 +404,7 @@ export default function ClienteDetalle() {
               </button>
               <button className="btn-soft text-xs py-1.5"
                       onClick={() => { setContacto({
-                        nombre: cliente.nombre || '', apellidos: cliente.apellidos || '',
+                        nombre: cliente.nombre || '', apellidos: cliente.apellidos || '', contacto_nombre: cliente.contacto_nombre || '',
                         email: cliente.email || '', telefono: cliente.telefono || '',
                         ciudad: cliente.ciudad || '',
                         tipo: cliente.tipo === 'PARTICULAR' ? 'PERSONA' : (cliente.tipo || 'PERSONA'),
@@ -637,6 +643,11 @@ export default function ClienteDetalle() {
                       <button onClick={() => { setModalTaller(v); setFt({ servicio: '', tareas: [''], obs: '' }) }}
                               className="text-xs font-medium px-2.5 py-1 rounded-lg border border-deep/40 text-deep hover:bg-deep hover:text-white transition-colors">
                         Solicitar servicio
+                      </button>
+                      <button onClick={() => setModalCotiza(v)}
+                              className="text-xs font-medium px-2.5 py-1 rounded-lg border border-slate-300 text-slate-600 hover:bg-ink hover:text-white transition-colors"
+                              title="Cotización rápida con la base de precios (servicios planos) · ticket imprimible">
+                        Cotizar
                       </button>
                       <button onClick={() => abrirEditarVehiculo(v)} className="text-xs text-deep hover:underline">Editar</button>
                       <button onClick={() => borrarVehiculo(v.id)} className="text-xs text-slate-300 hover:text-red-500">✕</button>
@@ -957,15 +968,24 @@ export default function ClienteDetalle() {
           <form onSubmit={guardarContacto} className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="label">Nombre(s) *</label>
+                <label className="label">{contacto.tipo === 'EMPRESA' ? 'Razón social *' : 'Nombre(s) *'}</label>
                 <input className="input" required value={contacto.nombre}
                        onChange={(e) => setContacto({ ...contacto, nombre: e.target.value })} />
               </div>
-              <div>
-                <label className="label">Apellido(s) *</label>
-                <input className="input" required value={contacto.apellidos}
-                       onChange={(e) => setContacto({ ...contacto, apellidos: e.target.value })} />
-              </div>
+              {contacto.tipo === 'EMPRESA' ? (
+                <div>
+                  <label className="label">Nombre del contacto *</label>
+                  <input className="input" required value={contacto.contacto_nombre}
+                         placeholder="Persona de contacto"
+                         onChange={(e) => setContacto({ ...contacto, contacto_nombre: e.target.value })} />
+                </div>
+              ) : (
+                <div>
+                  <label className="label">Apellido(s) *</label>
+                  <input className="input" required value={contacto.apellidos}
+                         onChange={(e) => setContacto({ ...contacto, apellidos: e.target.value })} />
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -1024,6 +1044,12 @@ export default function ClienteDetalle() {
           </form>
         )}
       </Modal>
+
+      {modalCotiza && (
+        <CotizacionRapida cliente={cliente} vehiculo={modalCotiza} perfil={perfil}
+                          onClose={() => setModalCotiza(null)}
+                          onListo={() => { setModalCotiza(null); cargar() }} />
+      )}
 
       {/* Modal solicitar servicio (deriva al taller) */}
       <Modal abierto={!!modalTaller} onClose={() => setModalTaller(null)}
@@ -1166,11 +1192,44 @@ function Campo({ k, v }) {
 function PresupAsesor({ p, cliente, margenes, perfil, trabajos = [], vehiculos = [], onChange }) {
   const a = (margenes?.ajuste_asesor_pct ?? 10) / 100
   const [precios, setPrecios] = useState(() =>
-    Object.fromEntries((p.items || []).map((x, i) => [i, x.precio_final ?? x.precio ?? 0])))
+    // v23: redondeo defensivo — precios antiguos calculados con margen podían
+    // traer decimales (ej: 39999.9999…) y mostrarse/guardarse con $1 menos.
+    Object.fromEntries((p.items || []).map((x, i) => [i, Math.round(+(x.precio_final ?? x.precio) || 0)])))
   const t = trabajos.find((x) => x.id === p.trabajo_id)
-  const v = vehiculos.find((x) => x.id === t?.vehiculo_id)
+  const v = vehiculos.find((x) => x.id === (t?.vehiculo_id || p.vehiculo_id))
+  const [resp, setResp] = useState({ ot: !!t?.respaldo_ot_firmada, video: !!t?.respaldo_video })
+  const [decidiendo, setDecidiendo] = useState(false)
+
+  // v23: el asesor, con la aprobación del cliente, continúa la reparación.
+  // Exige el respaldo de garantía (OT firmada + video) antes de avanzar;
+  // notifica a presupuestos (gestionar compra) y mantiene informado al taller.
+  async function aprobarYContinuar() {
+    if (t && (!resp.ot || !resp.video)) return alert('Para continuar con la reparación debes confirmar el respaldo de garantía: OT firmada ✓ y video enviado ✓.')
+    await supabase.from('presupuestos_taller').update({
+      estado: 'aprobado', resuelto_en: new Date().toISOString(),
+      items: (p.items || []).map((x, i) => ({ ...x, precio_final: Math.round(+precios[i] || 0) })), monto: total
+    }).eq('id', p.id)
+    if (t) {
+      await supabase.from('trabajos_taller').update({
+        respaldo_ot_firmada: true, respaldo_video: true,
+        autorizado_por: perfil.id, autorizado_en: new Date().toISOString()
+      }).eq('id', t.id)
+    }
+    const titulo = [v?.patente && formatPatente(v.patente), v?.marca, v?.modelo, nombreCompleto(cliente)].filter(Boolean).join(' ')
+    await supabase.from('notificaciones').insert([
+      { empresa_id: perfil.empresa_id, rol: 'coordinador_adquisiciones', titulo: 'Presupuesto APROBADO · gestionar compra de repuestos', cuerpo: titulo, url: '/presupuestos' },
+      { empresa_id: perfil.empresa_id, rol: 'jefe_taller', titulo: 'Presupuesto aprobado por el cliente (respaldo ✓)', cuerpo: titulo, url: '/taller' }
+    ])
+    setDecidiendo(false); onChange?.()
+  }
+  async function rechazar() {
+    if (!confirm('¿Registrar que el cliente RECHAZÓ este presupuesto?')) return
+    await supabase.from('presupuestos_taller').update({ estado: 'rechazado', resuelto_en: new Date().toISOString() }).eq('id', p.id)
+    await supabase.from('notificaciones').insert({ empresa_id: perfil.empresa_id, rol: 'jefe_taller', titulo: 'Presupuesto RECHAZADO por el cliente', cuerpo: [v?.marca, v?.modelo, nombreCompleto(cliente)].filter(Boolean).join(' '), url: '/taller' })
+    onChange?.()
+  }
   const cobrables = (p.items || []).map((x, i) => ({ ...x, i })).filter((x) => !x.en_stock)
-  const total = cobrables.reduce((s, x) => s + (+precios[x.i] || 0) * (+x.cant || 1), 0)
+  const total = Math.round(cobrables.reduce((s, x) => s + (+precios[x.i] || 0) * (+x.cant || 1), 0))
   const porSeccion = Object.keys(SECCIONES_PRESUP).map((k) => ({
     k, titulo: SECCIONES_PRESUP[k],
     items: cobrables.filter((x) => seccionDe(x.tipo) === k)
@@ -1256,7 +1315,7 @@ function PresupAsesor({ p, cliente, margenes, perfil, trabajos = [], vehiculos =
           AVDA. CUATRO ESQUINAS 759, LA SERENA<br>
           serviciotecnico@didial.cl<br>+569 89748626
         </div>
-        <div class="logo">DIDIAL<small>Servicio Automotriz</small></div>
+        <div style="text-align:center"><img src="${window.location.origin}/logo-didial.png" alt="DIDIAL" style="width:210px;height:auto"><div style="font-size:10px;color:#6b7a8a;letter-spacing:1px">Cuidamos lo que te mueve</div></div>
         <div class="ppto">PRESUPUESTO N° ${num}<br>FECHA: ${new Date().toLocaleDateString('es-CL')}</div>
       </div>
       <div class="datos">
@@ -1298,6 +1357,7 @@ function PresupAsesor({ p, cliente, margenes, perfil, trabajos = [], vehiculos =
     <div className="rounded-lg border border-slate-100 p-3 space-y-2">
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-sm font-semibold text-ink">Presupuesto {new Date(p.creado_en).toLocaleDateString('es-CL')}</span>
+        <Pill color={ESTADOS_PRESUP_TALLER[p.estado]?.color}>{ESTADOS_PRESUP_TALLER[p.estado]?.label || p.estado}</Pill>
         {v && <span className="text-xs text-slate-400">{formatPatente(v.patente || '')} {v.marca}</span>}
         <span className="text-xs text-slate-400">{cobrables.length} ítems</span>
         <span className="ml-auto font-bold text-ink">{'$' + total.toLocaleString('es-CL')}</span>
@@ -1329,7 +1389,31 @@ function PresupAsesor({ p, cliente, margenes, perfil, trabajos = [], vehiculos =
         <button className="btn-soft text-xs" onClick={guardarAjuste}>Guardar ajuste</button>
         <button className="btn-soft text-xs" onClick={verPDF}>📄 PDF para imprimir</button>
         <button className="text-xs px-3 py-1.5 rounded-lg text-white" style={{ background: '#1f9d57' }} onClick={enviarWhatsApp}>Enviar por WhatsApp</button>
+        {p.estado === 'enviado' && !decidiendo && (
+          <button className="btn-primary text-xs" onClick={() => setDecidiendo(true)}>Cliente aprueba → continuar reparación</button>
+        )}
+        {p.estado === 'enviado' && <button className="text-xs px-3 py-1.5 rounded-lg bg-didial-red text-white" onClick={rechazar}>Cliente rechaza</button>}
       </div>
+      {decidiendo && (
+        <div className="rounded-lg border border-didial-amber bg-amber-50 p-3 space-y-2">
+          <div className="text-xs font-semibold text-ink">Respaldo de garantía para continuar con la reparación</div>
+          {t ? (<>
+            <label className="flex items-center gap-2 text-xs text-slate-700">
+              <input type="checkbox" checked={resp.ot} onChange={(e) => setResp({ ...resp, ot: e.target.checked })} />
+              OT firmada por el cliente ✓
+            </label>
+            <label className="flex items-center gap-2 text-xs text-slate-700">
+              <input type="checkbox" checked={resp.video} onChange={(e) => setResp({ ...resp, video: e.target.checked })} />
+              Video de respaldo enviado al cliente ✓
+            </label>
+          </>) : <p className="text-xs text-slate-500">Cotización rápida: se registrará la aprobación del cliente.</p>}
+          <div className="flex justify-end gap-2">
+            <button className="btn-soft text-xs" onClick={() => setDecidiendo(false)}>Cancelar</button>
+            <button className="btn-primary text-xs" onClick={aprobarYContinuar}>Confirmar aprobación</button>
+          </div>
+          <p className="text-[10px] text-slate-500">Se notificará a presupuestos para gestionar la compra y el taller quedará informado. Al gestionarse la compra, el vehículo pasa a "espera de repuestos".</p>
+        </div>
+      )}
     </div>
   )
 }

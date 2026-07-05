@@ -3,14 +3,31 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { Pill, StatCard, EmptyState } from '../components/UI'
 import { fmtCLP, fmtFecha, ESTADOS_PRESUPUESTO, ESTADOS_PRESUP_TALLER, SECCIONES_PRESUP, seccionDe } from '../lib/helpers'
+import { useAuth } from '../context/AuthContext'
+import { notificar } from '../lib/notificar'
+import PresupuestoTallerCard from '../components/PresupuestoTallerCard'
+
+const SEV = {
+  critico:    { label: 'Crítico',    color: '#E0382B' },
+  pronto:     { label: 'Pronto',     color: '#C98A1B' },
+  preventivo: { label: 'Preventivo', color: '#2f6fb0' },
+  ok:         { label: 'OK',         color: '#1f9d57' }
+}
 
 export default function Presupuestos() {
   const navigate = useNavigate()
+  const { perfil } = useAuth()
   const [lista, setLista] = useState([])
   const [filtro, setFiltro] = useState('')
+  const [filtroT, setFiltroT] = useState('')
   const [vista, setVista] = useState('comercial') // comercial | taller
   const [pTaller, setPTaller] = useState([])
+  const [diags, setDiags] = useState([])
+  const [tareas, setTareas] = useState([])
   const [detalle, setDetalle] = useState(null)
+  // v23: el presupuesto de taller lo ELABORA el encargado de presupuestos
+  // desde este módulo (no desde el taller).
+  const esCompras = ['coordinador_adquisiciones', 'admin'].includes(perfil?.rol)
 
   useEffect(() => { cargar() }, [])
 
@@ -20,10 +37,42 @@ export default function Presupuestos() {
         .select('*, clientes(nombre,apellidos)')
         .order('proxima_gestion', { ascending: true, nullsFirst: false }),
       supabase.from('presupuestos_taller')
-        .select('*, trabajos_taller(titulo, servicio_solicitado, clientes(nombre,apellidos))')
+        .select('*, trabajos_taller(id, titulo, servicio_solicitado, observaciones_cliente, estado, vehiculo_id, asesor_id, respaldo_ot_firmada, respaldo_video, historial, vehiculos(patente,marca,modelo,tipo_vehiculo), clientes(nombre,apellidos))')
         .order('creado_en', { ascending: false })
     ])
     setLista(data || []); setPTaller(pt || [])
+    const tids = [...new Set((pt || []).map((p) => p.trabajo_id).filter(Boolean))]
+    if (tids.length) {
+      const [{ data: dg }, { data: ts }] = await Promise.all([
+        supabase.from('diagnosticos_taller').select('*').in('trabajo_id', tids),
+        supabase.from('tareas_taller').select('trabajo_id,titulo,estado,observacion').in('trabajo_id', tids)
+      ])
+      setDiags(dg || []); setTareas(ts || [])
+    } else { setDiags([]); setTareas([]) }
+  }
+
+  async function guardarPresup(p, campos, aviso) {
+    await supabase.from('presupuestos_taller').update(campos).eq('id', p.id)
+    if (aviso) notificar({ empresa_id: perfil.empresa_id, ...aviso })
+    cargar()
+  }
+  const tituloDe = (t) => t?.titulo || [t?.vehiculos?.patente, t?.vehiculos?.marca, t?.vehiculos?.modelo].filter(Boolean).join(' ') || 'Trabajo de taller'
+
+  // Aprobado → el encargado gestiona la compra: el vehículo queda en el
+  // taller "a la espera de repuestos" y se informa a los responsables.
+  async function gestionarCompra(p) {
+    if (!confirm('¿Marcar la compra como gestionada? El trabajo pasará a "Compra de repuestos" (a la espera de repuestos) y se notificará al taller y al asesor.')) return
+    await supabase.from('presupuestos_taller').update({
+      compra_gestionada_en: new Date().toISOString(), compra_por: perfil.id
+    }).eq('id', p.id)
+    const t = p.trabajos_taller
+    if (t?.id) {
+      const historial = [...(t.historial || []), { estado: 'compra_repuestos', fecha: new Date().toISOString(), por: perfil?.nombre }]
+      await supabase.from('trabajos_taller').update({ estado: 'compra_repuestos', historial }).eq('id', t.id)
+      notificar({ empresa_id: perfil.empresa_id, rol: 'jefe_taller', titulo: 'Compra gestionada · vehículo a la espera de repuestos', cuerpo: tituloDe(t), url: '/taller' })
+      if (t.asesor_id) notificar({ empresa_id: perfil.empresa_id, usuario_id: t.asesor_id, titulo: 'Compra de repuestos gestionada', cuerpo: tituloDe(t), url: '/taller' })
+    }
+    cargar()
   }
 
   const filtrada = useMemo(() =>
@@ -55,72 +104,61 @@ export default function Presupuestos() {
       </div>
 
       {vista === 'taller' && (
-        <div className="card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-paper text-slate-400 text-xs">
-              <tr>
-                <th className="text-left font-medium px-4 py-3">Vehículo / Cliente</th>
-                <th className="text-left font-medium px-2 py-3 hidden md:table-cell">Servicio</th>
-                <th className="text-left font-medium px-2 py-3">Estado</th>
-                <th className="text-right font-medium px-2 py-3">Monto</th>
-                <th className="text-left font-medium px-4 py-3 hidden sm:table-cell">Fecha</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pTaller.map((p) => (
-                <tr key={p.id} onClick={() => setDetalle(p)} className="border-t border-slate-100 hover:bg-paper cursor-pointer">
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-ink uppercase text-[13px]">{p.trabajos_taller?.titulo || '—'}</div>
-                    <div className="text-xs text-slate-400">{p.trabajos_taller?.clientes?.nombre}</div>
-                  </td>
-                  <td className="px-2 py-3 hidden md:table-cell text-slate-500 text-xs">{p.trabajos_taller?.servicio_solicitado || '—'}</td>
-                  <td className="px-2 py-3"><Pill color={ESTADOS_PRESUP_TALLER[p.estado]?.color}>{ESTADOS_PRESUP_TALLER[p.estado]?.label || p.estado}</Pill></td>
-                  <td className="px-2 py-3 text-right font-semibold text-ink">{fmtCLP(p.monto || 0)}</td>
-                  <td className="px-4 py-3 hidden sm:table-cell text-slate-500 text-xs">{fmtFecha(p.creado_en)}</td>
-                </tr>
-              ))}
-              {!pTaller.length && <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-400 text-sm">Aún no hay presupuestos solicitados desde el taller.</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {detalle && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/40" onClick={() => setDetalle(null)}>
-          <div className="card w-full max-w-lg max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
-              <h3 className="font-semibold text-ink text-sm uppercase">{detalle.trabajos_taller?.titulo}</h3>
-              <button onClick={() => setDetalle(null)} className="text-slate-400 text-xl leading-none">×</button>
-            </div>
-            <div className="p-5 space-y-3">
-              <div className="flex items-center gap-2">
-                <Pill color={ESTADOS_PRESUP_TALLER[detalle.estado]?.color}>{ESTADOS_PRESUP_TALLER[detalle.estado]?.label}</Pill>
-                <span className="text-xs text-slate-400">{fmtFecha(detalle.creado_en)}</span>
-                <span className="ml-auto font-bold text-ink">{fmtCLP(detalle.monto || 0)}</span>
-              </div>
-              {detalle.notas && <p className="text-sm text-slate-500">📝 {detalle.notas}</p>}
-              <div>
-                <div className="text-xs font-semibold text-slate-400 uppercase mb-1">Detalle de ítems</div>
-                {(detalle.items || []).length ? (
-                  <table className="w-full text-xs">
-                    <thead><tr className="text-slate-400 border-b"><th className="text-left py-1">Cód.</th><th className="text-left">Descripción</th><th className="text-right">Cant.</th><th className="text-right">Monto</th><th className="text-right">Stock</th></tr></thead>
-                    <tbody>
-                      {detalle.items.map((x, i) => (
-                        <tr key={i} className="border-b last:border-0">
-                          <td className="py-1.5 font-mono text-slate-500">{x.codigo || '—'}</td>
-                          <td className="py-1.5"><span className="text-slate-400">{SECCIONES_PRESUP[seccionDe(x.tipo)]}:</span> {x.detalle || '—'}</td>
-                          <td className="text-right">{x.cant}</td>
-                          <td className="text-right">{x.en_stock ? '—' : fmtCLP((+x.precio || 0) * (+x.cant || 1))}</td>
-                          <td className="text-right">{x.en_stock ? '✓ Bodega' : 'Cotizar'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : <p className="text-sm text-slate-400">Sin ítems detallados aún.</p>}
-              </div>
-              {detalle.resuelto_en && <p className="text-[11px] text-slate-400">Resuelto el {fmtFecha(detalle.resuelto_en)}</p>}
-            </div>
+        <div className="space-y-3">
+          <div className="flex gap-2 flex-wrap">
+            <button className={`pill border ${!filtroT ? 'bg-deep text-white' : 'text-slate-600'}`}
+                    style={{ borderColor: '#e2e8f0' }} onClick={() => setFiltroT('')}>Todos</button>
+            {Object.entries(ESTADOS_PRESUP_TALLER).map(([k, v]) => (
+              <button key={k} className="pill border" onClick={() => setFiltroT(k)}
+                      style={filtroT === k ? { background: v.color, borderColor: v.color, color: '#fff' }
+                                           : { borderColor: '#e2e8f0', color: '#475569' }}>{v.label}</button>
+            ))}
           </div>
+          {!esCompras && <p className="text-[11px] text-slate-400">Vista de consulta: la elaboración de presupuestos corresponde al encargado de presupuestos (coordinador de adquisiciones) o administración.</p>}
+          {pTaller.filter((p) => !filtroT || p.estado === filtroT).map((p) => {
+            const t = p.trabajos_taller
+            const dg = diags.filter((d) => d.trabajo_id === p.trabajo_id)
+            const ts = tareas.filter((x) => x.trabajo_id === p.trabajo_id)
+            return (
+              <div key={p.id} className="card p-4 space-y-3">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold text-ink uppercase text-sm">{tituloDe(t)}</span>
+                  <span className="text-xs text-slate-400">{[t?.clientes?.nombre, t?.clientes?.apellidos].filter(Boolean).join(' ')}</span>
+                  {p.origen === 'rapida' && <Pill color="#7A5C8E">Cotización rápida</Pill>}
+                  {t?.vehiculos?.tipo_vehiculo && <span className="text-[10px] text-slate-400 border border-slate-200 rounded px-1.5 py-0.5">{t.vehiculos.tipo_vehiculo}</span>}
+                  <span className="ml-auto" />
+                  {['aprobado', 'parcial'].includes(p.estado) && !p.compra_gestionada_en && esCompras && (
+                    <button className="btn-primary text-xs" onClick={() => gestionarCompra(p)}>🛒 Compra gestionada → espera de repuestos</button>
+                  )}
+                  {p.compra_gestionada_en && <span className="text-[11px] text-green-600">✓ Compra gestionada el {fmtFecha(p.compra_gestionada_en)}</span>}
+                </div>
+                {t && (
+                  <div className="rounded-lg bg-paper p-3 text-xs text-slate-600 space-y-1.5">
+                    {t.servicio_solicitado && <div><b>Servicio solicitado:</b> {t.servicio_solicitado}</div>}
+                    {t.observaciones_cliente && <div><b>Observaciones del cliente:</b> {t.observaciones_cliente}</div>}
+                    {dg.length > 0 && (
+                      <div><b>Diagnóstico técnico:</b>
+                        <ul className="mt-1 space-y-0.5">
+                          {dg.map((d) => (
+                            <li key={d.id} className="flex items-start gap-1.5">
+                              <Pill color={SEV[d.severidad]?.color}>{SEV[d.severidad]?.label || d.severidad}</Pill>
+                              <span>{d.hallazgo}{d.recomendacion ? ` — ${d.recomendacion}` : ''}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {ts.length > 0 && <div><b>Tareas ({ts.length}):</b> {ts.map((x) => x.titulo).join(' · ')}</div>}
+                  </div>
+                )}
+                <PresupuestoTallerCard p={p} t={t ? { ...t, vehiculos: t.vehiculos } : null}
+                  esJefe={false} esCompras={esCompras} perfil={perfil}
+                  guardar={guardarPresup} tituloDe={tituloDe} margenes={{}} editable={esCompras} />
+              </div>
+            )
+          })}
+          {!pTaller.filter((p) => !filtroT || p.estado === filtroT).length &&
+            <div className="card p-8 text-center text-sm text-slate-400">Sin presupuestos {filtroT ? 'en este estado' : 'de taller aún'}.</div>}
         </div>
       )}
 

@@ -21,7 +21,8 @@ export default function Campanas() {
   useEffect(() => { cargar() }, [])
 
   async function cargar() {
-    const { data } = await supabase.from('campanas').select('*').order('prioridad')
+    // v23: las campañas de email (con criterio) viven en Email marketing
+    const { data } = await supabase.from('campanas').select('*').is('criterio', null).order('prioridad')
     setCampanas(data || [])
   }
 

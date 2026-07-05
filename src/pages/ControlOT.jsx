@@ -7,7 +7,7 @@ import { formatPatente, formatRut, formatTelefono, fmtCLP, fmtFecha, TIPOS_CLIEN
 
 const MOTIVOS = {
   en_taller: { label: 'Vehículo en taller', color: '#2f6fb0' },
-  pendiente_ingreso: { label: 'Pendiente de ingreso', color: '#C98A1B' },
+  pendiente_ingreso: { label: 'OT nula', color: '#C98A1B' },   // v23: reemplaza "Pendiente de ingreso"
   otro: { label: 'Otro motivo', color: '#7A5C8E' }
 }
 
@@ -429,7 +429,15 @@ function Faltantes() {
                   <td className="px-2 py-2.5">
                     <div className="flex gap-1 flex-wrap">
                       {Object.entries(MOTIVOS).map(([k, v]) => (
-                        <button key={k} onClick={() => marcar(ot, r?.motivo === k ? null : k)}
+                        <button key={k} onClick={() => {
+                            // v23: "Otro motivo" exige detallar antes de continuar
+                            if (k === 'otro' && r?.motivo !== 'otro' && !(r?.nota || '').trim()) {
+                              const det = window.prompt('Detalla el motivo antes de continuar:')
+                              if (!det || !det.trim()) return
+                              marcar(ot, 'otro', det.trim()); return
+                            }
+                            marcar(ot, r?.motivo === k ? null : k)
+                          }}
                           className={`px-2 py-1 rounded text-[11px] border transition ${r?.motivo === k ? 'text-white border-transparent' : 'text-slate-500 border-slate-200 hover:border-deep'}`}
                           style={r?.motivo === k ? { background: v.color } : {}}>{v.label}</button>
                       ))}

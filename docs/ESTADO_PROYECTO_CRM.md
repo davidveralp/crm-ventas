@@ -55,6 +55,13 @@ CRM comercial y operativo para **Servicio Automotriz Didial Ltda.** (La Serena, 
 - **Notificaciones**: tabla `notificaciones` (por usuario o rol), **campanita** en sidebar/móvil con badge, polling 30 s y **sonido de alerta** (WebAudio) al llegar nuevas. Cada hito del flujo de taller notifica al responsable.
 
 
+### Novedades v23 (04-07-2026)
+- **Presupuestos de taller elaborados por el ENCARGADO** desde Presupuestos → pestaña Taller (contexto de la revisión: servicio, observaciones, diagnóstico, tareas; base de precios integrada); el taller queda en solo lectura. Aprobación del cliente desde la ficha con respaldo de garantía obligatorio → notifica compra; "Compra gestionada" mueve el trabajo a "Compra de repuestos" y notifica al taller.
+- **Cotización rápida del asesor** (botón "Cotizar" por vehículo): base de precios + ítems libres, ticket imprimible 80mm con logo y contacto por marca; se guarda como presupuesto "rápida".
+- **Nueva OT**: RUT/correo/dirección obligatorios, modo Empresa (razón social + contacto), MO $0 solo garantía o "Solicitar anular OT" (notifica a administración); Control OT: motivo "OT nula" y "Otro" exige detalle.
+- **Email marketing**: campañas movidas a Email → pestaña Campañas; personalización {nombre}/{vehiculo}/{servicio} + contacto Toyota/multimarca; logo real y slogan "Cuidamos lo que te mueve"; envío masivo con un botón (Edge Function v23 con destinatarios explícitos).
+- Redondeo defensivo de montos (bug del peso perdido) y clientes tipo Empresa con contacto en ficha/alta.
+
 ### Novedades v21 (03-07-2026)
 - **Ficha de cliente**: Nueva OT y Solicitar servicio separados; formulario de contacto con **Nombre(s)/Apellido(s)** y obligatorios (RUT, teléfono, correo, dirección, comuna, ciudad, tipo Persona/Empresa/Interno); **Marca eliminada del contacto** (es segmentación por vehículos). Aplica de aquí en adelante.
 - **Vehículos**: nuevo campo **tipo de vehículo** (AUTO/SUV/PICK UP/VAN-FURGÓN-CAMIÓN) que selecciona el precio de MO en la base de precios.
@@ -99,6 +106,7 @@ Idempotentes, se ejecutan en orden en el SQL Editor. Estado según lo conversado
 | 24 (v20) | `diagnosticos_taller`, respaldos/autorización en trabajos, config `margenes` | ⚠️ |
 | 25 (v21) | apellidos, tipo_vehiculo, documento en servicios, `tareas_servicio` (seed MAN X PAUTA), `precios_base`, RPC `crm_aplicar_datos_ot`, re-vinculación por patente | 🆕 pendiente |
 | 26 (v21.1) | Seed base de precios (985 filas, precios 09-04-2026; fix celdas combinadas; AC13 quedó "(nombre por completar)") | 🆕 pendiente |
+| 29 (v23) | Presupuestos: elaboración por encargado + cotización rápida (trabajo_id nullable, cliente/vehículo/origen/compra_gestionada), empresa (contacto_nombre), OT (rut/contacto/anulación), audiencia_campana v2 + plantillas v2 (logo/slogan/personalización/contactos por marca) | 🆕 pendiente |
 | 28 (v22) | Limpieza calendario/gestiones (migra actividades de campaña a `tareas_campana`), función `audiencia_campana`, campos asunto/criterio en campañas, seed 6 campañas de email con plantillas HTML | 🆕 pendiente |
 | 27 (v21.1) | `crm_aplicar_datos_ot` v2: crea clientes/vehículos faltantes desde la base de OT, vincula servicios huérfanos (fix búsqueda por N° OT, ej. 13199) y recalcula facturación/num_ot/última visita | 🆕 pendiente |
 

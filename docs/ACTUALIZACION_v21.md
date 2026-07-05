@@ -94,3 +94,47 @@ El segmento entra predefinido como **Nuevo cliente** (el sistema lo reclasifica 
 
 ## Usuarios (bug pendiente de tu lado)
 "Failed to send a request to the Edge Function" significa que **`gestionar-usuario` sigue sin desplegarse** en Supabase — no es un bug del código del CRM, y no puedo desplegarla por ti. Pasos exactos: Dashboard de Supabase → **Edge Functions → Deploy new function** → nombre exacto `gestionar-usuario` → pegar el contenido de `supabase/functions/gestionar-usuario/index.ts` → Deploy (los secrets se configuran solos). El modal ahora te muestra estas instrucciones cuando detecta ese error.
+
+
+---
+
+# ACTUALIZACIÓN v23 · Presupuestos por el encargado, cotización rápida, email personalizado
+
+## Migración
+Ejecutar **`database/29_actualizacion_v23.sql`** (requiere 1–28): contacto de empresa en clientes, presupuestos con cliente/vehículo propios (cotización rápida) y campo de compra gestionada, RUT/contacto/anulación en `ordenes_trabajo`, `audiencia_campana` v2 (marca, modelo, último servicio, contacto Toyota/multimarca) y plantillas v2 (logo real, slogan y personalización).
+
+## Flujo de presupuestos redefinido
+1. Asesor: **Solicitar servicio** (ficha) → taller diagnostica → "Pasar a presupuesto".
+2. **El ENCARGADO DE PRESUPUESTOS elabora desde el módulo Presupuestos → pestaña Taller** (rol coordinador de adquisiciones o admin). Ve la revisión completa (servicio solicitado, observaciones del cliente, diagnóstico con severidades y tareas) y cotiza con la base de precios (MO por tipo de vehículo, insumos, rango eco/premium de repuestos). El taller ahora ve los presupuestos en **solo lectura**.
+3. "Enviar al asesor" → aparece en la ficha del cliente (editable, PDF con logo, WhatsApp).
+4. Asesor con aprobación del cliente: **"Cliente aprueba → continuar reparación"** — exige confirmar el respaldo de garantía (OT firmada ✓ + video ✓), registra la autorización, notifica a presupuestos (gestionar compra) y al taller.
+5. Encargado: botón **"Compra gestionada → espera de repuestos"** — el trabajo pasa a la etapa "Compra de repuestos" en el taller y se notifica a jefe de taller y asesor.
+
+## Cotización rápida (ticket)
+En la ficha del cliente, botón **"Cotizar"** por vehículo: servicios planos desde la base de precios (filtrados por tipo de vehículo), precios editables e ítems libres, **ticket imprimible formato boleta** con logo y el contacto según marca. Se guarda como presupuesto "rápida" (queda en la ficha para PDF/WhatsApp y en el módulo Presupuestos).
+
+## Nueva OT
+- Obligatorios: RUT, correo, dirección, teléfono y propietario (mismos criterios que "Nuevo cliente").
+- Tipo Empresa → pide **Razón social + RUT de la empresa + nombre/teléfono/correo del contacto** (también en "Nuevo cliente" y en la ficha).
+- **MO $0 solo con garantía o anulación**: si no es garantía y la MO es 0, aparece "Solicitar anular OT" al final — la OT se guarda con los datos del cliente y montos en cero, y se **notifica a administración** para registrarla como nula.
+- Control de OT → OT faltantes: el motivo "Pendiente de ingreso" ahora es **"OT nula"** (las clasificaciones históricas se muestran con la nueva etiqueta) y **"Otro motivo" exige detallar** antes de continuar.
+
+## Email marketing
+- Las 6 campañas viven ahora en **Email marketing → pestaña Campañas** (ya no aparecen junto a las campañas comerciales). Audiencia en vivo, vista previa y envío masivo con un botón.
+- **Personalización por destinatario**: {nombre}, {vehiculo} (marca+modelo de su última visita), {servicio} (último servicio) y contacto según marca — Toyota: serviciotoyota@didial.cl · +56 9 3740 1051 / Multimarca: serviciotecnico@didial.cl · +56 9 8974 8626.
+- **Logo real** en el header (https://crm-ventas-neon.vercel.app/logo-didial.png, servido por el propio deploy) y slogan en header y firma.
+
+### Pasos para dejar operativo el envío (una sola vez)
+1. Subir el zip al repo y verificar el deploy (el logo del correo se sirve desde ahí).
+2. Ejecutar la migración 29.
+3. Crear cuenta en **Brevo** (brevo.com) si no existe; en Senders & Domains **verificar el remitente** (ideal: autenticar el dominio didial.cl con los registros DKIM que Brevo indica — mejora mucho la entrega; mínimo: verificar serviciotecnico@didial.cl como sender).
+4. Copiar la **API key** de Brevo (SMTP & API → API Keys).
+5. Supabase → Edge Functions → **Deploy new function** → nombre exacto `enviar-email` → pegar `supabase/functions/enviar-email/index.ts` → Deploy. En **Secrets** agregar `BREVO_API_KEY`.
+6. (Para métricas de apertura/clic) Desplegar también `brevo-webhook` (con Verify JWT desactivado), agregar el secret `BREVO_WEBHOOK_TOKEN` y configurar el webhook en Brevo apuntando a la URL de la función. Sin esto los envíos funcionan igual; solo no llegan los eventos a Reportes.
+7. Probar: Email marketing → Campañas → elegir una con audiencia chica → Enviar. Verificar recepción y personalización.
+8. Límite a considerar: el plan gratuito de Brevo permite ~300 correos/día — para "Recupero masivo" probablemente necesites enviar por tandas en días distintos o un plan pago.
+
+## Otros
+- **Redondeo defensivo del "peso perdido"**: los precios antiguos calculados con margen automático podían quedar con decimales (ej: 39.999,9999…) y mostrarse/guardarse con $1 menos. Ahora todo monto se redondea al cargar y al guardar (ficha, taller, Nueva OT). Si lo vuelves a ver, indica en qué pantalla exacta para rastrear otra fuente.
+- **"Eliminar" cliente ya estaba restringido a administradores** — tú lo ves porque tu perfil es admin; un vendedor no lo ve.
+- Slogan institucional propuesto e integrado: **"Cuidamos lo que te mueve"** (alternativas por si prefieres otro: "Expertos en tu tranquilidad", "Tu auto en las mejores manos", "Mantención que se nota"). Cambiarlo = editar las plantillas (un UPDATE) y dos textos en PDF/ticket.

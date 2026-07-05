@@ -3,7 +3,9 @@
 // =====================================================================
 // Envía un correo a los clientes de un segmento (con email) vía Brevo,
 // registrando cada envío en email_envios para poder medir su resultado.
-//   { asunto, cuerpo, es_html?, cliente_ids?, segmento?, dias_recientes?, campana_id? }
+//   { asunto, cuerpo, es_html?, destinatarios?, cliente_ids?, segmento?, dias_recientes?, campana_id? }
+//   v23: destinatarios = [{cliente_id,email,nombre,vehiculo,servicio,contacto_email,contacto_fono}]
+//        para personalización completa por persona.
 //   v22: cliente_ids (audiencia explícita calculada por audiencia_campana)
 //        y es_html (la plantilla ya viene en HTML, no convertir saltos).
 // Solo lo puede invocar un admin.
@@ -40,7 +42,7 @@ Deno.serve(async (req) => {
     const { data: perfil } = await service.from('usuarios').select('rol, empresa_id').eq('id', uid).single()
     if (!perfil || perfil.rol !== 'admin') return json({ error: 'Solo un administrador puede enviar emails' }, 403)
 
-    const { asunto, cuerpo, es_html, cliente_ids, segmento, dias_recientes, campana_id } = await req.json()
+    const { asunto, cuerpo, es_html, destinatarios, cliente_ids, segmento, dias_recientes, campana_id } = await req.json()
     if (!asunto || !cuerpo) return json({ error: 'Faltan asunto o cuerpo' }, 400)
 
     // Remitente configurado por empresa (config sobre código)
@@ -51,7 +53,24 @@ Deno.serve(async (req) => {
       email: emp?.remitente_email || 'administracion@didial.cl'
     }
 
-    // Audiencia: lista explícita (campañas con criterio) o por segmento
+    // Audiencia: destinatarios explícitos (v23, con params por persona),
+    // lista de ids, o por segmento
+    let listaFinal: any[] = []
+    if (Array.isArray(destinatarios) && destinatarios.length) {
+      listaFinal = destinatarios
+        .filter((d: any) => d?.email && String(d.email).includes('@'))
+        .slice(0, 2000)
+        .map((d: any) => ({
+          id: d.cliente_id, email: d.email,
+          params: {
+            nombre: d.nombre || 'cliente',
+            vehiculo: d.vehiculo || 'vehículo',
+            servicio: d.servicio || 'servicio',
+            contacto_email: d.contacto_email || 'serviciotecnico@didial.cl',
+            contacto_fono: d.contacto_fono || '+56 9 8974 8626'
+          }
+        }))
+    }
     let q = service.from('clientes').select('id,nombre,apellidos,email')
       .eq('empresa_id', perfil.empresa_id).not('email', 'is', null)
     if (Array.isArray(cliente_ids) && cliente_ids.length) q = q.in('id', cliente_ids.slice(0, 2000))
@@ -60,8 +79,10 @@ Deno.serve(async (req) => {
       if (dias_recientes) q = q.gte('creado_en', new Date(Date.now() - dias_recientes * 864e5).toISOString())
     }
     const { data: clientes } = await q.limit(2000)
-    const dest = (clientes || []).filter((x) => x.email && x.email.includes('@'))
-    if (!dest.length) return json({ ok: true, enviados: 0, motivo: 'Sin clientes con email en este segmento' })
+    const dest = listaFinal.length
+      ? listaFinal
+      : (clientes || []).filter((x) => x.email && x.email.includes('@'))
+    if (!dest.length) return json({ ok: true, enviados: 0, motivo: 'Sin destinatarios con email' })
 
     const brevoKey = Deno.env.get('BREVO_API_KEY')
     if (!brevoKey) return json({ error: 'Falta BREVO_API_KEY en los secrets' }, 500)
@@ -75,8 +96,15 @@ Deno.serve(async (req) => {
 
     // Cuerpo con personalización {nombre} -> {{params.nombre}}.
     // Si es_html, la plantilla ya trae su propio layout (no tocar saltos).
+    // v23: placeholders adicionales por persona
+    const conParams = (txt: string) => txt
+      .replace(/\{nombre\}/g, '{{params.nombre}}')
+      .replace(/\{vehiculo\}/g, '{{params.vehiculo}}')
+      .replace(/\{servicio\}/g, '{{params.servicio}}')
+      .replace(/\{contacto_email\}/g, '{{params.contacto_email}}')
+      .replace(/\{contacto_fono\}/g, '{{params.contacto_fono}}')
     const htmlBase = es_html
-      ? String(cuerpo).replace(/\{nombre\}/g, '{{params.nombre}}')
+      ? conParams(String(cuerpo))
       : `<div style="font-family:Arial,sans-serif;font-size:15px;color:#1A1C20;line-height:1.6">
       ${String(cuerpo).replace(/\{nombre\}/g, '{{params.nombre}}').replace(/\n/g, '<br>')}
       <br><br><span style="color:#6B7280;font-size:12px">DIDIAL Servicio Automotriz · La Serena</span>
@@ -94,8 +122,12 @@ Deno.serve(async (req) => {
           subject: asunto,
           htmlContent: htmlBase,
           messageVersions: lote.map((d) => ({
-            to: [{ email: d.email.trim(), name: d.nombre || '' }],
-            params: { nombre: (d.nombre || '').split(' ')[0] }
+            to: [{ email: d.email.trim(), name: d.params?.nombre || d.nombre || '' }],
+            params: d.params || {
+              nombre: (d.nombre || '').split(' ')[0],
+              vehiculo: 'vehículo', servicio: 'servicio',
+              contacto_email: 'serviciotecnico@didial.cl', contacto_fono: '+56 9 8974 8626'
+            }
           }))
         })
       })

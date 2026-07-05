@@ -7,7 +7,7 @@ import { Pill, Modal, EmptyState, SelectMarca } from '../components/UI'
 import { SEGMENTOS, TIPOS_CLIENTE, segLabel, segColor, fmtCLP, formatRut, formatTelefono, formatPatente } from '../lib/helpers'
 
 const VACIO = {
-  nombre: '', apellidos: '', rut: '', email: '', telefono: '', ciudad: 'La Serena',
+  nombre: '', apellidos: '', contacto_nombre: '', rut: '', email: '', telefono: '', ciudad: 'La Serena',
   direccion: '', comuna: '',
   tipo: 'PERSONA', segmento: 'nuevo', marca_principal: '', vendedor_id: '',
   // datos del primer vehículo (opcionales)
@@ -105,8 +105,10 @@ export default function Clientes() {
     e.preventDefault()
     setGuardando(true)
     const asignado = estados.find((e) => e.clave === 'asignado' || e.nombre === 'Asignado')
+    const esEmp = form.tipo === 'EMPRESA'
     const payload = {
-      nombre: form.nombre.trim(), apellidos: form.apellidos.trim(), email: form.email,
+      nombre: form.nombre.trim(), apellidos: esEmp ? null : form.apellidos.trim(),
+      contacto_nombre: esEmp ? form.contacto_nombre.trim() : null, email: form.email,
       telefono: form.telefono ? formatTelefono(form.telefono) : null,
       ciudad: form.ciudad, tipo: form.tipo, segmento: form.segmento,
       direccion: form.direccion || null, comuna: form.comuna || null,
@@ -241,15 +243,25 @@ export default function Clientes() {
         <form onSubmit={guardar} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="label">Nombre(s) *</label>
+              <label className="label">{form.tipo === 'EMPRESA' ? 'Razón social *' : 'Nombre(s) *'}</label>
               <input className="input" required value={form.nombre}
+                     placeholder={form.tipo === 'EMPRESA' ? 'Ej: Transportes del Norte SpA' : ''}
                      onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
             </div>
-            <div>
-              <label className="label">Apellido(s) *</label>
-              <input className="input" required value={form.apellidos}
-                     onChange={(e) => setForm({ ...form, apellidos: e.target.value })} />
-            </div>
+            {form.tipo === 'EMPRESA' ? (
+              <div>
+                <label className="label">Nombre del contacto *</label>
+                <input className="input" required value={form.contacto_nombre}
+                       placeholder="Persona de contacto"
+                       onChange={(e) => setForm({ ...form, contacto_nombre: e.target.value })} />
+              </div>
+            ) : (
+              <div>
+                <label className="label">Apellido(s) *</label>
+                <input className="input" required value={form.apellidos}
+                       onChange={(e) => setForm({ ...form, apellidos: e.target.value })} />
+              </div>
+            )}
             <div>
               <label className="label">RUT *</label>
               <input className="input" required value={form.rut}

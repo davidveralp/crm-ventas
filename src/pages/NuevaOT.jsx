@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import {
-  formatPatente, patenteLimpia, fmtMiles, otTotal, fmtFonoOT,
+  formatPatente, patenteLimpia, fmtMiles, otTotal, fmtFonoOT, formatRut,
   OT_TIPO_INGRESO, OT_ES_GARANTIA, OT_TIPO_CLIENTE, OT_ESTADO_VEHICULO,
   OT_TIPO_DOCUMENTO, OT_SVC_GRUPOS, otBU, OT_MARCAS, OT_CIUDADES,
   OT_TECNICOS, OT_CONOCIO, OT_ENCUESTA, enviarASheet
@@ -15,13 +15,14 @@ const VACIA = {
   ot_numero: '', fecha: hoy(), tipo_ingreso: 'Normal', sucursal: 'Toyota',
   tecnico_principal: '', tecPrincipalOtro: '',
   patente: '', marca: '', marcaOtra: '', modelo: '', cilindrada: '', anio: '', km: '',
-  tipo_cliente: 'Particular', propietario: '', telefono: '', email: '',
+  tipo_cliente: 'Particular', propietario: '', contacto_nombre: '', rut: '', telefono: '', email: '',
   ciudad: '', ciudadOtra: '', direccion: '', direccion_ref: '',
   repuestos: '', lubricantes: '', mo: '', servicioExterno: '', descSE: '', descuento: '',
   tipo_servicio_1: '', tipo_servicio_2: '',
   estado_vehiculo: 'Entregado', fecha_entrega: hoy(), tipo_documento: 'Boleta', nro_documento: '',
   presup_solicito: 'No', presup_numero: '', presup_aprueba: '', presup_detalle: '',
-  encuesta_aplica: 'No', enc_p1: '', enc_p2: '', enc_p3: '', enc_p4: '', enc_conocio: '', conocioOtro: ''
+  encuesta_aplica: 'No', enc_p1: '', enc_p2: '', enc_p3: '', enc_p4: '', enc_conocio: '', conocioOtro: '',
+  solicitar_anular: false
 }
 
 function Seccion({ n, titulo, children }) {
@@ -87,6 +88,7 @@ export default function NuevaOT() {
 
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }))
   const esGarantia = OT_ES_GARANTIA(f.tipo_ingreso)
+  const esEmpresa = f.tipo_cliente === 'Empresa'
   const total = useMemo(() => otTotal(f), [f.repuestos, f.lubricantes, f.mo, f.servicioExterno, f.descuento])
   const unidades = useMemo(() => {
     const bus = [otBU(f.tipo_servicio_1), otBU(f.tipo_servicio_2)].filter(Boolean)
@@ -177,7 +179,17 @@ export default function NuevaOT() {
   async function guardar(e) {
     e.preventDefault()
     if (!f.patente.trim() || !f.tipo_servicio_1) { setMsg({ t: 'err', m: 'Ingresa al menos patente y tipo de servicio.' }); return }
-    if (!esGarantia && (+f.mo || 0) <= 0) { setMsg({ t: 'err', m: 'La mano de obra es obligatoria (salvo garantía).' }); return }
+    // v23: datos de contacto obligatorios (mismos criterios que "Nuevo cliente")
+    if (!f.propietario.trim()) { setMsg({ t: 'err', m: esEmpresa ? 'La razón social es obligatoria.' : 'El nombre del propietario es obligatorio.' }); return }
+    if (!f.rut.trim()) { setMsg({ t: 'err', m: 'El RUT es obligatorio.' }); return }
+    if (!f.email.trim() || !f.email.includes('@')) { setMsg({ t: 'err', m: 'El correo electrónico es obligatorio.' }); return }
+    if (!f.direccion.trim()) { setMsg({ t: 'err', m: 'La dirección es obligatoria.' }); return }
+    if (esEmpresa && !f.contacto_nombre.trim()) { setMsg({ t: 'err', m: 'Indica el nombre del contacto de la empresa.' }); return }
+    // v23: MO $0 solo si es garantía o si se solicita anular la OT
+    if (!esGarantia && (+f.mo || 0) <= 0 && !f.solicitar_anular) {
+      setMsg({ t: 'err', m: 'La mano de obra es obligatoria (salvo garantía). Si esta OT quedará nula, marca "Solicitar anular OT" al final del formulario: se guardará con montos en cero y se notificará a administración.' })
+      return
+    }
     setGuardando(true); setMsg(null)
 
     const patFmt = formatPatente(f.patente)
@@ -189,6 +201,8 @@ export default function NuevaOT() {
       patente: patFmt, marca: marcaFinal(), modelo: f.modelo.trim(),
       cilindrada: f.cilindrada.trim(), anio: f.anio.trim(), km: kmNum,
       tipo_cliente: f.tipo_cliente, propietario: f.propietario.trim(),
+      rut: f.rut.trim() ? formatRut(f.rut) : null, contacto_nombre: f.contacto_nombre.trim() || null,
+      anulacion_solicitada: !!f.solicitar_anular,
       telefono: f.telefono.trim(), email: f.email.trim(), ciudad: ciudadFinal(),
       asesor: perfil?.nombre || '', tipo_ingreso: f.tipo_ingreso,
       tecnico_principal: tecPrincipalFinal(), tecnicos_secundarios: tecSecFinal(),
@@ -232,6 +246,16 @@ export default function NuevaOT() {
       }).eq('id', p.id)
     }
 
+    // v23: solicitud de anulación → notifica a administración para registrarla como nula
+    if (f.solicitar_anular) {
+      await supabase.from('notificaciones').insert({
+        empresa_id: perfil.empresa_id, rol: 'admin',
+        titulo: `Solicitud de anulación · OT ${fila.ot_numero || 's/n'}`,
+        cuerpo: `${f.propietario} · ${patFmt} · Motivo: OT con costo $0 (no garantía). Regístrala como "OT nula" en Control de OT.`,
+        url: '/control-ot'
+      })
+    }
+
     // Fidelización: seguimiento automático para el asesor a cargo (día siguiente)
     if (veh?.cliente_id) {
       const { data: cli } = await supabase.from('clientes')
@@ -257,9 +281,10 @@ export default function NuevaOT() {
         tecnicosSecundarios: tecSecFinal(),
         patente: patFmt, marca: marcaFinal(), modelo: f.modelo, cilindrada: f.cilindrada,
         anio: f.anio, km: f.km, tipoCliente: f.tipo_cliente, propietario: f.propietario,
+        rut: f.rut, contactoNombre: f.contacto_nombre,
         telefono: f.telefono, email: f.email, ciudad: ciudadFinal(),
         direccion: f.direccion, direccionRef: f.direccion_ref,
-        montoRepuestos: +f.repuestos || 0, montoLubricantes: +f.lubricantes || 0,
+        montoRepuestos: Math.round(+f.repuestos || 0), montoLubricantes: Math.round(+f.lubricantes || 0),
         montoMO: +f.mo || 0, montoServicioExterno: +f.servicioExterno || 0,
         descServicioExterno: f.descSE, descuento: +f.descuento || 0, totalReparacion: total,
         tipoServicio1: f.tipo_servicio_1, tipoServicio2: f.tipo_servicio_2 || '',
@@ -293,6 +318,16 @@ export default function NuevaOT() {
         <div className="text-right">
           <div className="text-xs text-slate-500">Total reparación</div>
           <div className="text-2xl font-bold text-deep">$ {fmtMiles(total)}</div>
+          {!esGarantia && (+f.mo || 0) <= 0 && (
+            <label className="flex items-start gap-2 mt-3 p-3 rounded-lg border border-didial-amber bg-amber-50 cursor-pointer text-left">
+              <input type="checkbox" className="mt-0.5" checked={f.solicitar_anular}
+                     onChange={(e) => set('solicitar_anular', e.target.checked)} />
+              <span className="text-xs text-slate-700">
+                <b>Solicitar anular OT.</b> La OT se guardará con los datos del cliente y montos en $0,
+                y se notificará a administración para registrarla como nula (requiere su autorización).
+              </span>
+            </label>
+          )}
         </div>
       </div>
 
@@ -364,14 +399,25 @@ export default function NuevaOT() {
             {OT_TIPO_CLIENTE.map((t) => <option key={t}>{t}</option>)}
           </select>
         </Campo>
-        <Campo label="Propietario / Razón Social" req>
-          <input className="input" value={f.propietario} onChange={(e) => set('propietario', e.target.value)} placeholder="Nombre o razón social" />
+        <Campo label={esEmpresa ? 'Razón Social' : 'Propietario'} req>
+          <input className="input" value={f.propietario} onChange={(e) => set('propietario', e.target.value)}
+                 placeholder={esEmpresa ? 'Ej: Transportes del Norte SpA' : 'Nombre y apellidos'} />
         </Campo>
-        <Campo label="Teléfono">
+        <Campo label="RUT" req>
+          <input className="input" value={f.rut} onChange={(e) => set('rut', e.target.value)}
+                 onBlur={(e) => set('rut', e.target.value ? formatRut(e.target.value) : '')}
+                 placeholder={esEmpresa ? 'RUT empresa: 76.123.456-7' : '12.345.678-9'} />
+        </Campo>
+        {esEmpresa && (
+          <Campo label="Nombre del contacto" req>
+            <input className="input" value={f.contacto_nombre} onChange={(e) => set('contacto_nombre', e.target.value)} placeholder="Persona de contacto en la empresa" />
+          </Campo>
+        )}
+        <Campo label={esEmpresa ? 'Teléfono del contacto' : 'Teléfono'} req>
           <input className="input" value={f.telefono} onChange={(e) => set('telefono', e.target.value)}
                  onBlur={(e) => set('telefono', fmtFonoOT(e.target.value))} placeholder="+56 9 XXXX XXXX" />
         </Campo>
-        <Campo label="Correo Electrónico"><input className="input" type="email" value={f.email} onChange={(e) => set('email', e.target.value)} placeholder="cliente@ejemplo.com" /></Campo>
+        <Campo label={esEmpresa ? 'Correo del contacto' : 'Correo Electrónico'} req><input className="input" type="email" value={f.email} onChange={(e) => set('email', e.target.value)} placeholder="cliente@ejemplo.com" /></Campo>
         <Campo label="Ciudad">
           <select className="input" value={f.ciudad} onChange={(e) => set('ciudad', e.target.value)}>
             <option value="">Seleccionar…</option>
@@ -382,7 +428,7 @@ export default function NuevaOT() {
             <input className="input mt-2" value={f.ciudadOtra} onChange={(e) => set('ciudadOtra', e.target.value)} placeholder="Nombre de la ciudad…" autoFocus />
           )}
         </Campo>
-        <Campo label="Dirección (calle y número)"><input className="input" value={f.direccion} onChange={(e) => set('direccion', e.target.value)} placeholder="Ej: Av. Balmaceda 1234" /></Campo>
+        <Campo label="Dirección (calle y número)" req><input className="input" value={f.direccion} onChange={(e) => set('direccion', e.target.value)} placeholder="Ej: Av. Balmaceda 1234" /></Campo>
         <Campo label="Depto / Casa / Referencia" full><input className="input" value={f.direccion_ref} onChange={(e) => set('direccion_ref', e.target.value)} placeholder="Ej: Depto 502, Torre B" /></Campo>
       </Seccion>
 
