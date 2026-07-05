@@ -35,6 +35,9 @@ alter table ordenes_trabajo add column if not exists anulacion_solicitada boolea
 -- Devuelve además marca/modelo del vehículo de la última visita, el
 -- último servicio realizado y el contacto según marca (Toyota vs
 -- multimarca) para la firma del correo.
+-- La v2 cambia las columnas de retorno, así que primero se elimina la v1
+-- (Postgres no permite cambiar el tipo de retorno con create or replace).
+drop function if exists audiencia_campana(uuid);
 create or replace function audiencia_campana(p_campana uuid)
 returns table (cliente_id uuid, nombre text, apellidos text, email text,
                telefono text, ultima_visita date, visitas_12m bigint, facturacion numeric,
