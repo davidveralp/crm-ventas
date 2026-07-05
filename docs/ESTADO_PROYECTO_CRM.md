@@ -55,6 +55,11 @@ CRM comercial y operativo para **Servicio Automotriz Didial Ltda.** (La Serena, 
 - **Notificaciones**: tabla `notificaciones` (por usuario o rol), **campanita** en sidebar/móvil con badge, polling 30 s y **sonido de alerta** (WebAudio) al llegar nuevas. Cada hito del flujo de taller notifica al responsable.
 
 
+### Novedades v24 (05-07-2026)
+- **Revisión ≠ ejecución**: tareas bloqueadas hasta "En reparación"; el técnico evalúa (diagnóstico) y registra **requerimientos de repuestos e insumos uno a uno**, que prellenan la cotización del encargado. Respaldo de garantía fuera del taller (solo estado): lo gestiona el asesor en la ficha al aprobar.
+- **Decisión del presupuesto solo del asesor** (ficha): aprueba completo / aprueba parcial (con respaldo obligatorio) / rechaza; botones eliminados de las tarjetas de taller y Presupuestos.
+- **Tipo de vehículo requisito para cotizar**: el buscador de precios filtra por tipo y lo exige (selector inline que guarda en la ficha del vehículo); selector agregado al alta de vehículo en "Nuevo cliente"; resultados muestran el tipo.
+
 ### Novedades v23 (04-07-2026)
 - **Presupuestos de taller elaborados por el ENCARGADO** desde Presupuestos → pestaña Taller (contexto de la revisión: servicio, observaciones, diagnóstico, tareas; base de precios integrada); el taller queda en solo lectura. Aprobación del cliente desde la ficha con respaldo de garantía obligatorio → notifica compra; "Compra gestionada" mueve el trabajo a "Compra de repuestos" y notifica al taller.
 - **Cotización rápida del asesor** (botón "Cotizar" por vehículo): base de precios + ítems libres, ticket imprimible 80mm con logo y contacto por marca; se guarda como presupuesto "rápida".
@@ -106,6 +111,7 @@ Idempotentes, se ejecutan en orden en el SQL Editor. Estado según lo conversado
 | 24 (v20) | `diagnosticos_taller`, respaldos/autorización en trabajos, config `margenes` | ⚠️ |
 | 25 (v21) | apellidos, tipo_vehiculo, documento en servicios, `tareas_servicio` (seed MAN X PAUTA), `precios_base`, RPC `crm_aplicar_datos_ot`, re-vinculación por patente | 🆕 pendiente |
 | 26 (v21.1) | Seed base de precios (985 filas, precios 09-04-2026; fix celdas combinadas; AC13 quedó "(nombre por completar)") | 🆕 pendiente |
+| 30 (v24) | `repuestos_requeridos` / `insumos_requeridos` en trabajos_taller (revisión técnica) | 🆕 pendiente |
 | 29 (v23) | Presupuestos: elaboración por encargado + cotización rápida (trabajo_id nullable, cliente/vehículo/origen/compra_gestionada), empresa (contacto_nombre), OT (rut/contacto/anulación), audiencia_campana v2 + plantillas v2 (logo/slogan/personalización/contactos por marca) | 🆕 pendiente |
 | 28 (v22) | Limpieza calendario/gestiones (migra actividades de campaña a `tareas_campana`), función `audiencia_campana`, campos asunto/criterio en campañas, seed 6 campañas de email con plantillas HTML | 🆕 pendiente |
 | 27 (v21.1) | `crm_aplicar_datos_ot` v2: crea clientes/vehículos faltantes desde la base de OT, vincula servicios huérfanos (fix búsqueda por N° OT, ej. 13199) y recalcula facturación/num_ot/última visita | 🆕 pendiente |

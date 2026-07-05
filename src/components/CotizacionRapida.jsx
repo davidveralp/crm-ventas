@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { Modal } from './UI'
-import { fmtCLP, formatPatente, nombreCompleto, desgloseIVA } from '../lib/helpers'
+import { fmtCLP, formatPatente, nombreCompleto, desgloseIVA, TIPOS_VEHICULO } from '../lib/helpers'
 
 // v23 · COTIZACIÓN RÁPIDA del asesor (servicios planos con precio
 // establecido, especialmente Toyota). Usa la base de precios según el tipo
@@ -13,6 +13,14 @@ export default function CotizacionRapida({ cliente, vehiculo, perfil, onClose, o
   const [busca, setBusca] = useState('')
   const [res, setRes] = useState([])
   const [guardando, setGuardando] = useState(false)
+  const [tipoLocal, setTipoLocal] = useState(vehiculo?.tipo_vehiculo || null)
+  // v24: el tipo de vehículo es requisito para cotizar (los precios de MO
+  // dependen de él). Si falta, se pide aquí y queda guardado en el vehículo.
+  async function definirTipo(tipo) {
+    if (!tipo) return
+    setTipoLocal(tipo)
+    if (vehiculo?.id) await supabase.from('vehiculos').update({ tipo_vehiculo: tipo }).eq('id', vehiculo.id)
+  }
   const total = Math.round(items.reduce((s, x) => s + (+x.precio || 0) * (+x.cant || 1), 0))
   const esToyota = (vehiculo?.marca || '').toUpperCase() === 'TOYOTA'
   const contacto = esToyota
@@ -27,7 +35,7 @@ export default function CotizacionRapida({ cliente, vehiculo, perfil, onClose, o
       .or(`nombre.ilike.%${q.trim()}%,codigo.ilike.%${q.trim()}%`)
       .limit(30)
     let filas = data || []
-    if (vehiculo?.tipo_vehiculo) filas = filas.filter((x) => x.tipo !== 'servicio' || x.tipo_vehiculo === vehiculo.tipo_vehiculo)
+    if (tipoLocal) filas = filas.filter((x) => x.tipo !== 'servicio' || x.tipo_vehiculo === tipoLocal)
     setRes(filas.slice(0, 10))
   }
   function agregarDeBase(r) {
@@ -101,7 +109,8 @@ export default function CotizacionRapida({ cliente, vehiculo, perfil, onClose, o
       <div className="space-y-3">
         <div className="relative">
           <input className="input text-sm" autoFocus value={busca} onChange={(e) => buscar(e.target.value)}
-                 placeholder={`🔎 Buscar servicio en la base de precios${vehiculo?.tipo_vehiculo ? ' · ' + vehiculo.tipo_vehiculo : ''}…`} />
+                 disabled={!tipoLocal && !!vehiculo}
+                 placeholder={tipoLocal ? `🔎 Buscar servicio en la base de precios · ${tipoLocal}…` : 'Define el tipo de vehículo para cotizar…'} />
           {!!res.length && (
             <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-52 overflow-y-auto">
               {res.map((r, i) => (
@@ -109,12 +118,21 @@ export default function CotizacionRapida({ cliente, vehiculo, perfil, onClose, o
                         className="w-full text-left px-3 py-1.5 text-xs hover:bg-mist/60 border-b border-slate-50">
                   <span className="font-mono text-slate-400 mr-1.5">{r.codigo}</span>
                   <span className="text-ink">{r.nombre}</span>
+                  {r.tipo === 'servicio' && r.tipo_vehiculo && <span className="text-[10px] text-slate-400 border border-slate-200 rounded px-1 ml-1">{r.tipo_vehiculo}</span>}
                   <span className="text-slate-400"> · {fmtCLP(r.tipo === 'servicio' ? (+r.valor_mo || 0) + (+r.insumos || 0) : r.precio || 0)}</span>
                 </button>
               ))}
             </div>
           )}
-          {!vehiculo?.tipo_vehiculo && <p className="text-[10px] text-didial-amber mt-0.5">⚠ Define el tipo de vehículo en la ficha para filtrar los precios de MO correctos.</p>}
+          {!tipoLocal && vehiculo && (
+            <div className="flex items-center gap-2 mt-1.5 p-2 rounded-lg border border-didial-amber bg-amber-50">
+              <span className="text-[11px] text-slate-700">⚠ Este vehículo no tiene <b>tipo</b> definido y los precios dependen de él. Selecciónalo (queda guardado en la ficha):</span>
+              <select className="input text-xs w-auto py-1" defaultValue="" onChange={(e) => definirTipo(e.target.value)}>
+                <option value="" disabled>Seleccionar…</option>
+                {TIPOS_VEHICULO.map((x) => <option key={x} value={x}>{x}</option>)}
+              </select>
+            </div>
+          )}
         </div>
         {items.map((x, i) => (
           <div key={i} className="flex items-center gap-1.5 text-xs">

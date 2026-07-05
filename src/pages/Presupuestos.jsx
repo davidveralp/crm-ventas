@@ -40,7 +40,14 @@ export default function Presupuestos() {
         .select('*, trabajos_taller(id, titulo, servicio_solicitado, observaciones_cliente, estado, vehiculo_id, asesor_id, respaldo_ot_firmada, respaldo_video, historial, vehiculos(patente,marca,modelo,tipo_vehiculo), clientes(nombre,apellidos))')
         .order('creado_en', { ascending: false })
     ])
-    setLista(data || []); setPTaller(pt || [])
+    // v24: vehículo de las cotizaciones rápidas (sin trabajo de taller)
+    const vidsRap = [...new Set((pt || []).filter((p) => !p.trabajo_id && p.vehiculo_id).map((p) => p.vehiculo_id))]
+    let vehMap = {}
+    if (vidsRap.length) {
+      const { data: vs } = await supabase.from('vehiculos').select('id,patente,marca,modelo,tipo_vehiculo').in('id', vidsRap)
+      vehMap = Object.fromEntries((vs || []).map((v) => [v.id, v]))
+    }
+    setLista(data || []); setPTaller((pt || []).map((p) => ({ ...p, veh: vehMap[p.vehiculo_id] || null })))
     const tids = [...new Set((pt || []).map((p) => p.trabajo_id).filter(Boolean))]
     if (tids.length) {
       const [{ data: dg }, { data: ts }] = await Promise.all([
@@ -122,10 +129,10 @@ export default function Presupuestos() {
             return (
               <div key={p.id} className="card p-4 space-y-3">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-semibold text-ink uppercase text-sm">{tituloDe(t)}</span>
+                  <span className="font-semibold text-ink uppercase text-sm">{t ? tituloDe(t) : [p.veh?.patente, p.veh?.marca, p.veh?.modelo].filter(Boolean).join(' ') || 'Cotización'}</span>
                   <span className="text-xs text-slate-400">{[t?.clientes?.nombre, t?.clientes?.apellidos].filter(Boolean).join(' ')}</span>
                   {p.origen === 'rapida' && <Pill color="#7A5C8E">Cotización rápida</Pill>}
-                  {t?.vehiculos?.tipo_vehiculo && <span className="text-[10px] text-slate-400 border border-slate-200 rounded px-1.5 py-0.5">{t.vehiculos.tipo_vehiculo}</span>}
+                  {(t?.vehiculos?.tipo_vehiculo || p.veh?.tipo_vehiculo) && <span className="text-[10px] text-slate-400 border border-slate-200 rounded px-1.5 py-0.5">{t?.vehiculos?.tipo_vehiculo || p.veh?.tipo_vehiculo}</span>}
                   <span className="ml-auto" />
                   {['aprobado', 'parcial'].includes(p.estado) && !p.compra_gestionada_en && esCompras && (
                     <button className="btn-primary text-xs" onClick={() => gestionarCompra(p)}>🛒 Compra gestionada → espera de repuestos</button>

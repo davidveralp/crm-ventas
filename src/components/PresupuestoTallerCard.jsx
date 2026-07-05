@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { Pill } from './UI'
-import { fmtCLP, ESTADOS_PRESUP_TALLER, SECCIONES_PRESUP, seccionDe } from '../lib/helpers'
+import { fmtCLP, ESTADOS_PRESUP_TALLER, SECCIONES_PRESUP, seccionDe, TIPOS_VEHICULO } from '../lib/helpers'
 
 // v23 · Tarjeta de presupuesto de taller COMPARTIDA.
 // - En el módulo Presupuestos (encargado de presupuestos / admin): editable.
@@ -14,7 +14,16 @@ export default function PresupuestoTallerCard({ p, t, esJefe, esCompras, perfil,
   const [resultados, setResultados] = useState([])
   const puedeEditar = editable && (esCompras || perfil?.rol === 'admin')
   const est = ESTADOS_PRESUP_TALLER[p.estado] || {}
-  const tipoVeh = t?.vehiculos?.tipo_vehiculo || null
+  const [tipoLocal, setTipoLocal] = useState(null)
+  const tipoVeh = tipoLocal || t?.vehiculos?.tipo_vehiculo || p.veh?.tipo_vehiculo || null
+  const vehId = t?.vehiculo_id || p.vehiculo_id || null
+  // v24: si el vehículo no tiene tipo definido, se solicita AQUÍ antes de
+  // cotizar (queda guardado en la ficha del vehículo).
+  async function definirTipo(tipo) {
+    if (!tipo) return
+    setTipoLocal(tipo)
+    if (vehId) await supabase.from('vehiculos').update({ tipo_vehiculo: tipo }).eq('id', vehId)
+  }
 
   const setItem = (i, campo, v) => { const n = items.map((x, j) => j === i ? { ...x, [campo]: v } : x); setItems(n) }
   // v21: el coordinador ingresa costo (alimenta la base interna, NO sale en
@@ -86,7 +95,8 @@ export default function PresupuestoTallerCard({ p, t, esJefe, esCompras, perfil,
           {puedeEditar && (
             <div className="relative">
               <input className="input text-xs" value={busca} onChange={(e) => buscarBase(e.target.value)}
-                     placeholder={`🔎 Buscar en base de precios (MO${tipoVeh ? ' · ' + tipoVeh : ''}, precios fijos, insumos)…`} />
+                     disabled={!tipoVeh && !!vehId}
+                     placeholder={tipoVeh ? `🔎 Buscar en base de precios (MO · ${tipoVeh}, precios fijos, insumos)…` : 'Define el tipo de vehículo para buscar en la base de precios…'} />
               {!!resultados.length && (
                 <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
                   {resultados.map((r, i) => (
@@ -100,7 +110,15 @@ export default function PresupuestoTallerCard({ p, t, esJefe, esCompras, perfil,
                   ))}
                 </div>
               )}
-              {!tipoVeh && <p className="text-[10px] text-didial-amber mt-0.5">⚠ El vehículo no tiene definido su tipo (AUTO/SUV/…): se muestran todas las variantes de MO. Defínelo en la ficha del cliente.</p>}
+              {!tipoVeh && (
+                <div className="flex items-center gap-2 mt-1 p-2 rounded-lg border border-didial-amber bg-amber-50">
+                  <span className="text-[11px] text-slate-700">⚠ Define el <b>tipo de vehículo</b> para cotizar con los precios correctos:</span>
+                  <select className="input text-xs w-auto py-1" defaultValue="" onChange={(e) => definirTipo(e.target.value)}>
+                    <option value="" disabled>Seleccionar…</option>
+                    {TIPOS_VEHICULO.map((x) => <option key={x} value={x}>{x}</option>)}
+                  </select>
+                </div>
+              )}
             </div>
           )}
           {porSeccion.filter((sec) => sec.items.length || puedeEditar).map((sec) => (
@@ -142,11 +160,9 @@ export default function PresupuestoTallerCard({ p, t, esJefe, esCompras, perfil,
                 <button className="btn-soft text-xs" onClick={() => guardarItems('cotizando')}>Guardar cotización</button>
                 <button className="btn-primary text-xs" onClick={() => guardarItems('enviado')}>Enviar al asesor</button>
               </>}
-              {editable && (perfil?.rol === 'vendedor' || perfil?.rol === 'admin') && p.estado === 'enviado' && <>
-                <button className="text-xs px-3 py-1.5 rounded-lg bg-green-600 text-white" onClick={() => guardarItems('aprobado')}>Cliente aprueba</button>
-                <button className="text-xs px-3 py-1.5 rounded-lg bg-didial-amber text-ink" onClick={() => guardarItems('parcial')}>Entrega parcial</button>
-                <button className="text-xs px-3 py-1.5 rounded-lg bg-didial-red text-white" onClick={() => guardarItems('rechazado')}>Cliente rechaza</button>
-              </>}
+              {p.estado === 'enviado' && (
+                <span className="text-[11px] text-slate-400 self-center">La decisión (aprobado / parcial / rechazado) la registra el asesor en la ficha del cliente durante la negociación.</span>
+              )}
             </div>
           </div>
         </div>

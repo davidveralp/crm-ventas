@@ -138,3 +138,25 @@ En la ficha del cliente, botón **"Cotizar"** por vehículo: servicios planos de
 - **Redondeo defensivo del "peso perdido"**: los precios antiguos calculados con margen automático podían quedar con decimales (ej: 39.999,9999…) y mostrarse/guardarse con $1 menos. Ahora todo monto se redondea al cargar y al guardar (ficha, taller, Nueva OT). Si lo vuelves a ver, indica en qué pantalla exacta para rastrear otra fuente.
 - **"Eliminar" cliente ya estaba restringido a administradores** — tú lo ves porque tu perfil es admin; un vendedor no lo ve.
 - Slogan institucional propuesto e integrado: **"Cuidamos lo que te mueve"** (alternativas por si prefieres otro: "Expertos en tu tranquilidad", "Tu auto en las mejores manos", "Mantención que se nota"). Cambiarlo = editar las plantillas (un UPDATE) y dos textos en PDF/ticket.
+
+
+---
+
+# ACTUALIZACIÓN v24 · Revisión técnica bien definida y tipo de vehículo en cotizaciones
+
+## Migración
+Ejecutar **`database/30_actualizacion_v24.sql`** (agrega los requerimientos de repuestos e insumos al trabajo de taller).
+
+## Revisión ≠ ejecución
+- Al **solicitar servicio** desde la ficha, el taller recibe la revisión con el servicio solicitado, las observaciones del cliente y las tareas de referencia — pero **las tareas quedan bloqueadas** (▶ Iniciar deshabilitado) hasta que el trabajo esté en "En reparación" o etapas posteriores. El técnico primero EVALÚA: puede confirmar el servicio solicitado o determinar que la causa real es otra (diagnóstico con hallazgos y severidades).
+- Nueva sección **"Requerimientos para la reparación"**: el técnico registra **uno a uno los repuestos** y **uno a uno los insumos** necesarios. Al usar "Pasar a presupuesto", estos requerimientos **prellenan la cotización ítem por ítem** y la notificación al encargado indica cuántos repuestos e insumos se requieren.
+- El **respaldo de garantía salió del taller**: es tarea del asesor y se solicita en la ficha del cliente al aprobar el presupuesto, antes de continuar con la reparación. En el taller solo se muestra su estado (✓/○) y quién autorizó.
+
+## La decisión es del asesor
+Los botones "Cliente aprueba / Entrega parcial / Cliente rechaza" se eliminaron de las tarjetas de presupuesto (taller y módulo Presupuestos). La decisión se registra **solo en la ficha del cliente** durante la negociación: el asesor elige **Aprueba completo** o **Aprueba parcial (entrega parcial)** — ambas exigen el respaldo de garantía — o **Cliente rechaza**. Las notificaciones a presupuestos distinguen aprobado completo de parcial.
+
+## Tipo de vehículo: requisito para cotizar
+Los precios de MO varían por tipo (AUTO / SUV / PICK UP / VAN-FURGÓN-CAMIÓN), por eso ya no se muestran las 4 variantes:
+- El buscador de la base de precios (cotización rápida y módulo Presupuestos) **filtra por el tipo del vehículo que se está cotizando** y muestra el tipo en cada resultado.
+- Si el vehículo **no tiene tipo definido, se solicita ahí mismo** antes de poder buscar (el buscador queda deshabilitado hasta seleccionarlo) y la selección **queda guardada en la ficha del vehículo**.
+- El selector de tipo también está al **ingresar un vehículo** (alta de cliente y "+ Agregar vehículo") y al **editarlo** (ya existía desde v21).

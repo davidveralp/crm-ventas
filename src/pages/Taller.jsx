@@ -147,16 +147,23 @@ export default function Taller() {
   // Diagnóstico → presupuesto en un clic (hallazgos como ítems a cotizar)
   async function diagAPresupuesto(t) {
     const hallazgos = diags.filter((d) => d.trabajo_id === t.id && d.severidad !== 'ok')
-    if (!hallazgos.length) return alert('No hay hallazgos del diagnóstico para presupuestar.')
-    const items = hallazgos.map((d) => ({
-      tipo: 'repuesto', codigo: '', detalle: d.item + (d.recomendacion ? ' — ' + d.recomendacion : ''),
-      cant: 1, costo: 0, precio: 0, en_stock: null, severidad: d.severidad
-    }))
+    const reps = t.repuestos_requeridos || []
+    const inss = t.insumos_requeridos || []
+    if (!hallazgos.length && !reps.length && !inss.length) return alert('Registra el diagnóstico o los requerimientos (repuestos/insumos) antes de pasar a presupuesto.')
+    // v24: la cotización parte prellenada con los requerimientos del técnico
+    const items = [
+      ...reps.map((r) => ({ tipo: 'repuesto', codigo: '', detalle: r, cant: 1, costo: 0, precio: 0, en_stock: null })),
+      ...inss.map((r) => ({ tipo: 'insumo', codigo: '', detalle: r, cant: 1, costo: 0, precio: 0, en_stock: null })),
+      ...hallazgos.filter((d) => !reps.length && !inss.length).map((d) => ({
+        tipo: 'repuesto', codigo: '', detalle: d.item + (d.recomendacion ? ' — ' + d.recomendacion : ''),
+        cant: 1, costo: 0, precio: 0, en_stock: null, severidad: d.severidad
+      }))
+    ]
     await supabase.from('presupuestos_taller').insert({
       empresa_id: perfil.empresa_id, trabajo_id: t.id, items,
       notas: 'Generado desde el diagnóstico', solicitado_por: perfil.id, estado: 'cotizando'
     })
-    notificar({ empresa_id: perfil.empresa_id, rol: 'coordinador_adquisiciones', titulo: 'Diagnóstico listo · cotizar presupuesto', cuerpo: tituloDe(t), url: '/taller' })
+    notificar({ empresa_id: perfil.empresa_id, rol: 'coordinador_adquisiciones', titulo: 'Revisión lista · cotizar presupuesto', cuerpo: `${tituloDe(t)} · ${ (t.repuestos_requeridos || []).length } repuesto(s), ${ (t.insumos_requeridos || []).length } insumo(s) requeridos`, url: '/presupuestos' })
     notificar({ empresa_id: perfil.empresa_id, rol: 'encargado_bodega', titulo: 'Revisar stock para presupuesto', cuerpo: tituloDe(t), url: '/taller' })
     cargar()
   }
@@ -493,29 +500,31 @@ function Detalle({ t, onClose, tareas, presups, tecnicos, nombreDe, diags, marge
         {/* Diagnóstico técnico */}
         <SeccionDiag t={t} diags={diags} esJefe={esJefe} esTecnico={esTecnico} nombreDe={nombreDe} acciones={acciones} />
 
-        {/* Respaldos de garantía */}
-        <div className="rounded-lg border border-slate-100 p-3">
-          <div className="text-xs font-semibold text-slate-400 uppercase mb-2">Respaldo de garantía <span className="normal-case font-normal">(requisito para reparar)</span></div>
-          <div className="flex flex-wrap gap-4">
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" checked={!!t.respaldo_ot_firmada}
-                     onChange={(e) => acciones.marcarRespaldo(t, 'respaldo_ot_firmada', e.target.checked)} />
-              OT firmada por el cliente
-            </label>
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" checked={!!t.respaldo_video}
-                     onChange={(e) => acciones.marcarRespaldo(t, 'respaldo_video', e.target.checked)} />
-              Video enviado al grupo de respaldo
-            </label>
-            {t.autorizado_en && (
-              <span className="text-[11px] text-slate-400 self-center">Reparación autorizada por {nombreDe(t.autorizado_por)} · {new Date(t.autorizado_en).toLocaleString('es-CL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
-            )}
-          </div>
+        {/* v24: Requerimientos de la reparación — el técnico registra UNO A
+            UNO los repuestos y los insumos necesarios; al pasar a presupuesto
+            se informan al encargado (prellenan la cotización). */}
+        <SeccionRequerimientos t={t} puede={esJefe || esTecnico} acciones={acciones} />
+
+        {/* v24: el respaldo de garantía es tarea del ASESOR (se solicita al
+            aprobar el presupuesto en la ficha del cliente, antes de la
+            reparación). Aquí solo se muestra el estado. */}
+        <div className="rounded-lg border border-slate-100 p-3 text-xs text-slate-500 flex flex-wrap gap-3 items-center">
+          <span className="font-semibold text-slate-400 uppercase">Respaldo de garantía</span>
+          <span className={t.respaldo_ot_firmada ? 'text-green-600' : 'text-slate-400'}>{t.respaldo_ot_firmada ? '✓' : '○'} OT firmada</span>
+          <span className={t.respaldo_video ? 'text-green-600' : 'text-slate-400'}>{t.respaldo_video ? '✓' : '○'} Video enviado</span>
+          {t.autorizado_en
+            ? <span className="text-slate-400">Autorizado por {nombreDe(t.autorizado_por)} · {new Date(t.autorizado_en).toLocaleString('es-CL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+            : <span className="text-slate-400">Lo gestiona el asesor al aprobar el presupuesto en la ficha del cliente.</span>}
         </div>
 
-        {/* Tareas */}
+        {/* Tareas · v24: durante la revisión el técnico EVALÚA (diagnóstico +
+            requerimientos); las tareas solo se ejecutan una vez aprobado el
+            presupuesto y autorizada la reparación. */}
         <div>
           <div className="text-xs font-semibold text-slate-400 uppercase mb-2">Tareas ({tareas.filter((x) => x.estado === 'terminada').length}/{tareas.length})</div>
+          {!['en_reparacion', 'servicio_externo', 'compra_repuestos', 'pintura_dyp', 'lavado', 'alineacion', 'prueba_ruta', 'retroceso', 'listo_entrega'].includes(t.estado) && tareas.length > 0 && (
+            <p className="text-[11px] text-didial-amber mb-2">⏸ En revisión: las tareas se habilitan cuando el presupuesto esté aprobado y la reparación autorizada (etapa "En reparación" en adelante).</p>
+          )}
           <div className="space-y-2">
             {tareas.map((x) => {
               const mia = x.tecnico_id === perfil?.id
@@ -538,7 +547,9 @@ function Detalle({ t, onClose, tareas, presups, tecnicos, nombreDe, diags, marge
                   </div>
                   {x.estado !== 'terminada' && (mia || esJefe) && (
                     <div className="mt-2 pl-6 flex flex-wrap items-center gap-2">
-                      {!enCurso && <button className="btn-soft text-xs" onClick={() => acciones.iniciarTarea(x)}>▶ Iniciar</button>}
+                      {!enCurso && <button className="btn-soft text-xs" disabled={!['en_reparacion', 'servicio_externo', 'compra_repuestos', 'pintura_dyp', 'lavado', 'alineacion', 'prueba_ruta', 'retroceso', 'listo_entrega'].includes(t.estado)}
+                               title={!['en_reparacion', 'servicio_externo', 'compra_repuestos', 'pintura_dyp', 'lavado', 'alineacion', 'prueba_ruta', 'retroceso', 'listo_entrega'].includes(t.estado) ? 'Disponible desde la etapa "En reparación"' : ''}
+                               onClick={() => acciones.iniciarTarea(x)}>▶ Iniciar</button>}
                       {enCurso && <>
                         <input className="input text-xs flex-1 min-w-[180px]" placeholder="Observación (obligatoria al terminar)…"
                                value={obs[x.id] || ''} onChange={(e) => setObs({ ...obs, [x.id]: e.target.value })} />
@@ -601,6 +612,54 @@ const SEVERIDADES = {
   ok:         { label: 'En buen estado', color: '#1f9d57' }
 }
 
+function SeccionRequerimientos({ t, puede, acciones }) {
+  const [rep, setRep] = useState('')
+  const [ins, setIns] = useState('')
+  const reps = t.repuestos_requeridos || []
+  const inss = t.insumos_requeridos || []
+  const agregar = (campo, valor, limpiar) => {
+    if (!valor.trim()) return
+    acciones.guardarTrabajo(t, { [campo]: [...(t[campo] || []), valor.trim()] })
+    limpiar('')
+  }
+  const quitar = (campo, i) =>
+    acciones.guardarTrabajo(t, { [campo]: (t[campo] || []).filter((_, j) => j !== i) })
+  const Lista = ({ titulo, items, campo, valor, setValor, placeholder }) => (
+    <div className="flex-1 min-w-56">
+      <div className="text-[11px] font-semibold text-slate-400 uppercase mb-1">{titulo} ({items.length})</div>
+      <div className="space-y-1">
+        {items.map((x, i) => (
+          <div key={i} className="flex items-center gap-2 text-sm rounded border border-slate-100 px-2 py-1">
+            <span className="flex-1 text-ink">{x}</span>
+            {puede && <button className="text-slate-300 hover:text-red-500 text-xs" onClick={() => quitar(campo, i)}>✕</button>}
+          </div>
+        ))}
+        {!items.length && <p className="text-xs text-slate-300">Sin requerimientos aún.</p>}
+      </div>
+      {puede && (
+        <div className="flex gap-1.5 mt-1.5">
+          <input className="input text-xs flex-1" value={valor} placeholder={placeholder}
+                 onChange={(e) => setValor(e.target.value)}
+                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); agregar(campo, valor, setValor) } }} />
+          <button className="btn-soft text-xs" onClick={() => agregar(campo, valor, setValor)}>+ Agregar</button>
+        </div>
+      )}
+    </div>
+  )
+  return (
+    <div className="rounded-lg border border-slate-100 p-3">
+      <div className="text-xs font-semibold text-slate-400 uppercase mb-2">Requerimientos para la reparación</div>
+      <div className="flex flex-wrap gap-4">
+        <Lista titulo="Repuestos requeridos" items={reps} campo="repuestos_requeridos"
+               valor={rep} setValor={setRep} placeholder="Ej: Kit de embrague completo…" />
+        <Lista titulo="Insumos requeridos" items={inss} campo="insumos_requeridos"
+               valor={ins} setValor={setIns} placeholder="Ej: 4L aceite 5W-30, líquido de frenos…" />
+      </div>
+      <p className="text-[10px] text-slate-400 mt-2">Se informan al encargado de presupuestos al usar "Pasar a presupuesto" (prellenan la cotización, ítem por ítem).</p>
+    </div>
+  )
+}
+
 function SeccionDiag({ t, diags, esJefe, esTecnico, nombreDe, acciones }) {
   const [d, setD] = useState({ item: '', severidad: 'preventivo', recomendacion: '' })
   const puede = esJefe || esTecnico
@@ -608,7 +667,7 @@ function SeccionDiag({ t, diags, esJefe, esTecnico, nombreDe, acciones }) {
     <div>
       <div className="flex items-center justify-between mb-2">
         <div className="text-xs font-semibold text-slate-400 uppercase">Diagnóstico técnico ({diags.length})</div>
-        {esJefe && diags.some((x) => x.severidad !== 'ok') && (
+        {esJefe && (diags.some((x) => x.severidad !== 'ok') || (t.repuestos_requeridos || []).length > 0 || (t.insumos_requeridos || []).length > 0) && (
           <button className="btn-soft text-xs" onClick={() => acciones.diagAPresupuesto(t)}>→ Pasar a presupuesto</button>
         )}
       </div>

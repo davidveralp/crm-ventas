@@ -11,7 +11,7 @@ const VACIO = {
   direccion: '', comuna: '',
   tipo: 'PERSONA', segmento: 'nuevo', marca_principal: '', vendedor_id: '',
   // datos del primer vehículo (opcionales)
-  v_marca: '', v_modelo: '', v_anio: '', v_patente: '', v_km: ''
+  v_marca: '', v_modelo: '', v_anio: '', v_patente: '', v_km: '', v_tipo: ''
 }
 
 export default function Clientes() {
@@ -130,6 +130,7 @@ export default function Clientes() {
         patente: form.v_patente ? formatPatente(form.v_patente) : null,
         marca: form.v_marca || null,
         modelo: form.v_modelo || null, anio: Number(form.v_anio) || null,
+        tipo_vehiculo: form.v_tipo || null,
         km_ultimo: km, km_actual_estimado: km
       })
     }
@@ -358,10 +359,18 @@ export default function Clientes() {
                        onBlur={(e) => setForm({ ...form, v_patente: formatPatente(e.target.value) })}
                        placeholder="XX XX XX" />
               </div>
-              <div className="col-span-2">
+              <div>
                 <label className="label">Kilometraje</label>
                 <input className="input" type="number" value={form.v_km}
                        onChange={(e) => setForm({ ...form, v_km: e.target.value })} />
+              </div>
+              <div>
+                <label className="label">Tipo de vehículo</label>
+                <select className="input" value={form.v_tipo} onChange={(e) => setForm({ ...form, v_tipo: e.target.value })}>
+                  <option value="">—</option>
+                  {['AUTO', 'SUV', 'PICK UP', 'VAN/FURGON/CAMION'].map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+                <p className="text-[10px] text-slate-400 mt-0.5">Define los precios de MO al cotizar.</p>
               </div>
             </div>
           </div>
