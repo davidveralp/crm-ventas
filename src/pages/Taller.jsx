@@ -25,7 +25,8 @@ const Bandera = ({ p }) => p !== 'normal' ? (
   <span className="text-[11px] font-semibold" style={{ color: PRIORIDADES_TALLER[p]?.color }}>⚑ {PRIORIDADES_TALLER[p]?.label}</span>
 ) : null
 
-export default function Taller() {
+function TallerInterno() {
+
   const { perfil, esAdmin } = useAuth()
   const rol = perfil?.rol
   const esJefe = esAdmin || rol === 'jefe_taller' || rol === 'supervisor'
@@ -702,4 +703,19 @@ function SeccionDiag({ t, diags, esJefe, esTecnico, nombreDe, acciones }) {
       )}
     </div>
   )
+}
+
+
+// v25: módulo en fase preliminar — no disponible para asesores (vendedor).
+// Wrapper para respetar las reglas de hooks (sin retornos tempranos dentro
+// del componente principal).
+export default function Taller() {
+  const { perfil } = useAuth()
+  if (perfil?.rol === 'vendedor') return (
+    <div className="card p-8 max-w-lg text-sm text-slate-500">
+      El módulo Taller está en fase preliminar y aún no está disponible para asesores.
+      Los presupuestos que te correspondan llegan directo a la ficha de cada cliente.
+    </div>
+  )
+  return <TallerInterno />
 }

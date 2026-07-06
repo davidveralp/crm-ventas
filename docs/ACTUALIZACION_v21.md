@@ -160,3 +160,31 @@ Los precios de MO varían por tipo (AUTO / SUV / PICK UP / VAN-FURGÓN-CAMIÓN),
 - El buscador de la base de precios (cotización rápida y módulo Presupuestos) **filtra por el tipo del vehículo que se está cotizando** y muestra el tipo en cada resultado.
 - Si el vehículo **no tiene tipo definido, se solicita ahí mismo** antes de poder buscar (el buscador queda deshabilitado hasta seleccionarlo) y la selección **queda guardada en la ficha del vehículo**.
 - El selector de tipo también está al **ingresar un vehículo** (alta de cliente y "+ Agregar vehículo") y al **editarlo** (ya existía desde v21).
+
+
+---
+
+# ACTUALIZACIÓN v25 · Planilla de precios viva, vista de asesores y Nueva OT afinada
+
+## Migración
+**`database/31_actualizacion_v25.sql`** (solo agrega motivo_anulacion a ordenes_trabajo).
+
+## Planilla de precios vinculada (tratamiento tipo Base_OT)
+Nuevo **`integraciones/sincronizar_precios.gs`**: se pega en el Apps Script de la **planilla de precios** (Extensiones → Apps Script), con las mismas credenciales del script de la base de OT, y se le pone un **activador por tiempo** (ej. cada hora). Desde ahí la planilla es la **fuente de verdad**: cualquier precio, servicio o código que agregues o modifiques llega solo al CRM y alimenta la búsqueda de servicios en cotizaciones, la elaboración de presupuestos y los rangos eco/premium. Maneja celdas combinadas y filas `Aplica=No`, y hace recarga completa (si borras un servicio de la planilla, desaparece del CRM). Importante: las ediciones manuales directas en la tabla `precios_base` se pierden en el siguiente sync — todo se edita en la planilla. Nota de diseño: la lista de servicios del formulario **Nueva OT** se mantiene con el catálogo fijo de la app original (esos valores exactos son los que espera la planilla Base_OT); la planilla de precios alimenta todo lo relacionado con precios y cotizaciones.
+
+## Vista limitada para asesores
+**Taller y Presupuestos** (fase preliminar) quedan **ocultos para el rol vendedor**: no aparecen en el menú y si acceden por URL ven un aviso. **Control OT sí queda disponible** para asesores (mantener alimentada la base es parte de sus funciones). Los presupuestos que les corresponden siguen llegando a la ficha de cada cliente.
+
+## Control OT
+Las OT **sin patente** ya no ofrecen "vincular a cliente": primero deben completarse en la planilla base (varias aparecen también en "OT faltantes en la base"); el sync las tomará con su patente y ahí se crean/vinculan.
+
+## Nuevo cliente
+Segmento **fijo en "Nuevo cliente"** (no editable; el sistema reclasifica después). Campo **"Comuna / Sector"**.
+
+## Nueva OT
+- **"Solicitar anular OT" al final del formulario**, en el lugar del texto "Se enviará a la planilla…" (que se eliminó). Solo aparece cuando los montos de reparación quedan en $0 (y no es garantía), y exige **escribir el motivo de la anulación** (queda en la OT y en la notificación a administración).
+- **Notificación verde** al guardar: "OT N guardada ✓ enviada correctamente a la planilla DIDIAL_Base_OT".
+- **Validación de duplicados**: antes de guardar se verifica contra el historial completo (tabla servicios, que incluye lo sincronizado de la planilla); si el N° de OT ya existe, se bloquea con un aviso.
+
+## Cotización rápida
+El **ticket ahora imprime en papel continuo de 80mm**: la página mide exactamente lo que mide el contenido (se acabó la hoja larga).

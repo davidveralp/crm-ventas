@@ -295,10 +295,8 @@ export default function Clientes() {
             </div>
             <div>
               <label className="label">Segmento</label>
-              <select className="input" value={form.segmento}
-                      onChange={(e) => setForm({ ...form, segmento: e.target.value })}>
-                {Object.entries(SEGMENTOS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-              </select>
+              <div className="input bg-mist/60 text-slate-600 cursor-not-allowed select-none">Nuevo cliente</div>
+              <p className="text-[10px] text-slate-400 mt-0.5">El sistema lo reclasifica después según su comportamiento.</p>
             </div>
           </div>
           {esAdmin && (
@@ -321,7 +319,7 @@ export default function Clientes() {
                      onChange={(e) => setForm({ ...form, direccion: e.target.value })} />
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="label">Comuna *</label>
+                  <label className="label">Comuna / Sector *</label>
                   <input className="input" required value={form.comuna}
                          onChange={(e) => setForm({ ...form, comuna: e.target.value })} />
                 </div>

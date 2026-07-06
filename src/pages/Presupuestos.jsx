@@ -14,7 +14,8 @@ const SEV = {
   ok:         { label: 'OK',         color: '#1f9d57' }
 }
 
-export default function Presupuestos() {
+function PresupuestosInterno() {
+
   const navigate = useNavigate()
   const { perfil } = useAuth()
   const [lista, setLista] = useState([])
@@ -237,4 +238,19 @@ export default function Presupuestos() {
       </>)}
     </div>
   )
+}
+
+
+// v25: módulo en fase preliminar — no disponible para asesores (vendedor).
+// Wrapper para respetar las reglas de hooks (sin retornos tempranos dentro
+// del componente principal).
+export default function Presupuestos() {
+  const { perfil } = useAuth()
+  if (perfil?.rol === 'vendedor') return (
+    <div className="card p-8 max-w-lg text-sm text-slate-500">
+      El módulo Presupuestos está en fase preliminar y aún no está disponible para asesores.
+      Los presupuestos que te correspondan llegan directo a la ficha de cada cliente.
+    </div>
+  )
+  return <PresupuestosInterno />
 }

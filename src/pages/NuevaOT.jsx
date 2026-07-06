@@ -22,7 +22,7 @@ const VACIA = {
   estado_vehiculo: 'Entregado', fecha_entrega: hoy(), tipo_documento: 'Boleta', nro_documento: '',
   presup_solicito: 'No', presup_numero: '', presup_aprueba: '', presup_detalle: '',
   encuesta_aplica: 'No', enc_p1: '', enc_p2: '', enc_p3: '', enc_p4: '', enc_conocio: '', conocioOtro: '',
-  solicitar_anular: false
+  solicitar_anular: false, motivo_anulacion: ''
 }
 
 function Seccion({ n, titulo, children }) {
@@ -185,10 +185,23 @@ export default function NuevaOT() {
     if (!f.email.trim() || !f.email.includes('@')) { setMsg({ t: 'err', m: 'El correo electrónico es obligatorio.' }); return }
     if (!f.direccion.trim()) { setMsg({ t: 'err', m: 'La dirección es obligatoria.' }); return }
     if (esEmpresa && !f.contacto_nombre.trim()) { setMsg({ t: 'err', m: 'Indica el nombre del contacto de la empresa.' }); return }
-    // v23: MO $0 solo si es garantía o si se solicita anular la OT
+    // v23/v25: MO $0 solo si es garantía o si se solicita anular la OT
     if (!esGarantia && (+f.mo || 0) <= 0 && !f.solicitar_anular) {
       setMsg({ t: 'err', m: 'La mano de obra es obligatoria (salvo garantía). Si esta OT quedará nula, marca "Solicitar anular OT" al final del formulario: se guardará con montos en cero y se notificará a administración.' })
       return
+    }
+    if (f.solicitar_anular && !f.motivo_anulacion.trim()) {
+      setMsg({ t: 'err', m: 'Escribe el motivo de la anulación para poder solicitar anular la OT.' })
+      return
+    }
+    // v25: validación de duplicados — la OT no debe existir ya en la base
+    if (f.ot_numero?.trim()) {
+      const { data: dup } = await supabase.from('servicios')
+        .select('id').eq('ot_numero', f.ot_numero.trim()).limit(1)
+      if (dup?.length) {
+        setMsg({ t: 'err', m: `⚠ La OT ${f.ot_numero.trim()} YA está cargada en la base (historial sincronizado). Verifica el número antes de guardar; si corresponde corregirla, hazlo en la planilla o en la ficha del cliente.` })
+        return
+      }
     }
     setGuardando(true); setMsg(null)
 
@@ -202,7 +215,7 @@ export default function NuevaOT() {
       cilindrada: f.cilindrada.trim(), anio: f.anio.trim(), km: kmNum,
       tipo_cliente: f.tipo_cliente, propietario: f.propietario.trim(),
       rut: f.rut.trim() ? formatRut(f.rut) : null, contacto_nombre: f.contacto_nombre.trim() || null,
-      anulacion_solicitada: !!f.solicitar_anular,
+      anulacion_solicitada: !!f.solicitar_anular, motivo_anulacion: f.solicitar_anular ? f.motivo_anulacion.trim() : null,
       telefono: f.telefono.trim(), email: f.email.trim(), ciudad: ciudadFinal(),
       asesor: perfil?.nombre || '', tipo_ingreso: f.tipo_ingreso,
       tecnico_principal: tecPrincipalFinal(), tecnicos_secundarios: tecSecFinal(),
@@ -251,7 +264,7 @@ export default function NuevaOT() {
       await supabase.from('notificaciones').insert({
         empresa_id: perfil.empresa_id, rol: 'admin',
         titulo: `Solicitud de anulación · OT ${fila.ot_numero || 's/n'}`,
-        cuerpo: `${f.propietario} · ${patFmt} · Motivo: OT con costo $0 (no garantía). Regístrala como "OT nula" en Control de OT.`,
+        cuerpo: `${f.propietario} · ${patFmt} · Motivo indicado por el asesor: ${f.motivo_anulacion.trim()}. Regístrala como "OT nula" en Control de OT.`,
         url: '/control-ot'
       })
     }
@@ -297,7 +310,7 @@ export default function NuevaOT() {
         otInicio: new Date().toISOString()
       }
       await enviarASheet(sheetUrl, payload)
-      aviso += ' · enviada a la planilla'
+      aviso += ' ✓ enviada correctamente a la planilla DIDIAL_Base_OT'
     } else {
       aviso += ' · (planilla no configurada)'
     }
@@ -318,16 +331,6 @@ export default function NuevaOT() {
         <div className="text-right">
           <div className="text-xs text-slate-500">Total reparación</div>
           <div className="text-2xl font-bold text-deep">$ {fmtMiles(total)}</div>
-          {!esGarantia && (+f.mo || 0) <= 0 && (
-            <label className="flex items-start gap-2 mt-3 p-3 rounded-lg border border-didial-amber bg-amber-50 cursor-pointer text-left">
-              <input type="checkbox" className="mt-0.5" checked={f.solicitar_anular}
-                     onChange={(e) => set('solicitar_anular', e.target.checked)} />
-              <span className="text-xs text-slate-700">
-                <b>Solicitar anular OT.</b> La OT se guardará con los datos del cliente y montos en $0,
-                y se notificará a administración para registrarla como nula (requiere su autorización).
-              </span>
-            </label>
-          )}
         </div>
       </div>
 
@@ -585,10 +588,26 @@ export default function NuevaOT() {
       {msg && (
         <div className={`rounded-lg px-4 py-2.5 text-sm ${msg.t === 'ok' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>{msg.m}</div>
       )}
-      <div className="flex justify-between items-center gap-3 sticky bottom-0 bg-paper/80 backdrop-blur py-3">
-        <span className="text-xs text-slate-500">
-          {sheetUrl ? 'Se enviará a la planilla DIDIAL_Base_OT' : 'Planilla no configurada para esta empresa'}
-        </span>
+      {/* v25: solicitud de anulación al FINAL del formulario. Solo aparece si
+          los montos de reparación quedaron en $0 (y no es garantía). */}
+      {!esGarantia && total <= 0 && (
+        <div className="rounded-lg border border-didial-amber bg-amber-50 p-3 space-y-2">
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input type="checkbox" className="mt-0.5" checked={f.solicitar_anular}
+                   onChange={(e) => set('solicitar_anular', e.target.checked)} />
+            <span className="text-xs text-slate-700">
+              <b>Solicitar anular OT.</b> La OT se guardará con los datos del cliente y montos en $0,
+              y se notificará a administración para registrarla como nula (requiere su autorización).
+            </span>
+          </label>
+          {f.solicitar_anular && (
+            <textarea className="input text-xs" rows="2" required value={f.motivo_anulacion}
+                      onChange={(e) => set('motivo_anulacion', e.target.value)}
+                      placeholder="Motivo de la anulación (obligatorio): ej. cliente desistió, OT emitida por error, doble registro…" />
+          )}
+        </div>
+      )}
+      <div className="flex justify-end items-center gap-3 sticky bottom-0 bg-paper/80 backdrop-blur py-3">
         <button type="submit" disabled={guardando} className="btn-primary px-6">
           {guardando ? 'Guardando…' : 'Guardar OT'}
         </button>

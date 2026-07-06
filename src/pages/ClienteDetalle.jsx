@@ -1023,7 +1023,7 @@ export default function ClienteDetalle() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="label">Comuna *</label>
+                <label className="label">Comuna / Sector *</label>
                 <input className="input" required value={contacto.comuna}
                        onChange={(e) => setContacto({ ...contacto, comuna: e.target.value })} />
               </div>

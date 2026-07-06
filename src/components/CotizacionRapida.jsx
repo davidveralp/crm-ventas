@@ -66,14 +66,16 @@ export default function CotizacionRapida({ cliente, vehiculo, perfil, onClose, o
     const d = desgloseIVA(total)
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Cotización</title>
     <style>
-      body{font-family:'Courier New',monospace;font-size:12px;color:#111;width:280px;margin:10px auto}
+      /* v25: papel continuo — la página mide lo que mide el contenido */
+      @page{size:80mm auto;margin:3mm}
+      html,body{width:74mm}
+      body{font-family:'Courier New',monospace;font-size:12px;color:#111;margin:0 auto}
       .c{text-align:center}.r{text-align:right}
       hr{border:none;border-top:1px dashed #111;margin:6px 0}
       table{width:100%;border-collapse:collapse}
       td{padding:1px 0;vertical-align:top}
       .tot{font-size:14px;font-weight:bold}
       img{width:170px;height:auto}
-      @media print{body{margin:0 auto}}
     </style></head><body>
     <div class="c">
       <img src="${window.location.origin}/logo-didial.png" alt="DIDIAL">

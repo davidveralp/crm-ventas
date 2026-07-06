@@ -28,8 +28,8 @@ const GRUPOS = [
     { to: '/', label: 'Dashboard', icon: 'dashboard' }
   ]},
   { titulo: 'Operación', items: [
-    { to: '/taller', label: 'Taller', icon: 'taller', feature: 'taller' },
-    { to: '/presupuestos', label: 'Presupuestos', icon: 'presupuestos', feature: 'crm' },
+    { to: '/taller', label: 'Taller', icon: 'taller', feature: 'taller', roles: ['admin', 'jefe_taller', 'tecnico', 'coordinador_adquisiciones', 'encargado_bodega', 'supervisor'] },
+    { to: '/presupuestos', label: 'Presupuestos', icon: 'presupuestos', feature: 'crm', roles: ['admin', 'jefe_taller', 'coordinador_adquisiciones', 'supervisor'] },
     { to: '/control-ot', label: 'Control OT', icon: 'datos', feature: 'ot' }
   ]},
   { titulo: 'Comercial', items: [
@@ -117,7 +117,10 @@ export default function Layout({ children }) {
   )
 
   const grupo = (g) => {
-    const items = g.items.filter((it) => !it.feature || tieneFeature(it.feature))
+    // v25: gating por rol además de por feature (módulos en fase preliminar)
+    const items = g.items.filter((it) =>
+      (!it.feature || tieneFeature(it.feature)) &&
+      (!it.roles || it.roles.includes(perfil?.rol)))
     if (!items.length) return null
     return (
       <div key={g.titulo || 'main'} className="space-y-1">

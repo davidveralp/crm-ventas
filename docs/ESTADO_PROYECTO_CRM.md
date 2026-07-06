@@ -55,6 +55,12 @@ CRM comercial y operativo para **Servicio Automotriz Didial Ltda.** (La Serena, 
 - **Notificaciones**: tabla `notificaciones` (por usuario o rol), **campanita** en sidebar/móvil con badge, polling 30 s y **sonido de alerta** (WebAudio) al llegar nuevas. Cada hito del flujo de taller notifica al responsable.
 
 
+### Novedades v25 (05-07-2026)
+- **Planilla de precios vinculada**: `integraciones/sincronizar_precios.gs` (activador por tiempo) mantiene `precios_base` viva desde la planilla (fuente de verdad; recarga completa; celdas combinadas y Aplica=No manejados).
+- **Vista de asesores**: Taller y Presupuestos ocultos para rol vendedor (menú + guarda de ruta); Control OT visible.
+- **Nueva OT**: solicitud de anulación al final con motivo obligatorio (solo si montos $0 y no garantía), validación de duplicados contra `servicios`, notificación verde de éxito; texto de planilla eliminado.
+- **Control OT**: OT sin patente no se vinculan (primero completarlas en la base). **Nuevo cliente**: segmento fijo "Nuevo cliente", campo Comuna/Sector. **Ticket** 80mm continuo.
+
 ### Novedades v24 (05-07-2026)
 - **Revisión ≠ ejecución**: tareas bloqueadas hasta "En reparación"; el técnico evalúa (diagnóstico) y registra **requerimientos de repuestos e insumos uno a uno**, que prellenan la cotización del encargado. Respaldo de garantía fuera del taller (solo estado): lo gestiona el asesor en la ficha al aprobar.
 - **Decisión del presupuesto solo del asesor** (ficha): aprueba completo / aprueba parcial (con respaldo obligatorio) / rechaza; botones eliminados de las tarjetas de taller y Presupuestos.
@@ -111,6 +117,7 @@ Idempotentes, se ejecutan en orden en el SQL Editor. Estado según lo conversado
 | 24 (v20) | `diagnosticos_taller`, respaldos/autorización en trabajos, config `margenes` | ⚠️ |
 | 25 (v21) | apellidos, tipo_vehiculo, documento en servicios, `tareas_servicio` (seed MAN X PAUTA), `precios_base`, RPC `crm_aplicar_datos_ot`, re-vinculación por patente | 🆕 pendiente |
 | 26 (v21.1) | Seed base de precios (985 filas, precios 09-04-2026; fix celdas combinadas; AC13 quedó "(nombre por completar)") | 🆕 pendiente |
+| 31 (v25) | motivo_anulacion en ordenes_trabajo (resto de v25 es frontend + sincronizar_precios.gs) | 🆕 pendiente |
 | 30 (v24) | `repuestos_requeridos` / `insumos_requeridos` en trabajos_taller (revisión técnica) | 🆕 pendiente |
 | 29 (v23) | Presupuestos: elaboración por encargado + cotización rápida (trabajo_id nullable, cliente/vehículo/origen/compra_gestionada), empresa (contacto_nombre), OT (rut/contacto/anulación), audiencia_campana v2 + plantillas v2 (logo/slogan/personalización/contactos por marca) | 🆕 pendiente |
 | 28 (v22) | Limpieza calendario/gestiones (migra actividades de campaña a `tareas_campana`), función `audiencia_campana`, campos asunto/criterio en campañas, seed 6 campañas de email con plantillas HTML | 🆕 pendiente |
@@ -136,6 +143,7 @@ Idempotentes, se ejecutan en orden en el SQL Editor. Estado según lo conversado
 | `brevo-webhook` | Eventos delivered/opened/click/bounce/unsub | ⚠️ pendiente (desactivar Verify JWT) + `BREVO_WEBHOOK_TOKEN`, configurar webhook en Brevo |
 
 ## 6. INTEGRACIONES
+- **Sheet de precios → Supabase**: `integraciones/sincronizar_precios.gs` (v25) — recarga `precios_base` desde la planilla de precios con activador por tiempo. ⚠️ pegar en el Apps Script de esa planilla + credenciales + activador.
 - **Sheet → Supabase**: `integraciones/sincronizar_servicios.gs` **v2 (v21)**: fusiona OT duplicadas prefiriendo el dato no vacío (fix del historial), sube boleta/factura y aplica contacto/vehículo al CRM solo en campos vacíos (RPC `crm_aplicar_datos_ot`). ⚠️ reemplazar el script y re-ejecutar `crmSyncServicios()` (antes `crmVerificarColumnas()` para validar encabezados opcionales).
 - **CRM → Sheet (edición)**: `integraciones/crm_actualizar_ot.gs` (Web App nuevo, v21): al editar contacto o vehículo en el CRM actualiza las filas de la base de OT por patente/N° OT. ⚠️ desplegar y guardar URL+token en `empresa_config.sheet_update_url`.
 - **CRM → Sheet**: Nueva OT envía el mismo payload que la app de registro al Apps Script existente (fire-and-forget; no hay confirmación de recepción — limitación aceptada).

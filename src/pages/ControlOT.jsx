@@ -120,10 +120,15 @@ function Huerfanas() {
               <span className="text-xs text-slate-500">{g.ots.length} OT · {fmtCLP(g.total)}</span>
               {g.desde && <span className="text-xs text-slate-400">{fmtFecha(g.desde)} → {fmtFecha(g.hasta)}</span>}
               <div className="ml-auto flex gap-2">
-                {g.patente && (
+                {g.patente ? (<>
                   <button className="btn-primary text-xs" onClick={() => setModal({ g, modo: 'crear' })}>+ Crear ficha de cliente</button>
+                  <button className="btn-soft text-xs" onClick={() => setModal({ g, modo: 'vincular' })}>Vincular a cliente existente</button>
+                </>) : (
+                  <span className="text-[11px] text-didial-amber max-w-72 text-right">
+                    ⚠ Sin patente: no se vinculan a clientes. Primero completa estas OT en la planilla base
+                    (varias aparecen también en "OT faltantes en la base") y el sync las tomará con su patente.
+                  </span>
                 )}
-                <button className="btn-soft text-xs" onClick={() => setModal({ g, modo: 'vincular' })}>Vincular a cliente existente</button>
               </div>
             </div>
             <div className="mt-1.5 text-xs text-slate-500 flex flex-wrap gap-x-3 gap-y-0.5">
