@@ -231,3 +231,23 @@ El **ticket ahora imprime en papel continuo de 80mm**: la página mide exactamen
 
 ## OT que no aparecen en la búsqueda (ej. 13245)
 El buscador resuelve por el historial sincronizado (tabla `servicios`). Si una OT no aparece, casi siempre es una de estas dos: (a) la fila aún no llega desde la planilla — el sync del Apps Script corre por activador; puedes forzarlo ejecutando `crmSyncServicios()` a mano — o (b) la fila existe pero quedó huérfana/sin patente — revísala en Control de OT → "OT sin cliente". Diagnóstico directo en Supabase: `select * from servicios where ot_numero = '13245';` — si no devuelve filas, es (a); si devuelve sin `cliente_id`, es (b).
+
+
+---
+
+# ACTUALIZACIÓN v28 · Tipos de servicio = categorías (no servicios individuales)
+
+Sin migraciones nuevas: todo es frontend. Diseño confirmado en conjunto:
+
+## Dropdown "Tipo de Servicio" (Nueva OT y Solicitar servicio)
+Vuelve a ser una lista corta de tipos/categorías — **la lista anterior FUSIONADA con las categorías de la planilla de precios**, una sola entrada por concepto (FRENOS = Frenos; A/C RECARGA y A/C REPARACION siguen separadas pero ambas apuntan a la categoría "A/C y Calefacción"). Se agregaron solo las categorías realmente nuevas: SUSPENSION, ENCENDIDO, ELECTRONICA MOTOR, ABS, AIR BAG, DIRECCION, TREN TRASERO, EJES, TRACCION 4X4 (Taller) y FILTROS, AMPOLLETAS, PLUMILLAS, ACCESORIOS (Servicio Rápido). **No** se listan los 921 servicios individuales: eso se desglosa después.
+
+## El desglose por categoría (mapa OT_SVC_CATEGORIA en helpers)
+- **Solicitar servicio (ficha):** al elegir el tipo, si mapea a una categoría, aparecen los servicios específicos de esa categoría como chips clicables para agregarlos como tareas (filtrados por el tipo del vehículo).
+- **Taller:** el campo "+ Nueva tarea" sugiere (autocompletado) los servicios de la categoría del servicio solicitado del trabajo, filtrados por el tipo del vehículo.
+- **Presupuestos y cotización rápida:** el buscador de la base de precios tiene un **selector de categoría** (en presupuestos viene precargado con la categoría del servicio solicitado); con categoría activa se puede explorar sin escribir texto.
+
+## Tipo de vehículo
+Filtra los servicios/precios **dentro** de cada categoría (las categorías siempre están visibles), ahora con **match flexible**: un vehículo PICK UP también encuentra los servicios tarificados como "PICK UP/VAN/FURGON", y un VAN/FURGON/CAMION encuentra los "…DOBLE RODADO" (antes esos combos no calzaban nunca por comparación exacta).
+
+Los tipos sin categoría equivalente en la planilla (MAN X PAUTA, MAN BASICA, REFRIGERACION, DPF, ADMISION EGR, OTROS…) siguen funcionando igual: sin filtro, muestran toda la base al buscar. MAN X PAUTA conserva sus 31 tareas predefinidas del documento oficial.

@@ -71,7 +71,6 @@ export default function NuevaOT() {
   const [msg, setMsg] = useState(null)
   const [sheetUrl, setSheetUrl] = useState('')
   const [tecnicos, setTecnicos] = useState([])       // v27: usuarios activos rol técnico
-  const [svcGrupos, setSvcGrupos] = useState(null)   // v27: servicios desde la planilla de precios
   const [secSel, setSecSel] = useState([])   // técnicos secundarios elegidos
   const [secOtro, setSecOtro] = useState('') // técnico secundario "Otro"
   const [presups, setPresups] = useState([])   // presupuestos de taller del vehículo
@@ -84,21 +83,6 @@ export default function NuevaOT() {
       const { data } = await supabase.from('usuarios')
         .select('id,nombre').in('rol', ['tecnico', 'jefe_taller']).eq('activo', true).order('nombre')
       setTecnicos((data || []).map((t) => t.nombre))
-      // Servicios desde la planilla de precios (agrupados por segmento);
-      // si la tabla aún no está poblada, se usa el catálogo fijo de respaldo.
-      const { data: pb } = await supabase.from('precios_base')
-        .select('segmento,nombre').in('tipo', ['servicio', 'fijo']).not('nombre', 'is', null)
-      if (pb?.length) {
-        const g = {}
-        pb.forEach((x) => {
-          const seg = x.segmento || 'Otros'
-          if (!x.nombre.includes('(nombre por completar)')) (g[seg] = g[seg] || new Set()).add(x.nombre)
-        })
-        const orden = ['Taller Mecánico', 'Servicio Rápido', 'DyP']
-        setSvcGrupos(Object.keys(g)
-          .sort((a, b) => (orden.indexOf(a) + 99) - (orden.indexOf(b) + 99))
-          .map((seg) => ({ bu: seg, items: [...g[seg]].sort() })))
-      }
     })()
   }, [])
 
@@ -121,7 +105,10 @@ export default function NuevaOT() {
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }))
   const esGarantia = OT_ES_GARANTIA(f.tipo_ingreso)
   const LISTA_TECNICOS = tecnicos.length ? tecnicos : OT_TECNICOS
-  const GRUPOS_SVC = svcGrupos || OT_SVC_GRUPOS
+  // v28: el dropdown usa el catálogo FUSIONADO (lista anterior + categorías
+  // nuevas de la planilla); los servicios específicos se desglosan en
+  // taller/presupuestos filtrados por categoría y tipo de vehículo.
+  const GRUPOS_SVC = OT_SVC_GRUPOS
   const esEmpresa = f.tipo_cliente === 'Empresa'
   const total = useMemo(() => otTotal(f), [f.repuestos, f.lubricantes, f.mo, f.servicioExterno, f.descuento])
   const unidades = useMemo(() => {

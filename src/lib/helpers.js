@@ -304,8 +304,13 @@ export const OT_TIPO_CLIENTE = ['Particular', 'Empresa', 'Interno']
 export const OT_ESTADO_VEHICULO = ['Entregado', 'Devolución']
 export const OT_TIPO_DOCUMENTO = ['Boleta', 'Factura', 'Sin Documento']
 
-export const OT_SVC_TALLER = ['MAN X PAUTA','MAN BASICA','EMBRAGUE','AMORTIGUADOR','CORREAS','DISTRIBUCION','REFRIGERACION','A/C RECARGA','A/C REPARACION','INYECCION','DPF','MOTOR REPARACION','MOTOR REEMPLAZO','ADMISION EGR','ALTERNADOR','ARRANQUE','FRENOS','TREN DELANTERO','DIAGNOSTICO','OTROS TALLER']
-export const OT_SVC_SR = ['REV EXPRESS','REV PREVENTIVA','CAMBIO DE ACEITE','VULCANIZACION','BALANCEO','ESCANER','ALINEACION','OTROS SERVICIO RÁPIDO']
+// v28: lista anterior FUSIONADA con las categorías de la planilla de
+// precios (una sola entrada por concepto; solo se agregaron las categorías
+// realmente nuevas). El detalle de servicios específicos se desglosa al
+// pedir tareas al taller y al elaborar presupuestos, filtrado por la
+// categoría (ver OT_SVC_CATEGORIA) y por el tipo de vehículo.
+export const OT_SVC_TALLER = ['MAN X PAUTA','MAN BASICA','EMBRAGUE','AMORTIGUADOR','SUSPENSION','CORREAS','DISTRIBUCION','REFRIGERACION','A/C RECARGA','A/C REPARACION','INYECCION','DPF','MOTOR REPARACION','MOTOR REEMPLAZO','ADMISION EGR','ALTERNADOR','ARRANQUE','ENCENDIDO','ELECTRONICA MOTOR','ABS','AIR BAG','DIRECCION','FRENOS','TREN DELANTERO','TREN TRASERO','EJES','TRACCION 4X4','DIAGNOSTICO','OTROS TALLER']
+export const OT_SVC_SR = ['REV EXPRESS','REV PREVENTIVA','CAMBIO DE ACEITE','FILTROS','VULCANIZACION','BALANCEO','ESCANER','ALINEACION','AMPOLLETAS','PLUMILLAS','ACCESORIOS','OTROS SERVICIO RÁPIDO']
 export const OT_SVC_DYP = ['DESABOLLADURA Y PINTURA','SINIESTRO ROBO','LIMPIEZA VEHICULO','LIMPIEZA DE MOTOR','LAVADO DE TAPIZ','PULIDO Y ENCERADO','OTROS DYP']
 export const OT_SVC_GRUPOS = [
   { bu: 'Taller Mecánico', items: OT_SVC_TALLER },
@@ -472,4 +477,63 @@ export const sucursalDeAsesor = (perfil) => {
   if (n.includes('diego') && n.includes('leyton')) return 'Toyota'
   if ((n.includes('david') && n.includes('rivera')) || (n.includes('matias') && n.includes('ponce')) || (n.includes('matías') && n.includes('ponce'))) return 'Multimarca'
   return null // sin sucursal fija: el usuario elige (ej. admin)
+}
+
+
+// v28: mapa Tipo de Servicio (dropdown de la OT) -> Categoría de la planilla
+// de precios, para filtrar los servicios específicos en tareas del taller,
+// presupuestos y cotizaciones. Las entradas sin categoría (MAN X PAUTA,
+// REFRIGERACION, DPF, etc.) no filtran: muestran toda la base.
+export const OT_SVC_CATEGORIA = {
+  'EMBRAGUE': 'Embrague',
+  'AMORTIGUADOR': 'Suspensión',
+  'SUSPENSION': 'Suspensión',
+  'CORREAS': 'Correas Auxiliares',
+  'DISTRIBUCION': 'Distribución',
+  'A/C RECARGA': 'A/C y Calefacción',
+  'A/C REPARACION': 'A/C y Calefacción',
+  'INYECCION': 'Inyección Combustible',
+  'MOTOR REPARACION': 'Mecánica Motor',
+  'MOTOR REEMPLAZO': 'Mecánica Motor',
+  'ALTERNADOR': 'Arranque y Alternador',
+  'ARRANQUE': 'Arranque y Alternador',
+  'ENCENDIDO': 'Encendido',
+  'ELECTRONICA MOTOR': 'Electrónica Motor',
+  'ABS': 'ABS',
+  'AIR BAG': 'Air Bag',
+  'DIRECCION': 'Dirección',
+  'FRENOS': 'Frenos',
+  'TREN DELANTERO': 'Tren Delantero',
+  'TREN TRASERO': 'Tren Trasero',
+  'EJES': 'Ejes',
+  'TRACCION 4X4': 'Sistema Tracción 4x4',
+  'REV EXPRESS': 'Inspecciones',
+  'REV PREVENTIVA': 'Inspecciones',
+  'ESCANER': 'Inspecciones',
+  'DIAGNOSTICO': 'Inspecciones',
+  'CAMBIO DE ACEITE': 'Fluidos (Lubricación y Engrase)',
+  'FILTROS': 'Filtros',
+  'VULCANIZACION': 'Vulcanización',
+  'BALANCEO': 'Alineación',
+  'ALINEACION': 'Alineación',
+  'AMPOLLETAS': 'Ampolletas',
+  'PLUMILLAS': 'Plumillas',
+  'ACCESORIOS': 'Accesorios',
+  'DESABOLLADURA Y PINTURA': 'Desabolladura y Pintura',
+  'SINIESTRO ROBO': 'Desabolladura y Pintura',
+  'LIMPIEZA VEHICULO': 'Limpieza',
+  'LIMPIEZA DE MOTOR': 'Limpieza',
+  'LAVADO DE TAPIZ': 'Limpieza',
+  'PULIDO Y ENCERADO': 'Limpieza'
+}
+export const categoriaDeServicio = (tipo) => OT_SVC_CATEGORIA[(tipo || '').trim().toUpperCase()] || null
+
+// v28: ¿un servicio de la base (con su tipo_vehiculo, que puede ser un
+// combo como "PICK UP/VAN/FURGON") aplica al tipo del vehículo cotizado?
+// Las categorías siempre se muestran; esto solo filtra servicios/precios.
+export const svcAplicaAVehiculo = (servTV, vehTV) => {
+  if (!servTV) return true            // precio fijo / sin tarifario: aplica a todos
+  if (!vehTV) return true             // vehículo sin tipo: no se filtra
+  const a = String(servTV).toUpperCase(), b = String(vehTV).toUpperCase()
+  return a === b || a.includes(b) || b.includes(a)
 }

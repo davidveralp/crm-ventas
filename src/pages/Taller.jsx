@@ -3,11 +3,12 @@ import { supabase, fetchAllRows } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { Modal, Pill } from '../components/UI'
 import { notificar } from '../lib/notificar'
+
 import PresupuestoTallerCard from '../components/PresupuestoTallerCard'
 import {
   ESTADOS_TALLER, PRIORIDADES_TALLER, ESTADOS_PRESUP_TALLER, fmtCrono, fmtCLP,
   SECCIONES_PRESUP, seccionDe
-} from '../lib/helpers'
+, categoriaDeServicio, svcAplicaAVehiculo } from '../lib/helpers'
 
 const ORDEN_ESTADOS = Object.keys(ESTADOS_TALLER)
 const ahoraISO = () => new Date().toISOString()
@@ -446,7 +447,23 @@ function TallerInterno() {
 
 /* ================= Detalle del trabajo ================= */
 function Detalle({ t, onClose, tareas, presups, tecnicos, nombreDe, diags, margenes, esJefe, esTecnico, esCompras, perfil, now, tituloDe, acciones }) {
-  const [nueva, setNueva] = useState(''); const [nuevaTec, setNuevaTec] = useState('')
+  const [nueva, setNueva] = useState('')
+  // v28: sugerencias de tareas = servicios de la base de precios de la
+  // categoría del servicio solicitado, filtrados por el tipo del vehículo.
+  const [sugTareas, setSugTareas] = useState([])
+  useEffect(() => {
+    const cat = categoriaDeServicio(t?.servicio_solicitado)
+    if (!cat) { setSugTareas([]); return }
+    supabase.from('precios_base').select('nombre,tipo_vehiculo')
+      .eq('categoria', cat).in('tipo', ['servicio', 'fijo'])
+      .then(({ data }) => {
+        const tv = t?.vehiculos?.tipo_vehiculo || null
+        setSugTareas([...new Set((data || [])
+          .filter((x) => svcAplicaAVehiculo(x.tipo_vehiculo, tv))
+          .map((x) => x.nombre)
+          .filter((n) => n && !n.includes('(nombre por completar)')))].sort())
+      })
+  }, [t?.id, t?.servicio_solicitado]); const [nuevaTec, setNuevaTec] = useState('')
   const [obs, setObs] = useState({})       // observación por tarea al terminar
   const [notaPresup, setNotaPresup] = useState('')
   const pend = tareas.filter((x) => x.estado !== 'terminada')
@@ -567,7 +584,7 @@ function Detalle({ t, onClose, tareas, presups, tecnicos, nombreDe, diags, marge
 
           {esJefe && (
             <div className="flex gap-2 mt-2">
-              <input className="input flex-1" placeholder="+ Nueva tarea…" value={nueva}
+              <input className="input flex-1" list={`sug-tareas-${t.id}`} placeholder={sugTareas.length ? `+ Nueva tarea… (${sugTareas.length} sugerencias de ${categoriaDeServicio(t.servicio_solicitado)})` : '+ Nueva tarea…'} value={nueva}
                      onChange={(e) => setNueva(e.target.value)}
                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); acciones.agregarTarea(t, nueva, nuevaTec); setNueva('') } }} />
               <select className="input w-36" value={nuevaTec} onChange={(e) => setNuevaTec(e.target.value)}>
@@ -575,6 +592,9 @@ function Detalle({ t, onClose, tareas, presups, tecnicos, nombreDe, diags, marge
                 {tecnicos.map((u) => <option key={u.id} value={u.id}>{u.nombre.split(' ')[0]}</option>)}
               </select>
               <button className="btn-soft" onClick={() => { acciones.agregarTarea(t, nueva, nuevaTec); setNueva('') }}>Agregar</button>
+              <datalist id={`sug-tareas-${t.id}`}>
+                {sugTareas.map((n) => <option key={n} value={n} />)}
+              </datalist>
             </div>
           )}
           {esTecnico && misTareas.length > 0 && !pend.filter((x) => x.tecnico_id === perfil.id).length && t.estado !== 'prueba_ruta' && t.estado !== 'listo_entrega' && t.estado !== 'completada' && (

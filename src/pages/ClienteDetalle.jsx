@@ -12,7 +12,7 @@ import {
   ESTADOS_GESTION, estadoGestionLabel, estadoGestionColor, ES_CIERRE,
   TIPOS_AGENDA, agendaLabel, colorAgenda,
   TIPOS_CONTACTO, MOTIVOS_CIERRE, motivoCierreLabel,
-  ESTADOS_TALLER, ESTADOS_PRESUP_TALLER, OT_SVC_GRUPOS, TIPOS_VEHICULO,
+  ESTADOS_TALLER, ESTADOS_PRESUP_TALLER, OT_SVC_GRUPOS, TIPOS_VEHICULO, categoriaDeServicio, svcAplicaAVehiculo,
   SECCIONES_PRESUP, seccionDe, nombreCompleto, desgloseIVA, enviarASheet
 } from '../lib/helpers'
 import { notificar } from '../lib/notificar'
@@ -70,7 +70,23 @@ export default function ClienteDetalle() {
   const [ft, setFt] = useState({ servicio: '', tareas: [''], obs: '' })
   const [sheetUpdateUrl, setSheetUpdateUrl] = useState('')
   const [tareasCat, setTareasCat] = useState({}) // servicio -> [titulos]
-  const [svcGrupos, setSvcGrupos] = useState(null)  // v27: servicios desde la planilla de precios
+  const [sugCat, setSugCat] = useState([])       // v28: servicios de la base para la categoría elegida
+
+  // v28: al elegir el tipo de servicio, si mapea a una categoría de la
+  // planilla de precios, se cargan sus servicios específicos (filtrados por
+  // el tipo del vehículo) como sugerencias de tareas.
+  async function cargarSugerencias(svc, vehiculoSel) {
+    const cat = categoriaDeServicio(svc)
+    if (!cat) { setSugCat([]); return }
+    const { data } = await supabase.from('precios_base')
+      .select('nombre,tipo_vehiculo').eq('categoria', cat).in('tipo', ['servicio', 'fijo'])
+    const tv = vehiculoSel?.tipo_vehiculo || null
+    const unicos = [...new Set((data || [])
+      .filter((x) => svcAplicaAVehiculo(x.tipo_vehiculo, tv))
+      .map((x) => x.nombre)
+      .filter((n) => n && !n.includes('(nombre por completar)')))]
+    setSugCat(unicos.sort())
+  }
 
   useEffect(() => { cargar() }, [id])
 
@@ -112,19 +128,6 @@ export default function ClienteDetalle() {
       supabase.from('tareas_servicio').select('servicio,titulo,orden').order('orden')
     ])
     if (su?.valor) setSheetUpdateUrl(typeof su.valor === 'string' ? su.valor : su.valor.url || '')
-    // v27: la lista de servicios viene de la planilla de precios (viva)
-    const { data: pb } = await supabase.from('precios_base')
-      .select('segmento,nombre').in('tipo', ['servicio', 'fijo']).not('nombre', 'is', null)
-    if (pb?.length) {
-      const g = {}
-      pb.forEach((x) => {
-        if (!x.nombre.includes('(nombre por completar)')) (g[x.segmento || 'Otros'] = g[x.segmento || 'Otros'] || new Set()).add(x.nombre)
-      })
-      const orden = ['Taller Mecánico', 'Servicio Rápido', 'DyP']
-      setSvcGrupos(Object.keys(g)
-        .sort((a, b) => (orden.indexOf(a) + 99) - (orden.indexOf(b) + 99))
-        .map((seg) => ({ bu: seg, items: [...g[seg]].sort() })))
-    }
     const cat = {}
     ;(ts || []).forEach((t) => { (cat[t.servicio] = cat[t.servicio] || []).push(t.titulo) })
     setTareasCat(cat)
@@ -1077,9 +1080,10 @@ export default function ClienteDetalle() {
                       // asesor puede eliminarlas o agregar otras).
                       const pred = tareasCat[svc]
                       setFt({ ...ft, servicio: svc, tareas: pred?.length ? [...pred, ''] : [''] })
+                      cargarSugerencias(svc, modalTaller)
                     }}>
               <option value="">Seleccionar servicio…</option>
-              {(svcGrupos || OT_SVC_GRUPOS).map((g) => (
+              {OT_SVC_GRUPOS.map((g) => (
                 <optgroup key={g.bu} label={g.bu}>
                   {g.items.map((s) => <option key={s} value={s}>{s}</option>)}
                 </optgroup>
@@ -1109,6 +1113,22 @@ export default function ClienteDetalle() {
               <button type="button" onClick={() => setFt({ ...ft, tareas: [...ft.tareas, ''] })}
                       className="text-xs text-deep font-medium hover:underline">+ Agregar tarea</button>
             </div>
+            {!!sugCat.length && (
+              <div className="mt-2">
+                <p className="text-[11px] text-slate-400 mb-1">
+                  Servicios de la categoría <b>{categoriaDeServicio(ft.servicio)}</b>{modalTaller?.tipo_vehiculo ? ` · ${modalTaller.tipo_vehiculo}` : ''} (clic para agregar como tarea):
+                </p>
+                <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
+                  {sugCat.map((n) => (
+                    <button key={n} type="button"
+                            onClick={() => setFt({ ...ft, tareas: [...ft.tareas.filter((t) => t.trim()), n, ''] })}
+                            className="text-[11px] px-2 py-0.5 rounded-full border border-slate-200 text-slate-600 hover:border-deep hover:text-deep">
+                      + {n}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
           <div>
             <label className="label">Observaciones del cliente</label>

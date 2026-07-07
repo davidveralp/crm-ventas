@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { Pill } from './UI'
-import { fmtCLP, ESTADOS_PRESUP_TALLER, SECCIONES_PRESUP, seccionDe, TIPOS_VEHICULO } from '../lib/helpers'
+import { fmtCLP, ESTADOS_PRESUP_TALLER, SECCIONES_PRESUP, seccionDe, TIPOS_VEHICULO, categoriaDeServicio, svcAplicaAVehiculo, OT_SVC_CATEGORIA } from '../lib/helpers'
 
 // v23 · Tarjeta de presupuesto de taller COMPARTIDA.
 // - En el módulo Presupuestos (encargado de presupuestos / admin): editable.
@@ -14,6 +14,10 @@ export default function PresupuestoTallerCard({ p, t, esJefe, esCompras, perfil,
   const [resultados, setResultados] = useState([])
   const puedeEditar = editable && (esCompras || perfil?.rol === 'admin')
   const est = ESTADOS_PRESUP_TALLER[p.estado] || {}
+  // v28: filtro de categoría para el buscador de la base de precios,
+  // precargado con la categoría del servicio solicitado del trabajo.
+  const [fCat, setFCat] = useState(() => categoriaDeServicio(t?.servicio_solicitado) || '')
+  const CATEGORIAS = [...new Set(Object.values(OT_SVC_CATEGORIA))].sort()
   const [tipoLocal, setTipoLocal] = useState(null)
   const tipoVeh = tipoLocal || t?.vehiculos?.tipo_vehiculo || p.veh?.tipo_vehiculo || null
   const vehId = t?.vehiculo_id || p.vehiculo_id || null
@@ -40,18 +44,21 @@ export default function PresupuestoTallerCard({ p, t, esJefe, esCompras, perfil,
   // e insumos con precio establecido. Al elegir, inserta el ítem con su
   // precio y (para servicios) deja el rango eco/premium de repuestos como
   // referencia visible para el asesor.
-  async function buscarBase(q) {
+  async function buscarBase(q, cat = fCat) {
     setBusca(q)
-    if (q.trim().length < 2) { setResultados([]); return }
-    const { data } = await supabase.from('precios_base')
+    if (q.trim().length < 2 && !cat) { setResultados([]); return }
+    let query = supabase.from('precios_base')
       .select('tipo,categoria,codigo,nombre,tipo_vehiculo,valor_mo,rep_eco,rep_premium,insumos,precio,notas')
-      .or(`nombre.ilike.%${q.trim()}%,codigo.ilike.%${q.trim()}%`)
-      .limit(30)
+      .limit(60)
+    if (q.trim().length >= 2) query = query.or(`nombre.ilike.%${q.trim()}%,codigo.ilike.%${q.trim()}%`)
+    if (cat) query = query.eq('categoria', cat)   // v28: la categoría filtra los servicios
+    const { data } = await query
     let filas = data || []
-    // Servicios: prioriza el tipo de vehículo del trabajo; si no está
-    // definido, muestra todas las variantes.
-    if (tipoVeh) filas = filas.filter((x) => x.tipo !== 'servicio' || x.tipo_vehiculo === tipoVeh)
-    setResultados(filas.slice(0, 12))
+    // v28: el tipo de vehículo filtra servicios/precios con match flexible
+    // (cubre combos como "PICK UP/VAN/FURGON"); las categorías siempre
+    // están disponibles.
+    if (tipoVeh) filas = filas.filter((x) => x.tipo !== 'servicio' || svcAplicaAVehiculo(x.tipo_vehiculo, tipoVeh))
+    setResultados(filas.slice(0, 15))
   }
   function insertarDeBase(r) {
     const nuevos = []
@@ -94,9 +101,16 @@ export default function PresupuestoTallerCard({ p, t, esJefe, esCompras, perfil,
         <div className="px-3 pb-3 space-y-2 border-t pt-2">
           {puedeEditar && (
             <div className="relative">
-              <input className="input text-xs" value={busca} onChange={(e) => buscarBase(e.target.value)}
-                     disabled={!tipoVeh && !!vehId}
-                     placeholder={tipoVeh ? `🔎 Buscar en base de precios (MO · ${tipoVeh}, precios fijos, insumos)…` : 'Define el tipo de vehículo para buscar en la base de precios…'} />
+              <div className="flex gap-1.5">
+                <select className="input text-xs w-44 shrink-0" value={fCat}
+                        onChange={(e) => { setFCat(e.target.value); buscarBase(busca, e.target.value) }}>
+                  <option value="">Todas las categorías</option>
+                  {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <input className="input text-xs flex-1" value={busca} onChange={(e) => buscarBase(e.target.value)}
+                       disabled={!tipoVeh && !!vehId}
+                       placeholder={tipoVeh ? `🔎 Buscar${fCat ? ' en ' + fCat : ' en base de precios'} (MO · ${tipoVeh})…` : 'Define el tipo de vehículo para buscar en la base de precios…'} />
+              </div>
               {!!resultados.length && (
                 <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
                   {resultados.map((r, i) => (

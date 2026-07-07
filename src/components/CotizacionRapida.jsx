@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { Modal } from './UI'
-import { fmtCLP, formatPatente, nombreCompleto, desgloseIVA, TIPOS_VEHICULO } from '../lib/helpers'
+import { fmtCLP, formatPatente, nombreCompleto, desgloseIVA, TIPOS_VEHICULO, svcAplicaAVehiculo, OT_SVC_CATEGORIA } from '../lib/helpers'
 
 // v23 · COTIZACIÓN RÁPIDA del asesor (servicios planos con precio
 // establecido, especialmente Toyota). Usa la base de precios según el tipo
@@ -14,6 +14,8 @@ export default function CotizacionRapida({ cliente, vehiculo, perfil, onClose, o
   const [res, setRes] = useState([])
   const [guardando, setGuardando] = useState(false)
   const [tipoLocal, setTipoLocal] = useState(vehiculo?.tipo_vehiculo || null)
+  const [fCat, setFCat] = useState('')   // v28: filtro por categoría
+  const CATEGORIAS = [...new Set(Object.values(OT_SVC_CATEGORIA))].sort()
   // v24: el tipo de vehículo es requisito para cotizar (los precios de MO
   // dependen de él). Si falta, se pide aquí y queda guardado en el vehículo.
   async function definirTipo(tipo) {
@@ -27,16 +29,19 @@ export default function CotizacionRapida({ cliente, vehiculo, perfil, onClose, o
     ? { email: 'serviciotoyota@didial.cl', fono: '+56 9 3740 1051' }
     : { email: 'serviciotecnico@didial.cl', fono: '+56 9 8974 8626' }
 
-  async function buscar(q) {
+  async function buscar(q, cat = fCat) {
     setBusca(q)
-    if (q.trim().length < 2) { setRes([]); return }
-    const { data } = await supabase.from('precios_base')
-      .select('tipo,codigo,nombre,tipo_vehiculo,valor_mo,insumos,precio')
-      .or(`nombre.ilike.%${q.trim()}%,codigo.ilike.%${q.trim()}%`)
-      .limit(30)
+    if (q.trim().length < 2 && !cat) { setRes([]); return }
+    let query = supabase.from('precios_base')
+      .select('tipo,categoria,codigo,nombre,tipo_vehiculo,valor_mo,insumos,precio')
+      .limit(60)
+    if (q.trim().length >= 2) query = query.or(`nombre.ilike.%${q.trim()}%,codigo.ilike.%${q.trim()}%`)
+    if (cat) query = query.eq('categoria', cat)
+    const { data } = await query
     let filas = data || []
-    if (tipoLocal) filas = filas.filter((x) => x.tipo !== 'servicio' || x.tipo_vehiculo === tipoLocal)
-    setRes(filas.slice(0, 10))
+    // v28: match flexible de tipo de vehículo (cubre combos de la planilla)
+    if (tipoLocal) filas = filas.filter((x) => x.tipo !== 'servicio' || svcAplicaAVehiculo(x.tipo_vehiculo, tipoLocal))
+    setRes(filas.slice(0, 12))
   }
   function agregarDeBase(r) {
     const precio = r.tipo === 'servicio' ? (+r.valor_mo || 0) + (+r.insumos || 0) : (+r.precio || 0)
@@ -125,9 +130,16 @@ export default function CotizacionRapida({ cliente, vehiculo, perfil, onClose, o
            titulo={`Cotización rápida · ${vehiculo ? [vehiculo.marca, vehiculo.modelo].filter(Boolean).join(' ') : nombreCompleto(cliente)}`}>
       <div className="space-y-3">
         <div className="relative">
-          <input className="input text-sm" autoFocus value={busca} onChange={(e) => buscar(e.target.value)}
-                 disabled={!tipoLocal && !!vehiculo}
-                 placeholder={tipoLocal ? `🔎 Buscar servicio en la base de precios · ${tipoLocal}…` : 'Define el tipo de vehículo para cotizar…'} />
+          <div className="flex gap-1.5">
+            <select className="input text-xs w-40 shrink-0" value={fCat}
+                    onChange={(e) => { setFCat(e.target.value); buscar(busca, e.target.value) }}>
+              <option value="">Todas las categorías</option>
+              {CATEGORIAS.map((x) => <option key={x} value={x}>{x}</option>)}
+            </select>
+            <input className="input text-sm flex-1" autoFocus value={busca} onChange={(e) => buscar(e.target.value)}
+                   disabled={!tipoLocal && !!vehiculo}
+                   placeholder={tipoLocal ? `🔎 Buscar${fCat ? ' en ' + fCat : ''} · ${tipoLocal}…` : 'Define el tipo de vehículo para cotizar…'} />
+          </div>
           {!!res.length && (
             <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-52 overflow-y-auto">
               {res.map((r, i) => (

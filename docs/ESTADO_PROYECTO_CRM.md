@@ -55,6 +55,11 @@ CRM comercial y operativo para **Servicio Automotriz Didial Ltda.** (La Serena, 
 - **Notificaciones**: tabla `notificaciones` (por usuario o rol), **campanita** en sidebar/móvil con badge, polling 30 s y **sonido de alerta** (WebAudio) al llegar nuevas. Cada hito del flujo de taller notifica al responsable.
 
 
+### Novedades v28 (07-07-2026)
+- **Tipo de Servicio = lista fusionada** (anterior + categorías nuevas de la planilla; una entrada por concepto), NO los servicios individuales. Mapa `OT_SVC_CATEGORIA` en helpers.
+- **Desglose por categoría**: chips de servicios sugeridos en Solicitar servicio, datalist en "+ Nueva tarea" del taller, selector de categoría en buscadores de presupuestos (precargado) y cotización rápida.
+- **Match flexible de tipo de vehículo** (`svcAplicaAVehiculo`): cubre combos "PICK UP/VAN/FURGON" y "…DOBLE RODADO"; categorías siempre visibles, el tipo solo filtra servicios/precios.
+
 ### Novedades v27 (06-07-2026)
 - **Calendario**: popup detalle de cita (editar/eliminar/recordatorio/realizada), vencidas abajo, sin glosario, agenda solo del usuario, export .ics (sync OAuth con Gmail/Outlook = backlog).
 - **Perfiles**: /perfil para cambiar la propia clave (avatar del footer); edición de usuarios por admin vía Edge Function `gestionar-usuario` acción `actualizar` (⚠️ re-desplegar); roles nuevos: asistente_administrativo, asistente_bodega, asesor_toyota, asesor_multimarca (helpers: ROLES_USUARIO, ROLES_ASESOR, sucursalDeAsesor).
