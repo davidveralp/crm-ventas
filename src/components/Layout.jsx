@@ -28,8 +28,8 @@ const GRUPOS = [
     { to: '/', label: 'Dashboard', icon: 'dashboard' }
   ]},
   { titulo: 'Operación', items: [
-    { to: '/taller', label: 'Taller', icon: 'taller', feature: 'taller', roles: ['admin', 'jefe_taller', 'tecnico', 'coordinador_adquisiciones', 'encargado_bodega', 'supervisor'] },
-    { to: '/presupuestos', label: 'Presupuestos', icon: 'presupuestos', feature: 'crm', roles: ['admin', 'jefe_taller', 'coordinador_adquisiciones', 'supervisor'] },
+    { to: '/taller', label: 'Taller', icon: 'taller', feature: 'taller', roles: ['admin', 'jefe_taller', 'tecnico', 'coordinador_adquisiciones', 'encargado_bodega', 'asistente_bodega', 'supervisor'] },
+    { to: '/presupuestos', label: 'Presupuestos', icon: 'presupuestos', feature: 'crm', roles: ['admin', 'jefe_taller', 'coordinador_adquisiciones', 'asistente_administrativo', 'supervisor'] },
     { to: '/control-ot', label: 'Control OT', icon: 'datos', feature: 'ot' }
   ]},
   { titulo: 'Comercial', items: [
@@ -153,9 +153,10 @@ export default function Layout({ children }) {
         <div className="px-3 py-3 border-t border-white/10">
           <div className="flex items-center gap-3 px-2 mb-2">
             <Campanita />
-            <div className="grid place-items-center w-8 h-8 rounded-full bg-white/10 text-sm font-semibold">
+            <NavLink to="/perfil" title="Mi perfil (cambiar contraseña)"
+                  className="grid place-items-center w-8 h-8 rounded-full bg-white/10 text-sm font-semibold hover:bg-white/20 transition">
               {(perfil?.nombre || '?').slice(0, 1).toUpperCase()}
-            </div>
+            </NavLink>
             <div className="min-w-0">
               <div className="text-sm font-medium truncate">{perfil?.nombre}</div>
               <div className="text-xs text-sky/55 capitalize">{perfil?.rol}</div>

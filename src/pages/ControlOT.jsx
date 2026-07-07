@@ -347,6 +347,9 @@ function Faltantes() {
   const [ots, setOts] = useState([])
   const [rev, setRev] = useState({})
   const [filtro, setFiltro] = useState('pendientes')
+  const [fechasOT, setFechasOT] = useState({})   // v27: ot_numero -> fecha (para estimar)
+  const [fMes, setFMes] = useState('')           // v27: filtro por fecha estimada
+  const [fAnio, setFAnio] = useState('')
 
   useEffect(() => { cargar() }, [perfil?.empresa_id])
 
@@ -359,10 +362,16 @@ function Faltantes() {
       if (!c.sheet_id || !c.gid || String(c.gid).includes('GID')) {
         setEstado('sin_config'); return
       }
-      const [{ rows }, { data: revs }] = await Promise.all([
+      const [{ rows }, { data: revs }, fechas] = await Promise.all([
         loadSheet(c.sheet_id, c.gid),
-        supabase.from('control_ot_revision').select('*').eq('empresa_id', perfil.empresa_id)
+        supabase.from('control_ot_revision').select('*').eq('empresa_id', perfil.empresa_id),
+        // v27: fechas del historial para ESTIMAR la fecha de cada OT faltante
+        // por sus OT vecinas con registro
+        fetchAllRows('servicios', 'ot_numero,fecha', (q) => q.not('fecha', 'is', null))
       ])
+      const mapaF = {}
+      ;(fechas || []).forEach((x) => { const n = parseInt(x.ot_numero); if (n) mapaF[n] = x.fecha })
+      setFechasOT(mapaF)
       const nums = []
       rows.forEach((r) => {
         const vals = Object.values(r).filter((v) => v !== null && v !== '')
@@ -383,11 +392,39 @@ function Faltantes() {
     cargar()
   }
 
+  // v27: fecha estimada de una OT faltante = fecha de la OT anterior con
+  // registro (o de la posterior si no hay anterior). Búsqueda acotada ±300.
+  const nums = useMemo(() => Object.keys(fechasOT).map(Number).sort((a, b) => a - b), [fechasOT])
+  const fechaEstimada = (ot) => {
+    const n = parseInt(ot); if (!n || !nums.length) return null
+    let antes = null, despues = null
+    for (let i = 0; i < nums.length; i++) {
+      if (nums[i] < n) antes = nums[i]
+      if (nums[i] > n) { despues = nums[i]; break }
+    }
+    return fechasOT[antes] || fechasOT[despues] || null
+  }
+
   const vista = useMemo(() => {
-    if (filtro === 'pendientes') return ots.filter((o) => !rev[o]?.motivo)
-    if (filtro === 'revisadas') return ots.filter((o) => rev[o]?.motivo)
-    return ots
-  }, [ots, rev, filtro])
+    let base = ots
+    if (filtro === 'pendientes') base = ots.filter((o) => !rev[o]?.motivo)
+    else if (filtro === 'revisadas') base = ots.filter((o) => rev[o]?.motivo)
+    // v27: filtro por fecha estimada (mes/año) para trabajo focalizado
+    if (fMes || fAnio) {
+      base = base.filter((o) => {
+        const f = fechaEstimada(o)
+        if (!f) return false
+        const [y, m] = f.split('-')
+        return (!fAnio || y === fAnio) && (!fMes || m === fMes)
+      })
+    }
+    return base
+  }, [ots, rev, filtro, fMes, fAnio, fechasOT])
+
+  const anios = useMemo(() => {
+    const ys = new Set(Object.values(fechasOT).map((f) => (f || '').slice(0, 4)).filter(Boolean))
+    return [...ys].sort().reverse()
+  }, [fechasOT])
 
   const pendientes = ots.filter((o) => !rev[o]?.motivo).length
 
@@ -408,10 +445,22 @@ function Faltantes() {
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <p className="text-sm text-slate-500">OT faltantes en la base · {pendientes} por revisar de {ots.length}</p>
+        <div className="flex items-center gap-2 flex-wrap">
+        <select className="input w-auto text-xs py-1.5" value={fMes} onChange={(e) => setFMes(e.target.value)}>
+          <option value="">Mes (estimado): todos</option>
+          {['01','02','03','04','05','06','07','08','09','10','11','12'].map((m, i) => (
+            <option key={m} value={m}>{['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][i]}</option>
+          ))}
+        </select>
+        <select className="input w-auto text-xs py-1.5" value={fAnio} onChange={(e) => setFAnio(e.target.value)}>
+          <option value="">Año: todos</option>
+          {anios.map((y) => <option key={y} value={y}>{y}</option>)}
+        </select>
         <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-sm">
           {[['pendientes', `Pendientes (${pendientes})`], ['revisadas', 'Revisadas'], ['todas', 'Todas']].map(([v, l]) => (
             <button key={v} onClick={() => setFiltro(v)} className={`px-3 py-1.5 ${filtro === v ? 'bg-deep text-white' : 'text-slate-500'}`}>{l}</button>
           ))}
+        </div>
         </div>
       </div>
 
@@ -420,6 +469,7 @@ function Faltantes() {
           <thead className="bg-paper text-slate-400 text-xs">
             <tr>
               <th className="text-left font-medium px-4 py-3 w-24">N° OT</th>
+              <th className="text-left font-medium px-2 py-3 w-28">Fecha estimada</th>
               <th className="text-left font-medium px-2 py-3">Motivo</th>
               <th className="text-left font-medium px-2 py-3">Nota</th>
               <th className="text-left font-medium px-4 py-3 hidden sm:table-cell w-32">Revisado</th>
@@ -431,6 +481,7 @@ function Faltantes() {
               return (
                 <tr key={ot} className="border-t border-slate-100">
                   <td className="px-4 py-2.5 font-mono font-semibold text-ink">{ot}</td>
+                  <td className="px-2 py-2.5 text-xs text-slate-500">{fechaEstimada(ot) ? fmtFecha(fechaEstimada(ot)) : '—'}</td>
                   <td className="px-2 py-2.5">
                     <div className="flex gap-1 flex-wrap">
                       {Object.entries(MOTIVOS).map(([k, v]) => (
@@ -458,11 +509,11 @@ function Faltantes() {
                 </tr>
               )
             })}
-            {!vista.length && <tr><td colSpan={4} className="px-4 py-8 text-center text-slate-400 text-sm">{filtro === 'pendientes' ? '¡Todo revisado! No hay OT pendientes de clasificar.' : 'Sin registros.'}</td></tr>}
+            {!vista.length && <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-400 text-sm">{filtro === 'pendientes' ? '¡Todo revisado! No hay OT pendientes de clasificar.' : 'Sin registros.'}</td></tr>}
           </tbody>
         </table>
       </div>
-      <p className="text-[11px] text-slate-400">La lista de OT faltantes viene en vivo de la hoja Control_OTs. Clasifica cada una: si el vehículo está en taller, pendiente de ingreso u otro motivo con su detalle.</p>
+      <p className="text-[11px] text-slate-400">La lista de OT faltantes viene en vivo de la hoja Control_OTs. La fecha estimada se calcula por la OT anterior (o posterior) con registro en el historial — usa los filtros de mes/año para trabajar por períodos. Clasifica cada una: vehículo en taller, OT nula, u otro motivo con su detalle.</p>
     </div>
   )
 }

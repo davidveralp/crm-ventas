@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { Pill, Modal } from '../components/UI'
+import { ROLES_USUARIO } from '../lib/helpers'
 
-const ROLES = { admin: 'Administrador', vendedor: 'Vendedor / Asesor', supervisor: 'Supervisor', postventa: 'Postventa', jefe_taller: 'Jefe de Taller', tecnico: 'Técnico', coordinador_adquisiciones: 'Coordinador de Adquisiciones', encargado_bodega: 'Encargado de Bodega' }
-const ROL_COLOR = { admin: '#1C4357', vendedor: '#185FA5', supervisor: '#7A5C8E', postventa: '#1D7A5F', jefe_taller: '#b0603a', tecnico: '#2f6fb0', coordinador_adquisiciones: '#B07A2E', encargado_bodega: '#1aa88a' }
+const ROLES = ROLES_USUARIO  // v27: catálogo único de roles (incluye asesores Toyota/Multimarca y asistentes)
+const ROL_COLOR = { admin: '#1C4357', vendedor: '#185FA5', asesor_toyota: '#E0382B', asesor_multimarca: '#185FA5', supervisor: '#7A5C8E', postventa: '#1D7A5F', jefe_taller: '#b0603a', tecnico: '#2f6fb0', coordinador_adquisiciones: '#B07A2E', encargado_bodega: '#1aa88a', asistente_administrativo: '#6B7A8A', asistente_bodega: '#1aa88a' }
 const NUEVO = { nombre: '', email: '', password: '', rol: 'vendedor', activo: true }
 
 export default function Usuarios() {
@@ -12,6 +13,19 @@ export default function Usuarios() {
   const [usuarios, setUsuarios] = useState([])
   const [auditoria, setAuditoria] = useState([])
   const [modal, setModal] = useState(false)
+  const [editando, setEditando] = useState(null) // usuario en edición
+  const [fEdit, setFEdit] = useState({ nombre: '', rol: 'vendedor', activo: true, password: '' })
+
+  async function guardarEdicion(e) {
+    e.preventDefault()
+    setError('')
+    const { data, error: err } = await supabase.functions.invoke('gestionar-usuario', {
+      body: { action: 'actualizar', usuario_id: editando.id, nombre: fEdit.nombre.trim(),
+              rol: fEdit.rol, activo: fEdit.activo, password: fEdit.password.trim() || null }
+    })
+    if (err || data?.error) { alert('Error: ' + (data?.error || err.message) + '\n(Si dice acción desconocida, re-despliega la Edge Function gestionar-usuario con la versión v27 del repo.)'); return }
+    setEditando(null); cargar()
+  }
   const [form, setForm] = useState(NUEVO)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState('')
@@ -98,6 +112,10 @@ export default function Usuarios() {
                     className={`pill ${u.activo ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
                     {u.activo ? 'Activo' : 'Inactivo'}
                   </button>
+                  <button className="text-xs text-deep hover:underline ml-2"
+                          onClick={() => { setEditando(u); setFEdit({ nombre: u.nombre || '', rol: u.rol, activo: !!u.activo, password: '' }) }}>
+                    Editar
+                  </button>
                 </td>
                 <td className="px-4 py-3 text-right">
                   {u.id !== perfil?.id && (
@@ -124,6 +142,40 @@ export default function Usuarios() {
           )) : <div className="px-4 py-4 text-sm text-slate-400 text-center">Sin cambios registrados todavía.</div>}
         </div>
       </div>
+
+      <Modal abierto={!!editando} onClose={() => setEditando(null)} titulo={`Editar usuario · ${editando?.email || ''}`}>
+        <form onSubmit={guardarEdicion} className="space-y-3">
+          <div>
+            <label className="label">Nombre *</label>
+            <input className="input" required value={fEdit.nombre} onChange={(e) => setFEdit({ ...fEdit, nombre: e.target.value })} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Rol</label>
+              <select className="input" value={fEdit.rol} onChange={(e) => setFEdit({ ...fEdit, rol: e.target.value })}>
+                {Object.entries(ROLES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Estado</label>
+              <select className="input" value={fEdit.activo ? '1' : '0'} onChange={(e) => setFEdit({ ...fEdit, activo: e.target.value === '1' })}>
+                <option value="1">Activo</option>
+                <option value="0">Inactivo</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="label">Nueva contraseña (opcional)</label>
+            <input className="input" type="text" value={fEdit.password} placeholder="Dejar vacío para no cambiarla"
+                   onChange={(e) => setFEdit({ ...fEdit, password: e.target.value })} />
+            <p className="text-[10px] text-slate-400 mt-0.5">Cada usuario también puede cambiar su propia clave desde "Mi perfil".</p>
+          </div>
+          <div className="flex justify-end gap-2">
+            <button type="button" className="btn-soft" onClick={() => setEditando(null)}>Cancelar</button>
+            <button className="btn-primary">Guardar cambios</button>
+          </div>
+        </form>
+      </Modal>
 
       <Modal abierto={modal} onClose={() => setModal(false)} titulo="Nuevo usuario">
         <form onSubmit={crear} className="space-y-4">

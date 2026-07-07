@@ -188,3 +188,46 @@ Segmento **fijo en "Nuevo cliente"** (no editable; el sistema reclasifica despu�
 
 ## Cotización rápida
 El **ticket ahora imprime en papel continuo de 80mm**: la página mide exactamente lo que mide el contenido (se acabó la hoja larga).
+
+
+---
+
+# ACTUALIZACIÓN v27 · Calendario interactivo, perfiles y roles, Nueva OT viva
+
+## Migraciones (en orden y en ejecuciones separadas)
+1. **`database/33_actualizacion_v27.sql` — PASO 1 SOLO** (roles nuevos en el enum; regla de Postgres: los `alter type` deben ir solos).
+2. **PASO 2** de la misma migración (columna `segmento` en precios_base + backfill).
+3. **`database/32_seed_precios_v26.sql`** regenerado (982 precios con segmento propio) — o el sync del Apps Script v4.
+4. **Re-desplegar la Edge Function `gestionar-usuario`** con el index.ts del repo (agrega la acción `actualizar` y los roles nuevos).
+
+## Calendario
+- **Clic en una cita → popup de detalle estilo Outlook**: fecha/hora, tipo con su color, recordatorio y notas, teléfono del cliente; botones **Editar** (fecha, hora, tipo, recordatorio, notas), **Eliminar**, **Marcar realizada** y **Ver ficha**.
+- **Vencidas / Para hoy** ahora van **abajo** del calendario. El glosario de colores se eliminó.
+- **Solo tu agenda**: cada usuario ve únicamente sus propias gestiones (admin ve todo).
+- **📅 Exportar a mi calendario**: descarga un `.ics` con toda tu agenda (recordatorio 30 min antes) para importar/suscribir en Gmail u Outlook. La sincronización bidireccional automática con la cuenta de correo de cada usuario requiere OAuth por usuario (Google/Microsoft) — queda como siguiente etapa; el .ics es el puente disponible hoy.
+
+## Usuarios y perfiles
+- **Mi perfil** (clic en tu avatar, abajo a la izquierda): cada usuario cambia su propia contraseña.
+- **Editar** en la tabla de Usuarios (admin): nombre, rol, estado y restablecer contraseña.
+- **Roles nuevos**: Asistente Administrativo, Asistente de Bodega, Asesor Toyota, Asesor Multimarca (el rol "solo Vendedor" ya existía como Vendedor). Los asesores Toyota/Multimarca se comportan como vendedores (misma vista limitada) y además fijan su sucursal en Nueva OT.
+
+## Nueva OT
+- **Técnicos** (principal y secundarios) = usuarios **activos** con rol Técnico o Jefe de Taller (si aún no hay usuarios técnicos creados, se usa el catálogo fijo de respaldo).
+- **Sucursal fija por asesor**: Diego Leyton → Toyota; David Rivera y Matías Ponce → Multimarca (por nombre), y de forma permanente por los roles Asesor Toyota / Asesor Multimarca. Admin puede elegir.
+- **Tipo de Vehículo** en Datos del Vehículo (se precarga si la patente existe y se guarda en la ficha del vehículo → asocia con la lista de precios).
+- **Nombre(s) y Apellido(s) separados** para Particular; Empresa pide razón social + contacto (v23). **Comuna / Sector**. **"El cliente no aporta correo"**: checkbox que exime el correo obligatorio.
+- **Tipos de servicio desde la planilla de precios** (agrupados por segmento Taller Mecánico / Servicio Rápido / DyP), también en "Solicitar servicio" de la ficha. ⚠️ Implicancia: los nombres que viajan a la planilla Base_OT ahora son los de la planilla de precios — mantén esa planilla como catálogo oficial.
+
+## Ficha del cliente
+- Texto explicativo de la marca eliminado del modal de contacto.
+- La cabecera muestra **chips con todas las marcas** de los vehículos asociados. Sobre los isologos: los logos de marcas automotrices son propiedad intelectual de terceros y usarlos en el CRM sin licencia es riesgoso — quedaron los chips de texto, como acordamos de alternativa.
+
+## Control OT
+- **Fecha estimada** por cada OT faltante (tomada de la OT anterior con registro en el historial, o la posterior si no hay) + **filtros de Mes y Año** por esa fecha estimada, para trabajar por períodos.
+
+## Ticket de cotización
+- Imprime **solo cuando el logo terminó de cargar** (antes salía en blanco), con respaldo de texto "DIDIAL" si la imagen falla.
+- **Alto contraste** para térmicas (tipografía negra y gruesa, líneas más marcadas) y contenido centrado en los 80mm.
+
+## OT que no aparecen en la búsqueda (ej. 13245)
+El buscador resuelve por el historial sincronizado (tabla `servicios`). Si una OT no aparece, casi siempre es una de estas dos: (a) la fila aún no llega desde la planilla — el sync del Apps Script corre por activador; puedes forzarlo ejecutando `crmSyncServicios()` a mano — o (b) la fila existe pero quedó huérfana/sin patente — revísala en Control de OT → "OT sin cliente". Diagnóstico directo en Supabase: `select * from servicios where ot_numero = '13245';` — si no devuelve filas, es (a); si devuelve sin `cliente_id`, es (b).

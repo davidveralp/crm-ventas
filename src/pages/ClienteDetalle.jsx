@@ -70,6 +70,7 @@ export default function ClienteDetalle() {
   const [ft, setFt] = useState({ servicio: '', tareas: [''], obs: '' })
   const [sheetUpdateUrl, setSheetUpdateUrl] = useState('')
   const [tareasCat, setTareasCat] = useState({}) // servicio -> [titulos]
+  const [svcGrupos, setSvcGrupos] = useState(null)  // v27: servicios desde la planilla de precios
 
   useEffect(() => { cargar() }, [id])
 
@@ -102,7 +103,7 @@ export default function ClienteDetalle() {
     } else setPresupsTaller([])
     if (esAdmin) {
       const { data: v } = await supabase.from('usuarios')
-        .select('id,nombre').eq('rol', 'vendedor').eq('activo', true)
+        .select('id,nombre').in('rol', ['vendedor', 'asesor_toyota', 'asesor_multimarca']).eq('activo', true)
       setVendedores(v || [])
     }
     // v21: URL del Apps Script de actualización de la planilla + tareas predefinidas
@@ -111,6 +112,19 @@ export default function ClienteDetalle() {
       supabase.from('tareas_servicio').select('servicio,titulo,orden').order('orden')
     ])
     if (su?.valor) setSheetUpdateUrl(typeof su.valor === 'string' ? su.valor : su.valor.url || '')
+    // v27: la lista de servicios viene de la planilla de precios (viva)
+    const { data: pb } = await supabase.from('precios_base')
+      .select('segmento,nombre').in('tipo', ['servicio', 'fijo']).not('nombre', 'is', null)
+    if (pb?.length) {
+      const g = {}
+      pb.forEach((x) => {
+        if (!x.nombre.includes('(nombre por completar)')) (g[x.segmento || 'Otros'] = g[x.segmento || 'Otros'] || new Set()).add(x.nombre)
+      })
+      const orden = ['Taller Mecánico', 'Servicio Rápido', 'DyP']
+      setSvcGrupos(Object.keys(g)
+        .sort((a, b) => (orden.indexOf(a) + 99) - (orden.indexOf(b) + 99))
+        .map((seg) => ({ bu: seg, items: [...g[seg]].sort() })))
+    }
     const cat = {}
     ;(ts || []).forEach((t) => { (cat[t.servicio] = cat[t.servicio] || []).push(t.titulo) })
     setTareasCat(cat)
@@ -388,7 +402,9 @@ export default function ClienteDetalle() {
             <div className="flex items-center gap-2 mt-2 flex-wrap">
               {cliente.segmento && <Pill color={segColor(cliente.segmento)}>{segLabel(cliente.segmento)}</Pill>}
               <span className="pill bg-mist text-deep">{tipoClienteLabel(cliente.tipo)}</span>
-              {cliente.marca_principal && (
+              {[...new Set(vehiculos.map((v) => (v.marca || '').trim().toUpperCase()).filter(Boolean))]
+                .map((m) => <span key={m} className="pill bg-ink text-white">{m}</span>)}
+              {!vehiculos.some((v) => v.marca) && cliente.marca_principal && (
                 <span className="pill bg-ink text-white">{cliente.marca_principal}</span>
               )}
             </div>
@@ -1033,10 +1049,7 @@ export default function ClienteDetalle() {
                        onChange={(e) => setContacto({ ...contacto, ciudad: e.target.value })} />
               </div>
             </div>
-            <p className="text-[11px] text-slate-400">
-              La marca ya no es dato de contacto: es segmentación interna y se toma de los vehículos del cliente.
-              Al guardar, los cambios se replican en las filas de la base de OT relacionadas.
-            </p>
+
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" className="btn-soft" onClick={() => setModalC(false)}>Cancelar</button>
               <button className="btn-primary">Guardar cambios</button>
@@ -1066,7 +1079,7 @@ export default function ClienteDetalle() {
                       setFt({ ...ft, servicio: svc, tareas: pred?.length ? [...pred, ''] : [''] })
                     }}>
               <option value="">Seleccionar servicio…</option>
-              {OT_SVC_GRUPOS.map((g) => (
+              {(svcGrupos || OT_SVC_GRUPOS).map((g) => (
                 <optgroup key={g.bu} label={g.bu}>
                   {g.items.map((s) => <option key={s} value={s}>{s}</option>)}
                 </optgroup>

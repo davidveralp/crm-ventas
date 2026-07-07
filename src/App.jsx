@@ -3,6 +3,7 @@ import ProtectedRoute from './components/ProtectedRoute'
 import Layout from './components/Layout'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
+import Perfil from './pages/Perfil'
 import Clientes from './pages/Clientes'
 import ClienteDetalle from './pages/ClienteDetalle'
 import Pipeline from './pages/Pipeline'
@@ -29,6 +30,7 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/"            element={conLayout(<Dashboard />)} />
+      <Route path="/perfil"      element={conLayout(<Perfil />)} />
       <Route path="/clientes"    element={conLayout(<Clientes />)} />
       <Route path="/clientes/:id" element={conLayout(<ClienteDetalle />)} />
       <Route path="/pipeline"    element={conLayout(<Pipeline />)} />

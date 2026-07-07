@@ -246,7 +246,7 @@ function PresupuestosInterno() {
 // del componente principal).
 export default function Presupuestos() {
   const { perfil } = useAuth()
-  if (perfil?.rol === 'vendedor') return (
+  if (['vendedor', 'asesor_toyota', 'asesor_multimarca'].includes(perfil?.rol)) return (
     <div className="card p-8 max-w-lg text-sm text-slate-500">
       El módulo Presupuestos está en fase preliminar y aún no está disponible para asesores.
       Los presupuestos que te correspondan llegan directo a la ficha de cada cliente.

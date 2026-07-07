@@ -16,7 +16,7 @@ export default function Informes() {
     const [clientes, { data: usuarios }, { data: estados }, { data: act }, { data: camp }, { data: presup }, { data: srv }, { data: ges }] =
       await Promise.all([
         fetchAllRows('clientes', 'id,segmento,estado_id,vendedor_id,facturacion_total'),
-        supabase.from('usuarios').select('id,nombre').eq('rol', 'vendedor').eq('activo', true),
+        supabase.from('usuarios').select('id,nombre').in('rol', ['vendedor', 'asesor_toyota', 'asesor_multimarca']).eq('activo', true),
         supabase.from('pipeline_estados').select('*').order('orden'),
         supabase.from('actividades').select('cliente_id,vendedor_id,resultado,campana_id,tipo_servicio,gestion_id,fecha,tipo').limit(12000),
         supabase.from('campanas').select('id,nombre,segmento,estado').order('prioridad'),

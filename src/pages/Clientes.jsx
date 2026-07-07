@@ -37,7 +37,7 @@ export default function Clientes() {
       (q) => q.order('facturacion_total', { ascending: false }))
     setLista(data || [])
     const { data: v } = await supabase.from('usuarios')
-      .select('id,nombre').eq('rol', 'vendedor').eq('activo', true)
+      .select('id,nombre').in('rol', ['vendedor', 'asesor_toyota', 'asesor_multimarca']).eq('activo', true)
     setVendedores(v || [])
     const { data: e } = await supabase.from('pipeline_estados')
       .select('id,nombre,color,orden,es_final').order('orden')

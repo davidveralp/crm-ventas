@@ -55,6 +55,12 @@ CRM comercial y operativo para **Servicio Automotriz Didial Ltda.** (La Serena, 
 - **Notificaciones**: tabla `notificaciones` (por usuario o rol), **campanita** en sidebar/móvil con badge, polling 30 s y **sonido de alerta** (WebAudio) al llegar nuevas. Cada hito del flujo de taller notifica al responsable.
 
 
+### Novedades v27 (06-07-2026)
+- **Calendario**: popup detalle de cita (editar/eliminar/recordatorio/realizada), vencidas abajo, sin glosario, agenda solo del usuario, export .ics (sync OAuth con Gmail/Outlook = backlog).
+- **Perfiles**: /perfil para cambiar la propia clave (avatar del footer); edición de usuarios por admin vía Edge Function `gestionar-usuario` acción `actualizar` (⚠️ re-desplegar); roles nuevos: asistente_administrativo, asistente_bodega, asesor_toyota, asesor_multimarca (helpers: ROLES_USUARIO, ROLES_ASESOR, sucursalDeAsesor).
+- **Nueva OT**: técnicos = usuarios activos (rol técnico/jefe), sucursal fija por asesor, tipo de vehículo (precarga+guarda), nombres/apellidos, sin correo, servicios desde precios_base por segmento (también en Solicitar servicio).
+- **Ficha**: chips de todas las marcas (texto, sin isologos por PI); texto de marca eliminado. **Control OT**: fecha estimada por OT vecina + filtros mes/año. **Ticket**: espera del logo, alto contraste, centrado.
+
 ### Novedades v25 (05-07-2026)
 - **Planilla de precios vinculada**: `integraciones/sincronizar_precios.gs` (activador por tiempo) mantiene `precios_base` viva desde la planilla (fuente de verdad; recarga completa; celdas combinadas y Aplica=No manejados).
 - **Vista de asesores**: Taller y Presupuestos ocultos para rol vendedor (menú + guarda de ruta); Control OT visible.
@@ -117,6 +123,8 @@ Idempotentes, se ejecutan en orden en el SQL Editor. Estado según lo conversado
 | 24 (v20) | `diagnosticos_taller`, respaldos/autorización en trabajos, config `margenes` | ⚠️ |
 | 25 (v21) | apellidos, tipo_vehiculo, documento en servicios, `tareas_servicio` (seed MAN X PAUTA), `precios_base`, RPC `crm_aplicar_datos_ot`, re-vinculación por patente | 🆕 pendiente |
 | 26 (v21.1) | Seed base de precios (985 filas, precios 09-04-2026; fix celdas combinadas; AC13 quedó "(nombre por completar)") | 🆕 pendiente |
+| 33 (v27) | Roles nuevos (enum, PASO 1 solo) + precios_base.segmento (PASO 2) | 🆕 pendiente |
+| 32 (v27) | Seed base de precios v2 con segmento (982 filas) | 🆕 pendiente |
 | 31 (v25) | motivo_anulacion en ordenes_trabajo (resto de v25 es frontend + sincronizar_precios.gs) | 🆕 pendiente |
 | 30 (v24) | `repuestos_requeridos` / `insumos_requeridos` en trabajos_taller (revisión técnica) | 🆕 pendiente |
 | 29 (v23) | Presupuestos: elaboración por encargado + cotización rápida (trabajo_id nullable, cliente/vehículo/origen/compra_gestionada), empresa (contacto_nombre), OT (rut/contacto/anulación), audiencia_campana v2 + plantillas v2 (logo/slogan/personalización/contactos por marca) | 🆕 pendiente |

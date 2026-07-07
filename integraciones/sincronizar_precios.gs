@@ -1,5 +1,5 @@
 /**
- * DIDIAL CRM · Sincroniza la PLANILLA DE PRECIOS -> tabla `precios_base` · v3 (v26)
+ * DIDIAL CRM · Sincroniza la PLANILLA DE PRECIOS -> tabla `precios_base` · v4 (v27)
  * ---------------------------------------------------------------------------
  * Adaptado a la estructura real de "Base de datos de precios Didial" v2
  * (pestañas: Guía, Servicios (Mano de Obra), Lubricantes e Insumos, Resumen
@@ -35,6 +35,8 @@
  *  3. Ejecutar crmSyncPrecios() -> revisar "Precios sincronizados: N".
  *  4. Activador por tiempo (icono de reloj) -> crmSyncPrecios -> cada hora.
  *
+ * Requiere haber ejecutado la migración 33 (columna segmento en
+ * precios_base).
  * Nota: el código AC13 (A/C y Calefacción) llega sin nombre de servicio en
  * la planilla; se carga como "A/C y Calefacción AC13 (nombre por
  * completar)" — corrígelo en la planilla cuando puedas.
@@ -139,15 +141,13 @@ function crmSyncPrecios() {
     var fuenteTxt = iS.fuente >= 0 ? String(r[iS.fuente] || '').trim() : '';
     var esFijo = fuenteTxt === 'Precio fijo' || tipoVehTxt === 'TODOS';
 
-    var notas = [
-      iS.segmento >= 0 ? val(r[iS.segmento]) : null,
-      iS.notas >= 0 ? val(r[iS.notas]) : null
-    ].filter(function(x){return x}).join(' · ') || null;
+    var segmento = iS.segmento >= 0 ? val(r[iS.segmento]) : null;
+    var notas = iS.notas >= 0 ? val(r[iS.notas]) : null;
 
     if (esFijo) {
       var totalMin = iS.totalMin >= 0 ? num(r[iS.totalMin]) : null;
       filas.push({
-        empresa_id: EMPRESA_ID, tipo: 'fijo',
+        empresa_id: EMPRESA_ID, tipo: 'fijo', segmento: segmento,
         categoria: iS.categoria >= 0 ? val(r[iS.categoria]) : null,
         codigo: codigo, nombre: nombre || (codigo + ' (nombre por completar)'),
         tipo_vehiculo: null, horas_mo: null, valor_mo: null,
@@ -159,7 +159,7 @@ function crmSyncPrecios() {
     }
 
     filas.push({
-      empresa_id: EMPRESA_ID, tipo: 'servicio',
+      empresa_id: EMPRESA_ID, tipo: 'servicio', segmento: segmento,
       categoria: iS.categoria >= 0 ? val(r[iS.categoria]) : null,
       codigo: codigo, nombre: nombre || (codigo + ' (nombre por completar)'),
       tipo_vehiculo: normTipoVeh(tipoVehTxt),
@@ -184,7 +184,7 @@ function crmSyncPrecios() {
       if (!nombre) return;
       var tipoTxt = iI.tipo >= 0 ? String(r[iI.tipo] || '').trim() : '';
       filas.push({
-        empresa_id: EMPRESA_ID, tipo: 'insumo',
+        empresa_id: EMPRESA_ID, tipo: 'insumo', segmento: null,
         categoria: tipoTxt || 'Insumos',
         codigo: iI.codigo >= 0 ? val(r[iI.codigo]) : null,
         nombre: nombre, tipo_vehiculo: null, horas_mo: null, valor_mo: null,

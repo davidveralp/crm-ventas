@@ -66,19 +66,23 @@ export default function CotizacionRapida({ cliente, vehiculo, perfil, onClose, o
     const d = desgloseIVA(total)
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Cotización</title>
     <style>
-      /* v25: papel continuo — la página mide lo que mide el contenido */
-      @page{size:80mm auto;margin:3mm}
-      html,body{width:74mm}
-      body{font-family:'Courier New',monospace;font-size:12px;color:#111;margin:0 auto}
+      /* v27: papel continuo 80mm — página del largo del contenido,
+         contenido centrado y tipografía negra de alto contraste
+         (las térmicas imprimen tenue las fuentes finas). */
+      @page{size:80mm auto;margin:0}
+      html,body{width:72mm;margin:0 auto;padding:2mm 0}
+      body{font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:600;color:#000;-webkit-print-color-adjust:exact}
       .c{text-align:center}.r{text-align:right}
-      hr{border:none;border-top:1px dashed #111;margin:6px 0}
+      hr{border:none;border-top:1.5px dashed #000;margin:6px 0}
       table{width:100%;border-collapse:collapse}
-      td{padding:1px 0;vertical-align:top}
-      .tot{font-size:14px;font-weight:bold}
-      img{width:170px;height:auto}
+      td{padding:1.5px 0;vertical-align:top}
+      .tot{font-size:16px;font-weight:900}
+      b{font-weight:900}
+      img{width:160px;height:auto;filter:grayscale(1) contrast(1.4)}
     </style></head><body>
     <div class="c">
-      <img src="${window.location.origin}/logo-didial.png" alt="DIDIAL">
+      <img id="logo" src="${window.location.origin}/logo-didial.png" alt="DIDIAL"
+           onerror="this.outerHTML='<div style=&quot;font-size:22px;font-weight:900;letter-spacing:2px&quot;>DIDIAL</div>'">
       <div style="font-size:10px;letter-spacing:1px">Cuidamos lo que te mueve</div>
       <div style="font-size:10px">Avda. Cuatro Esquinas 759, La Serena<br>${contacto.email} · ${contacto.fono}</div>
     </div>
@@ -100,7 +104,18 @@ export default function CotizacionRapida({ cliente, vehiculo, perfil, onClose, o
     </table>
     <hr>
     <div class="c" style="font-size:10px">Cotización válida por 15 días.<br>Valores con IVA incluido.<br>¡Gracias por preferir DIDIAL!</div>
-    <script>window.print()</script></body></html>`
+    <script>
+      // v27: imprime SOLO cuando el logo terminó de cargar (antes salía en
+      // blanco); respaldo con timeout por si la imagen no responde.
+      (function(){
+        var img = document.getElementById('logo');
+        var listo = false;
+        function imprimir(){ if (listo) return; listo = true; window.print(); }
+        if (!img || img.complete) setTimeout(imprimir, 150);
+        else { img.onload = function(){ setTimeout(imprimir, 150) }; img.onerror = function(){ setTimeout(imprimir, 150) }; }
+        setTimeout(imprimir, 2500);
+      })();
+    </script></body></html>`
     const w = window.open('', '_blank', 'width=340,height=640')
     w.document.write(html); w.document.close()
   }

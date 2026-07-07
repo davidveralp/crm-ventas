@@ -6,16 +6,16 @@ import {
   formatPatente, patenteLimpia, fmtMiles, otTotal, fmtFonoOT, formatRut,
   OT_TIPO_INGRESO, OT_ES_GARANTIA, OT_TIPO_CLIENTE, OT_ESTADO_VEHICULO,
   OT_TIPO_DOCUMENTO, OT_SVC_GRUPOS, otBU, OT_MARCAS, OT_CIUDADES,
-  OT_TECNICOS, OT_CONOCIO, OT_ENCUESTA, enviarASheet
+  OT_TECNICOS, OT_CONOCIO, OT_ENCUESTA, enviarASheet, TIPOS_VEHICULO, sucursalDeAsesor
 } from '../lib/helpers'
 
 const hoy = () => new Date().toISOString().slice(0, 10)
 
 const VACIA = {
-  ot_numero: '', fecha: hoy(), tipo_ingreso: 'Normal', sucursal: 'Toyota',
+  ot_numero: '', fecha: hoy(), tipo_ingreso: 'Normal', sucursal: 'Toyota', tipo_vehiculo: '',
   tecnico_principal: '', tecPrincipalOtro: '',
   patente: '', marca: '', marcaOtra: '', modelo: '', cilindrada: '', anio: '', km: '',
-  tipo_cliente: 'Particular', propietario: '', contacto_nombre: '', rut: '', telefono: '', email: '',
+  tipo_cliente: 'Particular', propietario: '', apellidos: '', contacto_nombre: '', rut: '', telefono: '', email: '', sin_correo: false,
   ciudad: '', ciudadOtra: '', direccion: '', direccion_ref: '',
   repuestos: '', lubricantes: '', mo: '', servicioExterno: '', descSE: '', descuento: '',
   tipo_servicio_1: '', tipo_servicio_2: '',
@@ -70,12 +70,44 @@ export default function NuevaOT() {
   const [guardando, setGuardando] = useState(false)
   const [msg, setMsg] = useState(null)
   const [sheetUrl, setSheetUrl] = useState('')
+  const [tecnicos, setTecnicos] = useState([])       // v27: usuarios activos rol técnico
+  const [svcGrupos, setSvcGrupos] = useState(null)   // v27: servicios desde la planilla de precios
   const [secSel, setSecSel] = useState([])   // técnicos secundarios elegidos
   const [secOtro, setSecOtro] = useState('') // técnico secundario "Otro"
   const [presups, setPresups] = useState([])   // presupuestos de taller del vehículo
   const [selItems, setSelItems] = useState({}) // "presupId:i" -> true
 
   // URL del Apps Script de la planilla (config por empresa)
+  // v27: técnicos = usuarios activos con rol técnico o jefe de taller
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from('usuarios')
+        .select('id,nombre').in('rol', ['tecnico', 'jefe_taller']).eq('activo', true).order('nombre')
+      setTecnicos((data || []).map((t) => t.nombre))
+      // Servicios desde la planilla de precios (agrupados por segmento);
+      // si la tabla aún no está poblada, se usa el catálogo fijo de respaldo.
+      const { data: pb } = await supabase.from('precios_base')
+        .select('segmento,nombre').in('tipo', ['servicio', 'fijo']).not('nombre', 'is', null)
+      if (pb?.length) {
+        const g = {}
+        pb.forEach((x) => {
+          const seg = x.segmento || 'Otros'
+          if (!x.nombre.includes('(nombre por completar)')) (g[seg] = g[seg] || new Set()).add(x.nombre)
+        })
+        const orden = ['Taller Mecánico', 'Servicio Rápido', 'DyP']
+        setSvcGrupos(Object.keys(g)
+          .sort((a, b) => (orden.indexOf(a) + 99) - (orden.indexOf(b) + 99))
+          .map((seg) => ({ bu: seg, items: [...g[seg]].sort() })))
+      }
+    })()
+  }, [])
+
+  // v27: sucursal fija según el asesor que ingresa (Diego Leyton = Toyota;
+  // David Rivera y Matías Ponce = Multimarca; roles asesor_toyota /
+  // asesor_multimarca definen la suya). Admin y otros roles pueden elegir.
+  const sucursalFija = sucursalDeAsesor(perfil)
+  useEffect(() => { if (sucursalFija) set('sucursal', sucursalFija) }, [sucursalFija])
+
   useEffect(() => {
     if (!perfil?.empresa_id) return
     supabase.from('empresa_config').select('valor')
@@ -88,6 +120,8 @@ export default function NuevaOT() {
 
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }))
   const esGarantia = OT_ES_GARANTIA(f.tipo_ingreso)
+  const LISTA_TECNICOS = tecnicos.length ? tecnicos : OT_TECNICOS
+  const GRUPOS_SVC = svcGrupos || OT_SVC_GRUPOS
   const esEmpresa = f.tipo_cliente === 'Empresa'
   const total = useMemo(() => otTotal(f), [f.repuestos, f.lubricantes, f.mo, f.servicioExterno, f.descuento])
   const unidades = useMemo(() => {
@@ -128,10 +162,11 @@ export default function NuevaOT() {
     const limpia = patenteLimpia(patente)
     if (limpia.length < 5) { setVeh(null); return }
     const { data } = await supabase.from('vehiculos')
-      .select('id,marca,modelo,cliente_id,clientes(nombre,apellidos)')
+      .select('id,marca,modelo,tipo_vehiculo,cliente_id,clientes(nombre,apellidos)')
       .ilike('patente', `%${formatPatente(patente)}%`).limit(1)
     const v = data?.[0] || null
     setVeh(v)
+    if (v?.tipo_vehiculo) set('tipo_vehiculo', v.tipo_vehiculo)   // v27: precarga el tipo
     // Presupuestos del taller pendientes de decisión para este vehículo
     if (v?.id) {
       const { data: tt } = await supabase.from('trabajos_taller').select('id').eq('vehiculo_id', v.id)
@@ -181,8 +216,9 @@ export default function NuevaOT() {
     if (!f.patente.trim() || !f.tipo_servicio_1) { setMsg({ t: 'err', m: 'Ingresa al menos patente y tipo de servicio.' }); return }
     // v23: datos de contacto obligatorios (mismos criterios que "Nuevo cliente")
     if (!f.propietario.trim()) { setMsg({ t: 'err', m: esEmpresa ? 'La razón social es obligatoria.' : 'El nombre del propietario es obligatorio.' }); return }
+    if (!esEmpresa && !f.apellidos.trim()) { setMsg({ t: 'err', m: 'El apellido del propietario es obligatorio.' }); return }
     if (!f.rut.trim()) { setMsg({ t: 'err', m: 'El RUT es obligatorio.' }); return }
-    if (!f.email.trim() || !f.email.includes('@')) { setMsg({ t: 'err', m: 'El correo electrónico es obligatorio.' }); return }
+    if (!f.sin_correo && (!f.email.trim() || !f.email.includes('@'))) { setMsg({ t: 'err', m: 'El correo electrónico es obligatorio (o marca "El cliente no aporta correo").' }); return }
     if (!f.direccion.trim()) { setMsg({ t: 'err', m: 'La dirección es obligatoria.' }); return }
     if (esEmpresa && !f.contacto_nombre.trim()) { setMsg({ t: 'err', m: 'Indica el nombre del contacto de la empresa.' }); return }
     // v23/v25: MO $0 solo si es garantía o si se solicita anular la OT
@@ -213,7 +249,7 @@ export default function NuevaOT() {
       ot_numero: f.ot_numero.trim() || null, fecha: f.fecha || null,
       patente: patFmt, marca: marcaFinal(), modelo: f.modelo.trim(),
       cilindrada: f.cilindrada.trim(), anio: f.anio.trim(), km: kmNum,
-      tipo_cliente: f.tipo_cliente, propietario: f.propietario.trim(),
+      tipo_cliente: f.tipo_cliente, propietario: [f.propietario.trim(), esEmpresa ? '' : f.apellidos.trim()].filter(Boolean).join(' '),
       rut: f.rut.trim() ? formatRut(f.rut) : null, contacto_nombre: f.contacto_nombre.trim() || null,
       anulacion_solicitada: !!f.solicitar_anular, motivo_anulacion: f.solicitar_anular ? f.motivo_anulacion.trim() : null,
       telefono: f.telefono.trim(), email: f.email.trim(), ciudad: ciudadFinal(),
@@ -259,6 +295,11 @@ export default function NuevaOT() {
       }).eq('id', p.id)
     }
 
+    // v27: guarda el tipo de vehículo en la ficha (asociación con precios)
+    if (veh?.id && f.tipo_vehiculo && veh.tipo_vehiculo !== f.tipo_vehiculo) {
+      await supabase.from('vehiculos').update({ tipo_vehiculo: f.tipo_vehiculo }).eq('id', veh.id)
+    }
+
     // v23: solicitud de anulación → notifica a administración para registrarla como nula
     if (f.solicitar_anular) {
       await supabase.from('notificaciones').insert({
@@ -293,7 +334,7 @@ export default function NuevaOT() {
         tipoIngreso: f.tipo_ingreso, tecnicoPrincipal: tecPrincipalFinal(),
         tecnicosSecundarios: tecSecFinal(),
         patente: patFmt, marca: marcaFinal(), modelo: f.modelo, cilindrada: f.cilindrada,
-        anio: f.anio, km: f.km, tipoCliente: f.tipo_cliente, propietario: f.propietario,
+        anio: f.anio, km: f.km, tipoCliente: f.tipo_cliente, propietario: [f.propietario.trim(), esEmpresa ? '' : f.apellidos.trim()].filter(Boolean).join(' '),
         rut: f.rut, contactoNombre: f.contacto_nombre,
         telefono: f.telefono, email: f.email, ciudad: ciudadFinal(),
         direccion: f.direccion, direccionRef: f.direccion_ref,
@@ -346,15 +387,16 @@ export default function NuevaOT() {
             {OT_TIPO_INGRESO.map((t) => <option key={t}>{t}</option>)}
           </select>
         </Campo>
-        <Campo label="Sucursal">
-          <select className="input" value={f.sucursal} onChange={(e) => set('sucursal', e.target.value)}>
+        <Campo label="Sucursal" hint={sucursalFija ? 'Definida por tu perfil de asesor' : ''}>
+          <select className="input" value={f.sucursal} disabled={!!sucursalFija}
+                  onChange={(e) => set('sucursal', e.target.value)}>
             <option>Toyota</option><option>Multimarca</option>
           </select>
         </Campo>
         <Campo label="Técnico Principal">
           <select className="input" value={f.tecnico_principal} onChange={(e) => set('tecnico_principal', e.target.value)}>
             <option value="">Seleccionar…</option>
-            {OT_TECNICOS.map((t) => <option key={t}>{t}</option>)}
+            {LISTA_TECNICOS.map((t) => <option key={t}>{t}</option>)}
             <option>Otro</option>
           </select>
           {f.tecnico_principal === 'Otro' && (
@@ -364,7 +406,7 @@ export default function NuevaOT() {
         <div className="sm:col-span-2">
           <label className="label">Técnicos Secundarios <span className="text-slate-400 font-normal">(uno o más)</span></label>
           <div className="flex flex-wrap gap-2">
-            {OT_TECNICOS.map((t) => <Chip key={t} activo={secSel.includes(t)} onClick={() => toggleSec(t)}>{t}</Chip>)}
+            {LISTA_TECNICOS.map((t) => <Chip key={t} activo={secSel.includes(t)} onClick={() => toggleSec(t)}>{t}</Chip>)}
             <Chip activo={secSel.includes('Otro')} onClick={() => toggleSec('Otro')}>Otro</Chip>
           </div>
           {secSel.includes('Otro') && (
@@ -394,6 +436,12 @@ export default function NuevaOT() {
         <Campo label="Modelo"><input className="input" value={f.modelo} onChange={(e) => set('modelo', e.target.value)} placeholder="Ej: Hilux, Yaris…" /></Campo>
         <Campo label="Cilindrada"><input className="input" value={f.cilindrada} onChange={(e) => set('cilindrada', e.target.value)} placeholder="Ej: 2.0, 2.4…" /></Campo>
         <Campo label="Kilometraje"><input className="input" type="number" value={f.km} onChange={(e) => set('km', e.target.value)} placeholder="Ej: 87500" /></Campo>
+        <Campo label="Tipo de Vehículo" hint="Asocia el vehículo a la lista de precios (MO por tipo)">
+          <select className="input" value={f.tipo_vehiculo} onChange={(e) => set('tipo_vehiculo', e.target.value)}>
+            <option value="">Seleccionar…</option>
+            {TIPOS_VEHICULO.map((t) => <option key={t}>{t}</option>)}
+          </select>
+        </Campo>
       </Seccion>
 
       <Seccion n={3} titulo="Datos del Cliente">
@@ -402,10 +450,16 @@ export default function NuevaOT() {
             {OT_TIPO_CLIENTE.map((t) => <option key={t}>{t}</option>)}
           </select>
         </Campo>
-        <Campo label={esEmpresa ? 'Razón Social' : 'Propietario'} req>
+        <Campo label={esEmpresa ? 'Razón Social' : 'Nombre(s)'} req>
           <input className="input" value={f.propietario} onChange={(e) => set('propietario', e.target.value)}
-                 placeholder={esEmpresa ? 'Ej: Transportes del Norte SpA' : 'Nombre y apellidos'} />
+                 placeholder={esEmpresa ? 'Ej: Transportes del Norte SpA' : 'Ej: Juan Pablo'} />
         </Campo>
+        {!esEmpresa && (
+          <Campo label="Apellido(s)" req>
+            <input className="input" value={f.apellidos} onChange={(e) => set('apellidos', e.target.value)}
+                   placeholder="Ej: Pérez Soto" />
+          </Campo>
+        )}
         <Campo label="RUT" req>
           <input className="input" value={f.rut} onChange={(e) => set('rut', e.target.value)}
                  onBlur={(e) => set('rut', e.target.value ? formatRut(e.target.value) : '')}
@@ -420,7 +474,15 @@ export default function NuevaOT() {
           <input className="input" value={f.telefono} onChange={(e) => set('telefono', e.target.value)}
                  onBlur={(e) => set('telefono', fmtFonoOT(e.target.value))} placeholder="+56 9 XXXX XXXX" />
         </Campo>
-        <Campo label={esEmpresa ? 'Correo del contacto' : 'Correo Electrónico'} req><input className="input" type="email" value={f.email} onChange={(e) => set('email', e.target.value)} placeholder="cliente@ejemplo.com" /></Campo>
+        <Campo label={esEmpresa ? 'Correo del contacto' : 'Correo Electrónico'} req={!f.sin_correo}>
+          <input className="input" type="email" value={f.email} disabled={f.sin_correo}
+                 onChange={(e) => set('email', e.target.value)} placeholder={f.sin_correo ? 'Sin correo' : 'cliente@ejemplo.com'} />
+          <label className="flex items-center gap-1.5 mt-1 text-[11px] text-slate-500 cursor-pointer">
+            <input type="checkbox" checked={f.sin_correo}
+                   onChange={(e) => { set('sin_correo', e.target.checked); if (e.target.checked) set('email', '') }} />
+            El cliente no aporta correo
+          </label>
+        </Campo>
         <Campo label="Ciudad">
           <select className="input" value={f.ciudad} onChange={(e) => set('ciudad', e.target.value)}>
             <option value="">Seleccionar…</option>
@@ -493,7 +555,7 @@ export default function NuevaOT() {
         <Campo label="Tipo de Servicio 1" req>
           <select className="input" value={f.tipo_servicio_1} onChange={(e) => set('tipo_servicio_1', e.target.value)}>
             <option value="">Seleccionar…</option>
-            {OT_SVC_GRUPOS.map((g) => (
+            {GRUPOS_SVC.map((g) => (
               <optgroup key={g.bu} label={g.bu}>{g.items.map((s) => <option key={s}>{s}</option>)}</optgroup>
             ))}
           </select>
@@ -501,7 +563,7 @@ export default function NuevaOT() {
         <Campo label="Tipo de Servicio 2 (opcional)">
           <select className="input" value={f.tipo_servicio_2} onChange={(e) => set('tipo_servicio_2', e.target.value)}>
             <option value="">Ninguno</option>
-            {OT_SVC_GRUPOS.map((g) => (
+            {GRUPOS_SVC.map((g) => (
               <optgroup key={g.bu} label={g.bu}>{g.items.map((s) => <option key={s}>{s}</option>)}</optgroup>
             ))}
           </select>

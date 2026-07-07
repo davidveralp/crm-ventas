@@ -2,7 +2,8 @@
 // DIDIAL CRM · GESTIONAR USUARIOS (Supabase Edge Function)
 // =====================================================================
 // Crea o elimina usuarios del equipo. Solo lo puede invocar un admin.
-//   { action: 'crear',    nombre, email, password, rol, activo }
+//   { action: 'crear',      nombre, email, password, rol, activo }
+//   { action: 'actualizar', usuario_id, nombre?, rol?, activo?, password? }  (v27)
 //   { action: 'eliminar', id }
 //
 // Despliegue:  supabase functions deploy gestionar-usuario
@@ -16,7 +17,7 @@ const cors = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 }
-const ROLES = ['admin', 'vendedor', 'supervisor', 'postventa', 'jefe_taller', 'tecnico', 'coordinador_adquisiciones', 'encargado_bodega']
+const ROLES = ['admin', 'vendedor', 'asesor_toyota', 'asesor_multimarca', 'supervisor', 'postventa', 'jefe_taller', 'tecnico', 'coordinador_adquisiciones', 'encargado_bodega', 'asistente_administrativo', 'asistente_bodega']
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } })
 
@@ -62,6 +63,29 @@ Deno.serve(async (req) => {
         return json({ error: 'No se pudo crear el perfil: ' + e2.message }, 400)
       }
       return json({ ok: true, id: created.user.id })
+    }
+
+    // v27: edición de usuarios desde administración (nombre, rol, estado y
+    // opcionalmente restablecer la contraseña vía auth admin API).
+    if (action === 'actualizar') {
+      const { usuario_id, nombre, rol, activo, password } = body
+      if (!usuario_id) return json({ error: 'Falta usuario_id' }, 400)
+      if (rol && !ROLES.includes(rol)) return json({ error: 'Rol inválido' }, 400)
+      const campos: Record<string, unknown> = {}
+      if (nombre) campos.nombre = nombre
+      if (rol) campos.rol = rol
+      if (typeof activo === 'boolean') campos.activo = activo
+      if (Object.keys(campos).length) {
+        const { error: eU } = await service.from('usuarios').update(campos)
+          .eq('id', usuario_id).eq('empresa_id', perfil.empresa_id)
+        if (eU) return json({ error: 'No se pudo actualizar el perfil: ' + eU.message }, 400)
+      }
+      if (password) {
+        if (String(password).length < 8) return json({ error: 'La contraseña debe tener al menos 8 caracteres' }, 400)
+        const { error: eP } = await service.auth.admin.updateUserById(usuario_id, { password })
+        if (eP) return json({ error: 'No se pudo cambiar la contraseña: ' + eP.message }, 400)
+      }
+      return json({ ok: true })
     }
 
     if (action === 'eliminar') {

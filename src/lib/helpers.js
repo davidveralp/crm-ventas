@@ -437,3 +437,39 @@ export function enviarASheet(url, data) {
     form.submit()
   })
 }
+
+
+// ====================================================================
+// v27 — Roles ampliados y sucursal por asesor
+// ====================================================================
+export const ROLES_USUARIO = {
+  admin: 'Administrador',
+  vendedor: 'Vendedor',
+  asesor_toyota: 'Asesor Toyota',
+  asesor_multimarca: 'Asesor Multimarca',
+  supervisor: 'Supervisor',
+  postventa: 'Postventa',
+  jefe_taller: 'Jefe de Taller',
+  tecnico: 'Técnico',
+  coordinador_adquisiciones: 'Encargado de Presupuestos / Adquisiciones',
+  encargado_bodega: 'Encargado de Bodega',
+  asistente_administrativo: 'Asistente Administrativo',
+  asistente_bodega: 'Asistente de Bodega'
+}
+export const rolLabel = (r) => ROLES_USUARIO[r] || r || '—'
+
+// Roles con función de asesor comercial (cartera de clientes, ficha, OT)
+export const ROLES_ASESOR = ['vendedor', 'asesor_toyota', 'asesor_multimarca']
+export const esRolAsesor = (rol) => ROLES_ASESOR.includes(rol)
+
+// Sucursal fija según quién ingresa la OT: por rol, con respaldo por
+// nombre para los asesores actuales (Diego Leyton = Toyota; David Rivera
+// y Matías Ponce = Multimarca).
+export const sucursalDeAsesor = (perfil) => {
+  if (perfil?.rol === 'asesor_toyota') return 'Toyota'
+  if (perfil?.rol === 'asesor_multimarca') return 'Multimarca'
+  const n = (perfil?.nombre || '').toLowerCase()
+  if (n.includes('diego') && n.includes('leyton')) return 'Toyota'
+  if ((n.includes('david') && n.includes('rivera')) || (n.includes('matias') && n.includes('ponce')) || (n.includes('matías') && n.includes('ponce'))) return 'Multimarca'
+  return null // sin sucursal fija: el usuario elige (ej. admin)
+}
