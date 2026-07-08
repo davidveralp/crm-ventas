@@ -271,3 +271,22 @@ Criterios simples, como definiste: **rango de fechas del servicio** (obligatorio
 - **Email masivo** → la campaña aparece en **Email marketing → Campañas** con la plantilla genérica de fidelización (logo, slogan y personalización {nombre}/{vehiculo}/{servicio}); defines el asunto al crearla.
 
 Las campañas personalizadas se distinguen con una etiqueta "Personalizada · fecha→fecha" en la lista.
+
+
+---
+
+# ACTUALIZACIÓN v30 · Asignación de campañas y auto-asignación de clientes
+
+Sin migración (solo frontend).
+
+## Al cargar una campaña a los asesores
+En el panel de la campaña (admin) aparece **"Asignar a:"** con dos modos:
+- **Vendedor de cada cliente (cartera)** — el comportamiento por defecto: cada tarea va al asesor dueño del cliente. Clientes nuevos → quien subió la OT (se asigna solo al crear la OT). Clientes antiguos sin vendedor quedan sin asignar y el resultado te dice cuántos fueron.
+- **Asignar todo a un asesor** — toda la audiencia de la campaña se carga a un único asesor que eliges de la lista. Útil para campañas puntuales o para repartir manualmente.
+
+## Auto-asignación de clientes (asesores)
+Los asesores ya ven la **lista completa de clientes**. Ahora además:
+- Filtro rápido **"Sin asignar"** (para todos) que muestra solo los clientes sin asesor.
+- En la columna Vendedor, botón **"+ Tomar cliente"** en cada cliente sin dueño: el asesor se lo auto-asigna (quien gestiona el registro se queda con él). El admin puede además "tomar" o reasignar cualquiera.
+
+Regla de negocio implementada: **quien sube la OT es el dueño por defecto** (asignación automática al crear la OT); para los **clientes antiguos sin dueño, quien los gestione los toma** con el botón.

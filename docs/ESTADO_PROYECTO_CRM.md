@@ -55,6 +55,10 @@ CRM comercial y operativo para **Servicio Automotriz Didial Ltda.** (La Serena, 
 - **Notificaciones**: tabla `notificaciones` (por usuario o rol), **campanita** en sidebar/móvil con badge, polling 30 s y **sonido de alerta** (WebAudio) al llegar nuevas. Cada hito del flujo de taller notifica al responsable.
 
 
+### Novedades v30 (07-07-2026)
+- **Selector de asesor destino** al "Cargar a asesores": por cartera (vendedor de cada cliente) o todo a un asesor elegido; el resultado reporta cuántos quedaron sin asignar.
+- **Auto-asignación**: asesores ven toda la lista de clientes, filtro rápido "Sin asignar", botón "+ Tomar cliente" (quien gestiona el registro lo toma); admin puede reasignar cualquiera.
+
 ### Novedades v29 (07-07-2026)
 - **Constructor de campañas** en Campañas (➕ Nueva campaña): criterios simples (rango de fechas de servicio, tipo mantención/reparación, visitas y monto mín) + canal tareas o email (plantilla genérica). Personalizadas de tareas viven en Campañas; de email en Email marketing.
 - **Campaña seed**: Fidelización · Servicios Junio – 6 Julio 2026 (canal tareas, activa) → "Cargar a asesores" → Clientes → Tareas.

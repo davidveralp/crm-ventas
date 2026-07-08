@@ -25,6 +25,7 @@ export default function Clientes() {
   const [segFiltro, setSegFiltro] = useState('')
   const [marcaFiltro, setMarcaFiltro] = useState('')
   const [vendFiltro, setVendFiltro] = useState('')
+  const [soloSinAsignar, setSoloSinAsignar] = useState(false)  // v29
   const [estadoFiltro, setEstadoFiltro] = useState('')
   const [modal, setModal]   = useState(false)
   const [form, setForm]     = useState(VACIO)
@@ -89,6 +90,7 @@ export default function Clientes() {
       (!segFiltro || c.segmento === segFiltro) &&
       (!marcaFiltro || c.marca_principal === marcaFiltro) &&
       (!vendFiltro || c.vendedor_id === vendFiltro) &&
+      (!soloSinAsignar || !c.vendedor_id) &&
       (!estadoFiltro ||
         (estadoFiltro === 'sin' ? !c.estado_id : c.estado_id === estadoFiltro)) &&
       (!q || c.nombre?.toLowerCase().includes(q) || c.apellidos?.toLowerCase().includes(q) ||
@@ -97,7 +99,19 @@ export default function Clientes() {
              c.rut?.toLowerCase().includes(q) ||
              (idsExtra && idsExtra.has(c.id)))
     ).sort(ORDENES[orden]?.fn || ORDENES.fact_desc.fn)
-  }, [lista, busca, segFiltro, marcaFiltro, vendFiltro, estadoFiltro, idsExtra, orden])
+  }, [lista, busca, segFiltro, marcaFiltro, vendFiltro, soloSinAsignar, estadoFiltro, idsExtra, orden])
+
+  // v29: un asesor puede tomar (auto-asignarse) un cliente sin dueño, o
+  // cualquiera si es admin. Quien gestiona el registro se queda con él.
+  async function autoAsignar(e, cliente) {
+    e.stopPropagation()
+    const yo = perfil.id
+    if (cliente.vendedor_id && cliente.vendedor_id !== yo && !esAdmin) {
+      if (!confirm('Este cliente ya tiene otro asesor asignado. ¿Tomarlo de todas formas?')) return
+    }
+    await supabase.from('clientes').update({ vendedor_id: yo }).eq('id', cliente.id)
+    cargar()
+  }
 
   const estadoDe = (id) => estados.find((e) => e.id === id)
 
@@ -182,6 +196,12 @@ export default function Clientes() {
             {vendedores.map((v) => <option key={v.id} value={v.id}>{v.nombre}</option>)}
           </select>
         )}
+        <button onClick={() => setSoloSinAsignar((v) => !v)}
+                className={`pill border text-sm ${soloSinAsignar ? 'bg-deep text-white border-deep' : 'text-slate-600'}`}
+                style={soloSinAsignar ? {} : { borderColor: '#e2e8f0' }}
+                title="Clientes sin asesor asignado (disponibles para tomar)">
+          Sin asignar
+        </button>
       </div>
 
       {otHuerfana && (
@@ -229,7 +249,19 @@ export default function Clientes() {
                     </td>
                     <td className="px-4 py-3 text-right font-medium">{fmtCLP(c.facturacion_total)}</td>
                     <td className="px-4 py-3 text-center hidden md:table-cell text-slate-500">{c.num_ot || 0}</td>
-                    <td className="px-4 py-3 hidden lg:table-cell text-slate-500">{c.usuarios?.nombre || '—'}</td>
+                    <td className="px-4 py-3 hidden lg:table-cell text-slate-500">
+                      {c.usuarios?.nombre
+                        ? (<span className="inline-flex items-center gap-1.5">
+                            {c.usuarios.nombre}
+                            {esAdmin && c.vendedor_id !== perfil.id && (
+                              <button onClick={(e) => autoAsignar(e, c)} className="text-[10px] text-deep hover:underline">tomar</button>
+                            )}
+                          </span>)
+                        : (<button onClick={(e) => autoAsignar(e, c)}
+                                   className="text-xs px-2 py-0.5 rounded-lg border border-deep/40 text-deep hover:bg-deep hover:text-white transition">
+                            + Tomar cliente
+                          </button>)}
+                    </td>
                   </tr>
                 )
               })}

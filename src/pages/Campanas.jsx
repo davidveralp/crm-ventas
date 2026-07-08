@@ -16,6 +16,8 @@ export default function Campanas() {
   const [coincidencias, setCoincidencias] = useState([])
   const [enviando, setEnviando] = useState(false)
   const [cargandoAsesores, setCargandoAsesores] = useState(false)
+  const [asesores, setAsesores] = useState([])
+  const [asesorDestino, setAsesorDestino] = useState('cartera')  // 'cartera' | <id de asesor>
   const [modalNueva, setModalNueva] = useState(false)
   const NUEVA = { nombre: '', descripcion: '', fecha_desde: '', fecha_hasta: '',
                   tipo_servicio: 'todos', min_visitas: '', monto_min: '', canal: 'tareas', asunto: '' }
@@ -60,6 +62,9 @@ export default function Campanas() {
   useEffect(() => { cargar() }, [])
 
   async function cargar() {
+    supabase.from('usuarios').select('id,nombre')
+      .in('rol', ['vendedor', 'asesor_toyota', 'asesor_multimarca']).eq('activo', true).order('nombre')
+      .then(({ data }) => setAsesores(data || []))
     // v23/v29: aquí viven las campañas comerciales y las personalizadas de
     // canal TAREAS; las de email (con criterio de envío) están en Email marketing
     const { data } = await supabase.from('campanas').select('*')
@@ -113,17 +118,24 @@ export default function Campanas() {
       return
     }
     if (!coincidencias.length) { setResultadoEnvio('No hay clientes que coincidan con esta campaña.'); return }
-    if (!confirm(`Se asignarán ${coincidencias.length} tarea(s) de campaña a los vendedores según su cartera. ¿Continuar?`)) return
+    const destinoNombre = asesorDestino === 'cartera'
+      ? 'el vendedor de la cartera de cada cliente'
+      : (asesores.find((a) => a.id === asesorDestino)?.nombre || 'el asesor elegido')
+    if (!confirm(`Se asignarán ${coincidencias.length} tarea(s) de campaña a ${destinoNombre}. ¿Continuar?`)) return
     setCargandoAsesores(true); setResultadoEnvio('')
+    // v29: destino = por cartera (vendedor de cada cliente) o un asesor fijo
     const filas = coincidencias.map((c) => ({
       empresa_id: perfil.empresa_id, campana_id: sel.id, cliente_id: c.id,
-      vendedor_id: c.vendedor_id || null, canal: sel.canal || null, estado: 'pendiente'
+      vendedor_id: asesorDestino === 'cartera' ? (c.vendedor_id || null) : asesorDestino,
+      canal: sel.canal || null, estado: 'pendiente'
     }))
     const { error } = await supabase.from('tareas_campana')
       .upsert(filas, { onConflict: 'campana_id,cliente_id', ignoreDuplicates: true })
     setCargandoAsesores(false)
     if (error) { setResultadoEnvio('Error: ' + error.message); return }
-    setResultadoEnvio(`Listo: ${filas.length} tarea(s) asignada(s). Cada vendedor las ve en Clientes → pestaña Tareas (los clientes sin vendedor quedan para que administración los reasigne).`)
+    const sinVend = asesorDestino === 'cartera' ? filas.filter((f) => !f.vendedor_id).length : 0
+    setResultadoEnvio(`Listo: ${filas.length} tarea(s) asignada(s) a ${destinoNombre}. Se ven en Clientes → pestaña Tareas.` +
+      (sinVend ? ` ${sinVend} cliente(s) sin vendedor quedaron sin asignar: reasígnalos o vuelve a cargar eligiendo un asesor.` : ''))
   }
 
   async function enviarEmail() {
@@ -221,7 +233,23 @@ export default function Campanas() {
             </div>
 
             {esAdmin && (
-              <div className="flex flex-wrap justify-end gap-2 pt-2 border-t border-slate-100">
+              <div className="pt-2 border-t border-slate-100 space-y-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <label className="text-xs text-slate-500">Asignar a:</label>
+                  <select className="input w-auto text-sm py-1.5" value={asesorDestino}
+                          onChange={(e) => setAsesorDestino(e.target.value)}>
+                    <option value="cartera">Vendedor de cada cliente (cartera)</option>
+                    <optgroup label="— Asignar todo a un asesor —">
+                      {asesores.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+                    </optgroup>
+                  </select>
+                  <span className="text-[11px] text-slate-400">
+                    {asesorDestino === 'cartera'
+                      ? 'Clientes nuevos → quien subió la OT; antiguos sin vendedor quedan sin asignar.'
+                      : 'Toda la audiencia irá a este asesor.'}
+                  </span>
+                </div>
+              <div className="flex flex-wrap justify-end gap-2">
                 <button className="btn-soft" onClick={cargarAAsesores} disabled={cargandoAsesores}>
                   {cargandoAsesores ? 'Cargando…' : 'Cargar a asesores'}
                 </button>
@@ -242,6 +270,7 @@ export default function Campanas() {
                 {sel.estado !== 'archivada' && (
                   <button className="btn-soft text-slate-500" onClick={() => cambiarEstado(sel.id, 'archivada')}>Archivar</button>
                 )}
+              </div>
               </div>
             )}
 
