@@ -28,7 +28,7 @@ export default function TareasCampana({ perfil, esAdmin }) {
   useEffect(() => { cargar() }, [perfil?.empresa_id])
   async function cargar() {
     const data = await fetchAllRows('tareas_campana',
-      '*, clientes(nombre,apellidos,telefono,segmento,ultima_visita), campanas(nombre,canal), usuarios:vendedor_id(nombre)',
+      '*, clientes(nombre,apellidos,telefono,segmento,ultima_visita,marca_principal), campanas(nombre,canal), usuarios:vendedor_id(nombre)',
       (q) => q.order('creado_en', { ascending: false }))
     setTareas(data || [])
     if (esAdmin) {
@@ -49,7 +49,10 @@ export default function TareasCampana({ perfil, esAdmin }) {
       (!fEstado || t.estado === fEstado) &&
       (!fCampana || t.campana_id === fCampana) &&
       (esAdmin ? (!fVendedor || (fVendedor === 'sin' ? !t.vendedor_id : t.vendedor_id === fVendedor))
-               : (t.vendedor_id === perfil?.id || !t.vendedor_id)) &&
+               : (perfil?.rol === 'asesor_multimarca'
+                    // cartera multimarca compartida: ven todos los clientes NO Toyota
+                    ? (t.clientes?.marca_principal || '').toUpperCase() !== 'TOYOTA'
+                    : (t.vendedor_id === perfil?.id || !t.vendedor_id))) &&
       (!q || nomCli(t).toLowerCase().includes(q) || (t.clientes?.telefono || '').includes(q))
     )
   }, [tareas, fEstado, fCampana, fVendedor, busca, esAdmin, perfil?.id])

@@ -67,6 +67,48 @@ export default function ClienteDetalle() {
   const [margenes, setMargenes] = useState({ ajuste_asesor_pct: 10 })
   const [modalTaller, setModalTaller] = useState(null) // vehículo a derivar
   const [modalCotiza, setModalCotiza] = useState(null) // vehículo a cotizar (rápida)
+  const [modalPresup, setModalPresup] = useState(null) // vehículo para solicitar presupuesto al encargado
+  const [fp, setFp] = useState({ desc: '', items: [] })
+  const [fpBusca, setFpBusca] = useState(''); const [fpRes, setFpRes] = useState([])
+  const [fpGuardando, setFpGuardando] = useState(false)
+
+  async function fpBuscar(q) {
+    setFpBusca(q)
+    if (q.trim().length < 2) { setFpRes([]); return }
+    const tv = modalPresup?.tipo_vehiculo || null
+    let query = supabase.from('precios_base')
+      .select('tipo,codigo,nombre,tipo_vehiculo,valor_mo,rep_eco,insumos,precio')
+      .or(`nombre.ilike.%${q.trim()}%,codigo.ilike.%${q.trim()}%`).limit(40)
+    const { data } = await query
+    let filas = (data || []).filter((x) => x.tipo !== 'servicio' || svcAplicaAVehiculo(x.tipo_vehiculo, tv))
+    setFpRes(filas.slice(0, 10))
+  }
+  function fpAgregar(r) {
+    const precioRef = r.tipo === 'servicio' ? (+r.valor_mo || 0) : (+r.precio || 0)
+    setFp({ ...fp, items: [...fp.items, { codigo: r.codigo || '', detalle: r.nombre, cant: 1, precio_ref: Math.round(precioRef) }] })
+    setFpBusca(''); setFpRes([])
+  }
+  async function enviarSolicitudPresup() {
+    if (!fp.desc.trim() && !fp.items.length) return alert('Describe lo que necesitas cotizar o agrega al menos un servicio.')
+    setFpGuardando(true)
+    const { error } = await supabase.from('presupuestos').insert({
+      empresa_id: perfil.empresa_id, cliente_id: cliente.id, vehiculo_id: modalPresup.id,
+      vendedor_id: cliente.vendedor_id || perfil.id, solicitado_por: perfil.id,
+      origen: 'solicitud_ficha', estado: 'borrador',
+      descripcion: fp.desc.trim() || `Solicitud de presupuesto · ${[modalPresup.marca, modalPresup.modelo].filter(Boolean).join(' ')}`,
+      items: fp.items, notas: 'Solicitado desde la ficha del cliente por el asesor.'
+    })
+    setFpGuardando(false)
+    if (error) return alert('Error: ' + error.message + '\n(¿Ejecutaste la migración 35?)')
+    await supabase.from('notificaciones').insert({
+      empresa_id: perfil.empresa_id, rol: 'coordinador_adquisiciones',
+      titulo: 'Nueva solicitud de presupuesto (comercial)',
+      cuerpo: `${nombreCompleto(cliente)} · ${[modalPresup.marca, modalPresup.modelo].filter(Boolean).join(' ')} · ${fp.items.length} ítem(s) sugeridos`,
+      url: '/presupuestos'
+    })
+    setModalPresup(null); setFp({ desc: '', items: [] })
+    alert('✓ Solicitud enviada al encargado de presupuestos. La verá en Presupuestos → Comerciales.')
+  }
   const [ft, setFt] = useState({ servicio: '', tareas: [''], obs: '' })
   const [sheetUpdateUrl, setSheetUpdateUrl] = useState('')
   const [tareasCat, setTareasCat] = useState({}) // servicio -> [titulos]
@@ -655,19 +697,15 @@ export default function ClienteDetalle() {
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
                       {v.ventana && <Pill color={VENTANAS[v.ventana]?.color}>{VENTANAS[v.ventana]?.label}</Pill>}
-                      <button onClick={() => nuevaOT(v)}
-                              className="text-xs font-medium px-2.5 py-1 rounded-lg border border-didial-red/40 text-didial-red hover:bg-didial-red hover:text-white transition-colors">
-                        Nueva OT
-                      </button>
-                      <button onClick={() => { setModalTaller(v); setFt({ servicio: '', tareas: [''], obs: '' }) }}
-                              className="text-xs font-medium px-2.5 py-1 rounded-lg border border-deep/40 text-deep hover:bg-deep hover:text-white transition-colors">
-                        Solicitar servicio
-                      </button>
-                      <button onClick={() => setModalCotiza(v)}
-                              className="text-xs font-medium px-2.5 py-1 rounded-lg border border-slate-300 text-slate-600 hover:bg-ink hover:text-white transition-colors"
-                              title="Cotización rápida con la base de precios (servicios planos) · ticket imprimible">
-                        Cotizar
-                      </button>
+                      <div className="flex flex-wrap gap-1.5">
+                        <button onClick={() => nuevaOT(v)} className="btn-accion">Nueva OT</button>
+                        <button onClick={() => { setModalTaller(v); setFt({ servicio: '', tareas: [''], obs: '' }) }}
+                                className="btn-accion" title="Enviar el vehículo a revisión técnica al taller">Solicitar revisión</button>
+                        <button onClick={() => setModalCotiza(v)} className="btn-accion"
+                                title="Cotización rápida con la base de precios (servicios planos) · ticket imprimible">Cotizar</button>
+                        <button onClick={() => { setModalPresup(v); setFp({ desc: '', items: [] }); setFpBusca(''); setFpRes([]) }}
+                                className="btn-accion" title="Solicitar un presupuesto al encargado de presupuestos (llega a Presupuestos → Comerciales)">Solicitar presupuesto</button>
+                      </div>
                       <button onClick={() => abrirEditarVehiculo(v)} className="text-xs text-deep hover:underline">Editar</button>
                       <button onClick={() => borrarVehiculo(v.id)} className="text-xs text-slate-300 hover:text-red-500">✕</button>
                     </div>
@@ -1067,9 +1105,60 @@ export default function ClienteDetalle() {
                           onListo={() => { setModalCotiza(null); cargar() }} />
       )}
 
+      {/* v31 · Solicitar presupuesto al encargado (→ Presupuestos → Comerciales) */}
+      <Modal abierto={!!modalPresup} onClose={() => setModalPresup(null)}
+             titulo={`Solicitar presupuesto · ${modalPresup?.marca || ''} ${modalPresup?.modelo || ''} ${modalPresup?.patente ? '· ' + formatPatente(modalPresup.patente) : ''}`}>
+        <div className="space-y-3">
+          <p className="text-xs text-slate-500">La solicitud llega al encargado de presupuestos en <b>Presupuestos → Comerciales</b>, lista para cotizar y gestionar.</p>
+          <div>
+            <label className="label">¿Qué necesitas cotizar?</label>
+            <textarea className="input" rows="3" value={fp.desc}
+                      placeholder="Describe el trabajo o los repuestos a cotizar…"
+                      onChange={(e) => setFp({ ...fp, desc: e.target.value })} />
+          </div>
+          <div>
+            <label className="label">Pre-cargar servicios de la base de precios (opcional)</label>
+            <div className="relative">
+              <input className="input text-sm" value={fpBusca} onChange={(e) => fpBuscar(e.target.value)}
+                     placeholder={`🔎 Buscar servicio${modalPresup?.tipo_vehiculo ? ' · ' + modalPresup.tipo_vehiculo : ''}…`} />
+              {!!fpRes.length && (
+                <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-52 overflow-y-auto">
+                  {fpRes.map((r, i) => (
+                    <button key={i} type="button" onClick={() => fpAgregar(r)}
+                            className="w-full text-left px-3 py-1.5 text-xs hover:bg-mist/60 border-b border-slate-50">
+                      <span className="font-mono text-slate-400 mr-1.5">{r.codigo}</span>
+                      <span className="text-ink">{r.nombre}</span>
+                      <span className="text-slate-400"> · {fmtCLP(r.tipo === 'servicio' ? (+r.valor_mo || 0) : r.precio || 0)}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          {!!fp.items.length && (
+            <div className="space-y-1">
+              {fp.items.map((it, i) => (
+                <div key={i} className="flex items-center gap-2 text-sm rounded border border-slate-100 px-2 py-1">
+                  <span className="flex-1 text-ink">{it.detalle}</span>
+                  <span className="text-xs text-slate-400">ref {fmtCLP(it.precio_ref)}</span>
+                  <button className="text-slate-300 hover:text-red-500" onClick={() => setFp({ ...fp, items: fp.items.filter((_, j) => j !== i) })}>✕</button>
+                </div>
+              ))}
+              <p className="text-[10px] text-slate-400">Los montos son referenciales: el encargado fija el precio final al cotizar.</p>
+            </div>
+          )}
+          <div className="flex justify-end gap-2">
+            <button className="btn-soft text-sm" onClick={() => setModalPresup(null)}>Cancelar</button>
+            <button className="btn-primary text-sm" disabled={fpGuardando} onClick={enviarSolicitudPresup}>
+              {fpGuardando ? 'Enviando…' : 'Enviar al encargado'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
       {/* Modal solicitar servicio (deriva al taller) */}
       <Modal abierto={!!modalTaller} onClose={() => setModalTaller(null)}
-             titulo={`Solicitar servicio · ${modalTaller?.patente || ''} ${modalTaller?.marca || ''} ${modalTaller?.modelo || ''}`}>
+             titulo={`Solicitar revisión · ${modalTaller?.patente || ''} ${modalTaller?.marca || ''} ${modalTaller?.modelo || ''}`}>
         <div className="space-y-4">
           <div>
             <label className="label">Servicio solicitado <span className="text-red-500">*</span></label>

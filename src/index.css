@@ -74,3 +74,10 @@ body {
          border-2 transition-colors;
 }
 .step-line { @apply h-0.5 flex-1 min-w-[18px] rounded-full transition-colors; }
+
+
+/* v31 · Botones de acción de la ficha del cliente, formato unificado */
+.btn-accion {
+  @apply text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700
+         bg-white hover:bg-deep hover:text-white hover:border-deep transition-colors;
+}

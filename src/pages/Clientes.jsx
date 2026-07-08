@@ -26,6 +26,7 @@ export default function Clientes() {
   const [marcaFiltro, setMarcaFiltro] = useState('')
   const [vendFiltro, setVendFiltro] = useState('')
   const [soloSinAsignar, setSoloSinAsignar] = useState(false)  // v29
+  const [soloMultimarca, setSoloMultimarca] = useState(false)  // v32
   const [estadoFiltro, setEstadoFiltro] = useState('')
   const [modal, setModal]   = useState(false)
   const [form, setForm]     = useState(VACIO)
@@ -91,6 +92,7 @@ export default function Clientes() {
       (!marcaFiltro || c.marca_principal === marcaFiltro) &&
       (!vendFiltro || c.vendedor_id === vendFiltro) &&
       (!soloSinAsignar || !c.vendedor_id) &&
+      (!soloMultimarca || (c.marca_principal || '').toUpperCase() !== 'TOYOTA') &&
       (!estadoFiltro ||
         (estadoFiltro === 'sin' ? !c.estado_id : c.estado_id === estadoFiltro)) &&
       (!q || c.nombre?.toLowerCase().includes(q) || c.apellidos?.toLowerCase().includes(q) ||
@@ -99,7 +101,7 @@ export default function Clientes() {
              c.rut?.toLowerCase().includes(q) ||
              (idsExtra && idsExtra.has(c.id)))
     ).sort(ORDENES[orden]?.fn || ORDENES.fact_desc.fn)
-  }, [lista, busca, segFiltro, marcaFiltro, vendFiltro, soloSinAsignar, estadoFiltro, idsExtra, orden])
+  }, [lista, busca, segFiltro, marcaFiltro, vendFiltro, soloSinAsignar, soloMultimarca, estadoFiltro, idsExtra, orden])
 
   // v29: un asesor puede tomar (auto-asignarse) un cliente sin dueño, o
   // cualquiera si es admin. Quien gestiona el registro se queda con él.
@@ -201,6 +203,12 @@ export default function Clientes() {
                 style={soloSinAsignar ? {} : { borderColor: '#e2e8f0' }}
                 title="Clientes sin asesor asignado (disponibles para tomar)">
           Sin asignar
+        </button>
+        <button onClick={() => setSoloMultimarca((v) => !v)}
+                className={`pill border text-sm ${soloMultimarca ? 'bg-deep text-white border-deep' : 'text-slate-600'}`}
+                style={soloMultimarca ? {} : { borderColor: '#e2e8f0' }}
+                title="Clientes multimarca (marca distinta de Toyota)">
+          Multimarca
         </button>
       </div>
 

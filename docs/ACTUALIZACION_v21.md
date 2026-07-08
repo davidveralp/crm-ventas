@@ -290,3 +290,44 @@ Los asesores ya ven la **lista completa de clientes**. Ahora además:
 - En la columna Vendedor, botón **"+ Tomar cliente"** en cada cliente sin dueño: el asesor se lo auto-asigna (quien gestiona el registro se queda con él). El admin puede además "tomar" o reasignar cualquiera.
 
 Regla de negocio implementada: **quien sube la OT es el dueño por defecto** (asignación automática al crear la OT); para los **clientes antiguos sin dueño, quien los gestione los toma** con el botón.
+
+
+---
+
+# ACTUALIZACIÓN v31 · Solicitar presupuesto desde la ficha + botones unificados
+
+## Migración
+**`database/35_actualizacion_v31.sql`**: agrega a la tabla `presupuestos` (comercial) las columnas `items` (jsonb), `solicitado_por` y `origen`.
+
+## Botones de acción de la ficha (por vehículo)
+Ahora son cuatro, ordenados y con **formato unificado** (clase `btn-accion`): **Nueva OT · Solicitar revisión · Cotizar · Solicitar presupuesto**. El botón "Solicitar servicio" pasó a llamarse **"Solicitar revisión"** (coherente con que el taller primero evalúa antes de ejecutar).
+
+## Solicitar presupuesto (nuevo)
+Abre un modal donde el asesor **describe lo que necesita cotizar** y puede **pre-cargar servicios de la base de precios** (buscador filtrado por el tipo del vehículo; montos referenciales). Al enviar:
+- Crea un registro en la tabla `presupuestos` con `origen = 'solicitud_ficha'`, estado `borrador`, los ítems sugeridos y el vínculo cliente/vehículo.
+- **Aparece en Presupuestos → pestaña Comerciales**, con la etiqueta "Solicitud del asesor" y la cuenta de ítems sugeridos.
+- Notifica al encargado de presupuestos (rol coordinador_adquisiciones).
+- El encargado hace clic en la fila → modal con la descripción y los servicios sugeridos → "Tomar solicitud (en seguimiento)" o "Abrir ficha para cotizar".
+
+## Dónde se guardan las cotizaciones (tu consulta)
+Aclaración importante: las **cotizaciones rápidas** (botón "Cotizar") se guardan en la tabla `presupuestos_taller` con `origen = 'rapida'`, y se ven en **Presupuestos → pestaña Taller** (no en Comerciales) y en la propia ficha del cliente, sección "Presupuestos del taller para conversar". No se movieron: conforme a lo que definiste, la cotización rápida se queda en Taller y solo la nueva "Solicitar presupuesto" va a Comerciales.
+
+
+---
+
+# ACTUALIZACIÓN v32 · Roles de asesores y cartera multimarca compartida
+
+## Migración
+**`database/36_actualizacion_v32.sql`** (en crm-ventas, requiere los roles nuevos del PASO 1 de la migración 33):
+- Diego Leyton → rol **asesor_toyota**; David Rivera y Matías Ponce → **asesor_multimarca**.
+- Ángel Yáñez → **inactivo** (reemplazado por Matías).
+- **Reparto 50/50** de la cartera multimarca sin dueño válido (clientes con marca ≠ Toyota, sin vendedor o con vendedor inactivo como Ángel) entre David y Matías.
+- Diagnóstico final: cuántos clientes quedó con cada asesor.
+Si algún nombre no coincide exactamente en la base, edita los `like` de la migración antes de ejecutarla.
+
+## Cartera multimarca compartida (frontend)
+- En **Clientes → pestaña Tareas**, los asesores con rol **asesor_multimarca** ven y gestionan **todas** las tareas de clientes multimarca (marca ≠ Toyota), no solo las suyas — cartera compartida entre David y Matías.
+- En la lista de **Clientes** se agregó el filtro rápido **"Multimarca"** (junto a "Sin asignar") para trabajar solo esa cartera. Todos los asesores ya veían la lista completa (v30); esto solo facilita el foco.
+
+## Nota sobre los botones nuevos (v31)
+Los 4 botones (Nueva OT · Solicitar revisión · Cotizar · Solicitar presupuesto) y el renombre ya están en el código. Si en producción sigues viendo los antiguos ("Solicitar servicio", sin "Solicitar presupuesto"), es que el deploy de v31 aún no se aplicó: vuelve a subir el zip al repo, espera el build "Ready" en Vercel y recarga con Ctrl+Shift+R.

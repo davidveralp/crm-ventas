@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { Pill, StatCard, EmptyState } from '../components/UI'
+import { Modal } from '../components/UI'
 import { fmtCLP, fmtFecha, ESTADOS_PRESUPUESTO, ESTADOS_PRESUP_TALLER, SECCIONES_PRESUP, seccionDe } from '../lib/helpers'
 import { useAuth } from '../context/AuthContext'
 import { notificar } from '../lib/notificar'
@@ -201,6 +202,7 @@ function PresupuestosInterno() {
               <tr>
                 <th className="text-left font-medium px-4 py-3">Cliente</th>
                 <th className="text-left font-medium px-4 py-3 hidden md:table-cell">Descripción</th>
+                <th className="text-center font-medium px-4 py-3 hidden lg:table-cell">Ítems sugeridos</th>
                 <th className="text-right font-medium px-4 py-3">Monto</th>
                 <th className="text-left font-medium px-4 py-3">Estado</th>
                 <th className="text-left font-medium px-4 py-3 hidden sm:table-cell">Próx. gestión</th>
@@ -215,7 +217,13 @@ function PresupuestosInterno() {
                       onClick={() => navigate(`/clientes/${p.cliente_id}`)}>
                     <td className="px-4 py-3 font-medium text-ink">{[p.clientes?.nombre, p.clientes?.apellidos].filter(Boolean).join(' ')}</td>
                     <td className="px-4 py-3 hidden md:table-cell text-slate-500 max-w-xs truncate">
+                      {p.origen === 'solicitud_ficha' && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-didial-amber/20 text-didial-amber mr-1">Solicitud del asesor</span>
+                      )}
                       {p.descripcion || '—'}
+                    </td>
+                    <td className="px-4 py-3 text-center hidden lg:table-cell text-slate-500 text-xs">
+                      {(p.items?.length || 0) > 0 ? `${p.items.length} ítem(s)` : '—'}
                     </td>
                     <td className="px-4 py-3 text-right font-medium">{fmtCLP(p.monto)}</td>
                     <td className="px-4 py-3">
@@ -236,6 +244,42 @@ function PresupuestosInterno() {
         </div>
       )}
       </>)}
+
+      {/* v31 · Gestión de una solicitud de presupuesto llegada desde la ficha */}
+      <Modal abierto={!!detalle} onClose={() => setDetalle(null)}
+             titulo={detalle ? `Solicitud · ${[detalle.clientes?.nombre, detalle.clientes?.apellidos].filter(Boolean).join(' ')}` : ''}>
+        {detalle && (
+          <div className="space-y-3">
+            <div className="rounded-lg bg-paper p-3 text-sm text-slate-700 whitespace-pre-wrap">
+              {detalle.descripcion || 'Sin descripción'}
+            </div>
+            {(detalle.items?.length || 0) > 0 && (
+              <div>
+                <div className="text-xs font-semibold text-slate-500 uppercase mb-1">Servicios sugeridos por el asesor</div>
+                <div className="space-y-1">
+                  {detalle.items.map((it, i) => (
+                    <div key={i} className="flex items-center justify-between text-sm rounded border border-slate-100 px-2 py-1">
+                      <span className="text-ink">{it.codigo ? <span className="font-mono text-slate-400 mr-1.5">{it.codigo}</span> : null}{it.detalle}</span>
+                      <span className="text-xs text-slate-400">ref {fmtCLP(it.precio_ref || 0)}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">Montos referenciales. Fija el precio final al cotizar en la ficha del cliente.</p>
+              </div>
+            )}
+            <div className="flex flex-wrap justify-end gap-2 pt-1">
+              <button className="btn-soft text-sm" onClick={() => navigate(`/clientes/${detalle.cliente_id}`)}>Abrir ficha para cotizar</button>
+              {detalle.estado === 'borrador' && (
+                <button className="btn-primary text-sm" onClick={async () => {
+                  await supabase.from('presupuestos').update({ estado: 'en_seguimiento' }).eq('id', detalle.id)
+                  setDetalle(null); cargar()
+                }}>Tomar solicitud (en seguimiento)</button>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
+
     </div>
   )
 }
