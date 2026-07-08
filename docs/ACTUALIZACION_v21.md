@@ -251,3 +251,23 @@ Vuelve a ser una lista corta de tipos/categorías — **la lista anterior FUSION
 Filtra los servicios/precios **dentro** de cada categoría (las categorías siempre están visibles), ahora con **match flexible**: un vehículo PICK UP también encuentra los servicios tarificados como "PICK UP/VAN/FURGON", y un VAN/FURGON/CAMION encuentra los "…DOBLE RODADO" (antes esos combos no calzaban nunca por comparación exacta).
 
 Los tipos sin categoría equivalente en la planilla (MAN X PAUTA, MAN BASICA, REFRIGERACION, DPF, ADMISION EGR, OTROS…) siguen funcionando igual: sin filtro, muestran toda la base al buscar. MAN X PAUTA conserva sus 31 tareas predefinidas del documento oficial.
+
+
+---
+
+# ACTUALIZACIÓN v29 · Campañas personalizadas desde el CRM
+
+## Migración
+**`database/34_actualizacion_v29.sql`**: audiencia_campana v3 (criterio 'personalizada' por rango de fechas de servicio + filtros opcionales) y **seed de la campaña solicitada**: "Fidelización · Servicios Junio – 6 Julio 2026" (canal tareas, ya activa). El diagnóstico final de la migración te dice cuántos clientes entran.
+
+## Tu campaña de junio – 6 de julio (lista para usar)
+1. Ejecuta la migración 34.
+2. Campañas → selecciona "Fidelización · Servicios Junio – 6 Julio 2026" → verás la audiencia calculada en vivo (todos los clientes con algún servicio entre 01-06 y 06-07).
+3. **"Cargar a asesores"** → crea una tarea de campaña por cliente, asignada al vendedor de su cartera (los sin vendedor quedan para reasignar). Cada asesor las trabaja en **Clientes → pestaña Tareas** (llamada/WhatsApp, comentarios, estados).
+
+## Constructor de campañas (botón "➕ Nueva campaña")
+Criterios simples, como definiste: **rango de fechas del servicio** (obligatorio), **tipo de servicio** (todos / solo mantenciones / solo reparaciones), **visitas mínimas** y **monto histórico mínimo** (opcionales), y **canal**:
+- **Tareas para asesores** → la campaña queda en esta misma página, activa, lista para "Cargar a asesores". Para canal tareas la audiencia exige teléfono o email (no solo email).
+- **Email masivo** → la campaña aparece en **Email marketing → Campañas** con la plantilla genérica de fidelización (logo, slogan y personalización {nombre}/{vehiculo}/{servicio}); defines el asunto al crearla.
+
+Las campañas personalizadas se distinguen con una etiqueta "Personalizada · fecha→fecha" en la lista.

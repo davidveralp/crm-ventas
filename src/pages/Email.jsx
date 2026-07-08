@@ -22,7 +22,8 @@ function CampanasEmail() {
   async function cargar() {
     const { data } = await supabase.from('campanas')
       .select('*').not('criterio', 'is', null).order('prioridad')
-    setLista(data || [])
+    // v29: las personalizadas de canal TAREAS viven en Campañas, no aquí
+    setLista((data || []).filter((c) => c.criterio?.canal !== 'tareas'))
   }
   async function abrir(c) {
     setSel(c); setAud(null); setMsg('')

@@ -20,7 +20,7 @@
 const SB_URL  = 'https://TU-PROYECTO.supabase.co';      // VITE_SUPABASE_URL
 const SB_KEY  = 'TU_SERVICE_ROLE_KEY';                  // service_role (NO la anon)
 const EMPRESA_ID = '00000000-0000-0000-0000-000000000001';
-const HOJA_OT = 'OT';   // nombre EXACTO de la pestaña con las OT
+const HOJA_OT = 'Hoja 1';   // nombre EXACTO de la pestaña con las OT en DIDIAL_Base_OT
 const SYNC_CONTACTOS = true;   // false para desactivar el bloque Sheet -> CRM de contacto/vehículo
 
 // ====== MAPEO DE COLUMNAS (por encabezado de la fila 1) ======

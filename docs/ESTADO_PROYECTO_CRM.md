@@ -55,6 +55,10 @@ CRM comercial y operativo para **Servicio Automotriz Didial Ltda.** (La Serena, 
 - **Notificaciones**: tabla `notificaciones` (por usuario o rol), **campanita** en sidebar/móvil con badge, polling 30 s y **sonido de alerta** (WebAudio) al llegar nuevas. Cada hito del flujo de taller notifica al responsable.
 
 
+### Novedades v29 (07-07-2026)
+- **Constructor de campañas** en Campañas (➕ Nueva campaña): criterios simples (rango de fechas de servicio, tipo mantención/reparación, visitas y monto mín) + canal tareas o email (plantilla genérica). Personalizadas de tareas viven en Campañas; de email en Email marketing.
+- **Campaña seed**: Fidelización · Servicios Junio – 6 Julio 2026 (canal tareas, activa) → "Cargar a asesores" → Clientes → Tareas.
+
 ### Novedades v28 (07-07-2026)
 - **Tipo de Servicio = lista fusionada** (anterior + categorías nuevas de la planilla; una entrada por concepto), NO los servicios individuales. Mapa `OT_SVC_CATEGORIA` en helpers.
 - **Desglose por categoría**: chips de servicios sugeridos en Solicitar servicio, datalist en "+ Nueva tarea" del taller, selector de categoría en buscadores de presupuestos (precargado) y cotización rápida.
@@ -128,6 +132,7 @@ Idempotentes, se ejecutan en orden en el SQL Editor. Estado según lo conversado
 | 24 (v20) | `diagnosticos_taller`, respaldos/autorización en trabajos, config `margenes` | ⚠️ |
 | 25 (v21) | apellidos, tipo_vehiculo, documento en servicios, `tareas_servicio` (seed MAN X PAUTA), `precios_base`, RPC `crm_aplicar_datos_ot`, re-vinculación por patente | 🆕 pendiente |
 | 26 (v21.1) | Seed base de precios (985 filas, precios 09-04-2026; fix celdas combinadas; AC13 quedó "(nombre por completar)") | 🆕 pendiente |
+| 34 (v29) | audiencia_campana v3 (criterio 'personalizada': rango fechas + tipo servicio + visitas/monto mín; canal tareas no exige email) + seed campaña Fidelización Junio–6 Julio 2026 (tareas, activa) | 🆕 pendiente |
 | 33 (v27) | Roles nuevos (enum, PASO 1 solo) + precios_base.segmento (PASO 2) | 🆕 pendiente |
 | 32 (v27) | Seed base de precios v2 con segmento (982 filas) | 🆕 pendiente |
 | 31 (v25) | motivo_anulacion en ordenes_trabajo (resto de v25 es frontend + sincronizar_precios.gs) | 🆕 pendiente |
