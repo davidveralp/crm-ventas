@@ -94,32 +94,100 @@ export default function PresupuestoTallerCard({ p, t, esJefe, esCompras, perfil,
     await guardar(p, campos, aviso)
   }
 
-  // v33: PDF (formato oficial DIDIAL) y envío por WhatsApp desde el módulo.
+  // v34: PDF con el FORMATO OFICIAL DIDIAL (réplica del presupuesto físico:
+  // cabecera con datos de empresa + logo, datos del vehículo/cliente,
+  // "Cliente Solicita", y las 3 secciones Repuestos / Lubricantes e Insumos
+  // / Mano de Obra con subtotales, y NETO/IVA/TOTAL).
   const veh = t?.vehiculos || p.veh || null
+  const cli = t?.clientes || p.cli || null
   function verPDF() {
-    const fmt = (n) => '$' + (Math.round(+n) || 0).toLocaleString('es-CL')
-    const neto = Math.round(totalItems / 1.19), iva = Math.round(totalItems - totalItems / 1.19)
-    const filas = items.filter((x) => !x.en_stock).map((x) =>
-      `<tr><td>${(x.detalle || '').replace(/</g, '&lt;')}</td><td style="text-align:center">${x.cant || 1}</td><td style="text-align:right">${fmt((+x.precio || 0) * (+x.cant || 1))}</td></tr>`).join('')
+    const fmt = (n) => (Math.round(+n) || 0).toLocaleString('es-CL')
+    const esc = (x) => String(x ?? '').replace(/</g, '&lt;')
+    const cobrables = items.filter((x) => !x.en_stock)
+    const deSeccion = (k) => cobrables.filter((x) => seccionDe(x.tipo) === k)
+    const subtotal = (arr) => arr.reduce((a, x) => a + (+x.precio || 0) * (+x.cant || 1), 0)
+    const total = subtotal(cobrables)
+    const neto = Math.round(total / 1.19), iva = total - neto
+
+    const filaItem = (x, mostrarPrecioUnit) => mostrarPrecioUnit
+      ? `<tr><td style="width:16%">${esc(x.codigo || '')}</td><td>${esc(x.detalle)}</td>
+           <td class="c">${x.cant || 1}</td><td class="r">${fmt(x.precio)}</td><td class="r">${fmt((+x.precio || 0) * (+x.cant || 1))}</td></tr>`
+      : `<tr><td colspan="4">${esc(x.detalle)}</td><td class="r">${fmt((+x.precio || 0) * (+x.cant || 1))}</td></tr>`
+
+    const seccion = (titulo, arr, mostrarUnit) => {
+      if (!arr.length) return ''
+      return `
+        <tr class="sec"><td colspan="5"><b>${titulo}</b></td></tr>
+        ${mostrarUnit ? '<tr class="hd"><td>CÓDIGO</td><td>DETALLE</td><td class="c">CANTIDAD</td><td class="r">PRECIO</td><td class="r">TOTAL</td></tr>' : '<tr class="hd"><td colspan="4">DETALLE</td><td class="r">TOTAL</td></tr>'}
+        ${arr.map((x) => filaItem(x, mostrarUnit)).join('')}
+        <tr class="sub"><td colspan="4" class="r"><b>Subtotal ${titulo}:</b></td><td class="r"><b>${fmt(subtotal(arr))}</b></td></tr>`
+    }
+
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Presupuesto</title>
-      <style>body{font-family:Arial,sans-serif;color:#1a1c20;max-width:720px;margin:20px auto;padding:0 16px}
-      table{width:100%;border-collapse:collapse;margin:12px 0}th,td{padding:7px 6px;border-bottom:1px solid #e2e8f0;font-size:13px}
-      th{text-align:left;color:#6b7a8a;font-size:11px;text-transform:uppercase}
-      .tot{text-align:right;font-size:14px;margin-top:4px}.tot b{font-size:18px}</style></head><body>
-      <div style="text-align:center"><img src="${window.location.origin}/logo-didial.png" style="width:210px"><div style="font-size:10px;color:#6b7a8a;letter-spacing:1px">Cuidamos lo que te mueve</div></div>
-      <h2 style="text-align:center;font-size:16px">PRESUPUESTO</h2>
-      <div style="font-size:13px">${veh ? `<b>Vehículo:</b> ${[veh.marca, veh.modelo].filter(Boolean).join(' ')} · ${veh.patente || ''}<br>` : ''}<b>Fecha:</b> ${new Date().toLocaleDateString('es-CL')}</div>
-      <table><thead><tr><th>Detalle</th><th style="text-align:center">Cant.</th><th style="text-align:right">Precio</th></tr></thead><tbody>${filas}</tbody></table>
-      <div class="tot">NETO: ${fmt(neto)}</div><div class="tot">IVA (19%): ${fmt(iva)}</div><div class="tot"><b>TOTAL: ${fmt(totalItems)}</b></div>
-      <p style="font-size:11px;color:#6b7a8a;text-align:center;margin-top:20px">Valores con IVA incluido · Presupuesto válido por 15 días · ¡Gracias por preferir DIDIAL!</p>
+      <style>
+        @page { margin: 14mm 12mm; }
+        body { font-family: 'Times New Roman', Georgia, serif; color: #000; font-size: 13px; margin: 0; }
+        .head { display: flex; justify-content: space-between; align-items: flex-start; }
+        .emp { font-size: 11px; line-height: 1.35; }
+        .emp b { font-size: 12px; }
+        .doc { text-align: right; }
+        .doc .n { font-size: 17px; font-weight: bold; }
+        .logo { text-align: center; }
+        .logo img { width: 230px; height: auto; }
+        .cli { margin: 22px 0 6px; font-size: 13px; line-height: 1.8; }
+        .cli .row { display: flex; gap: 30px; flex-wrap: wrap; }
+        .solicita { margin: 10px 0; border-top: 1px solid #000; padding-top: 8px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+        td { padding: 2px 4px; vertical-align: top; }
+        .c { text-align: center; } .r { text-align: right; }
+        .sec td { border-top: 1px solid #000; padding-top: 8px; }
+        .hd td { font-size: 11px; color: #333; border-bottom: 1px solid #999; }
+        .sub td { padding-bottom: 10px; }
+        .tot { margin-top: 14px; text-align: right; font-size: 14px; line-height: 1.7; }
+        .tot .big { font-size: 16px; font-weight: bold; }
+      </style></head><body>
+      <div class="head">
+        <div class="emp">
+          <b>SERVICIO AUTOMOTRIZ DIDIAL LTDA</b><br>
+          AVDA. CUATRO ESQUINAS 759, LA SERENA<br>
+          serviciotecnico@didial.cl<br>+569 89748626
+        </div>
+        <div class="logo"><img src="${window.location.origin}/logo-didial.png" alt="DIDIAL"></div>
+        <div class="doc">
+          <div class="n">PRESUPUESTO Nº ${esc(p.folio || (p.id || '').slice(0, 6).toUpperCase())}</div>
+          <div><b>FECHA:</b> ${new Date(p.creado_en || Date.now()).toLocaleDateString('es-CL')}</div>
+          <div style="font-size:11px">Página: 1</div>
+        </div>
+      </div>
+      <div class="cli">
+        <div class="row">
+          <span><b>Patente:</b> ${esc(veh?.patente || '')}</span>
+          <span style="margin-left:auto"><b>R.U.T.:</b> ${esc(cli?.rut || '')}</span>
+        </div>
+        <div class="row">
+          <span><b>Nombre Cliente:</b> ${esc([cli?.nombre, cli?.apellidos].filter(Boolean).join(' '))}</span>
+          <span><b>Color:</b> ${esc(veh?.color || '')}</span>
+          <span style="margin-left:auto"><b>Año:</b> ${esc(veh?.anio || '')}</span>
+        </div>
+        <div class="row">
+          <span><b>Marca:</b> ${esc(veh?.marca || '')}</span>
+          <span><b>Modelo:</b> ${esc(veh?.modelo || '')}</span>
+        </div>
+      </div>
+      <div class="solicita"><b>Cliente Solicita:</b><br>&nbsp;&nbsp;&nbsp;${esc(t?.servicio_solicitado || p.notas || '')}</div>
+      <table>
+        ${seccion('Repuestos', deSeccion('repuesto'), true)}
+        ${seccion('Lubricantes y Otros Insumos', deSeccion('insumo'), true)}
+        ${seccion('Mano de Obra', deSeccion('mano_obra'), false)}
+        ${seccion('Servicios Externos', deSeccion('servicio_externo'), false)}
+      </table>
+      <div class="tot">
+        <div>NETO: &nbsp; ${fmt(neto)}</div>
+        <div>I.V.A.: &nbsp; ${fmt(iva)}</div>
+        <div class="big">TOTAL: &nbsp; ${fmt(total)}</div>
+      </div>
       <script>window.onload=()=>window.print()</script></body></html>`
     const w = window.open('', '_blank'); w.document.write(html); w.document.close()
-  }
-  function enviarWhatsApp() {
-    const fmt = (n) => '$' + (Math.round(+n) || 0).toLocaleString('es-CL')
-    const lineas = items.filter((x) => !x.en_stock).map((x) => `• ${x.detalle} (x${x.cant || 1}): ${fmt((+x.precio || 0) * (+x.cant || 1))}`).join('%0A')
-    const msg = `*Presupuesto DIDIAL*%0A${veh ? [veh.marca, veh.modelo, veh.patente].filter(Boolean).join(' ') + '%0A' : ''}%0A${lineas}%0A%0A*Total: ${fmt(totalItems)}* (IVA incl.)%0A_Cuidamos lo que te mueve_`
-    window.open(`https://wa.me/?text=${msg}`, '_blank')
   }
 
   const BOTON_SECCION = { repuesto: '+ Repuesto', insumo: '+ Lubricante / insumo', mano_obra: '+ Mano de obra', servicio_externo: '+ Servicio externo' }
@@ -206,10 +274,9 @@ export default function PresupuestoTallerCard({ p, t, esJefe, esCompras, perfil,
           <div className="flex items-center justify-between pt-1">
             <span className="text-xs text-slate-500">Total a cotizar (sin stock): <b className="text-ink">{fmtCLP(totalItems)}</b></span>
             <div className="flex gap-1.5 flex-wrap">
-              {items.some((x) => !x.en_stock) && <>
+              {items.some((x) => !x.en_stock) && (
                 <button className="btn-soft text-xs" onClick={verPDF}>📄 PDF</button>
-                <button className="text-xs px-3 py-1.5 rounded-lg text-white" style={{ background: '#1f9d57' }} onClick={enviarWhatsApp}>WhatsApp</button>
-              </>}
+              )}
               {puedeEditar && ['solicitado', 'cotizando'].includes(p.estado) && <>
                 <button className="btn-soft text-xs" onClick={() => guardarItems('cotizando')}>Guardar cotización</button>
                 <button className="btn-primary text-xs" onClick={() => guardarItems('enviado')}>Enviar al asesor</button>

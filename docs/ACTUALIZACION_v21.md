@@ -366,3 +366,20 @@ La asociación fina repuesto→servicio→área (que ya incluiste en la planilla
 - **PDF y WhatsApp en el módulo Presupuestos**: la tarjeta de taller ahora tiene botón "📄 PDF" (formato oficial DIDIAL con logo) y "WhatsApp", además de los que ya estaban en la ficha del cliente.
 - **Solicitud comercial → presupuesto cotizable**: al abrir una solicitud del asesor (pestaña Comerciales) el botón "Crear presupuesto para cotizar" genera un presupuesto de taller (3 áreas) con los ítems sugeridos pre-cargados y marca la solicitud "en seguimiento", en vez de solo navegar a la ficha.
 - **Enviar al asesor** notifica correctamente (a la ficha del cliente) también para presupuestos sin solicitud y de factura.
+
+
+---
+
+# ACTUALIZACIÓN v34 · PDF oficial, WhatsApp solo en ficha, solicitud→presupuesto
+
+## Migración
+**`database/38_actualizacion_v34.sql`**: agrega la columna `color` a `vehiculos` (la usa el PDF oficial). Idempotente.
+
+## PDF con el formato oficial DIDIAL
+El botón "📄 PDF" del módulo Presupuestos ahora genera el documento con el **formato físico real** de DIDIAL: cabecera con datos de la empresa (SERVICIO AUTOMOTRIZ DIDIAL LTDA, dirección, correo, teléfono) + logo centrado + "PRESUPUESTO Nº / FECHA / Página"; datos del vehículo y cliente (Patente, R.U.T., Nombre, Color, Año, Marca, Modelo); "Cliente Solicita:"; y las tres secciones **Repuestos**, **Lubricantes y Otros Insumos** (con CÓDIGO/DETALLE/CANTIDAD/PRECIO/TOTAL y subtotal) y **Mano de Obra** (DETALLE/TOTAL con subtotal), cerrando con NETO / I.V.A. / TOTAL. Tipografía serif como el original.
+
+## WhatsApp solo en la ficha del cliente
+Se quitó el botón de WhatsApp del módulo Presupuestos: el envío por WhatsApp lo administra el **asesor** desde la ficha del cliente (que es quien tiene el trato directo). El módulo conserva solo el PDF.
+
+## Clic en solicitud comercial → crea presupuesto
+Desde la pestaña Comerciales, al abrir una solicitud del asesor, el botón "Crear presupuesto para cotizar" genera el presupuesto de taller (3 áreas) con los ítems sugeridos y marca la solicitud "en seguimiento", en vez de solo abrir la ficha.

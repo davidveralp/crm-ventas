@@ -45,14 +45,20 @@ function PresupuestosInterno() {
         .select('*, trabajos_taller(id, titulo, servicio_solicitado, observaciones_cliente, estado, vehiculo_id, asesor_id, respaldo_ot_firmada, respaldo_video, historial, vehiculos(patente,marca,modelo,tipo_vehiculo), clientes(nombre,apellidos))')
         .order('creado_en', { ascending: false })
     ])
-    // v24: vehículo de las cotizaciones rápidas (sin trabajo de taller)
-    const vidsRap = [...new Set((pt || []).filter((p) => !p.trabajo_id && p.vehiculo_id).map((p) => p.vehiculo_id))]
-    let vehMap = {}
+    // v24/v33: datos del vehículo + cliente para el PDF oficial (cotizaciones
+    // rápidas, sin_solicitud y de factura, que no tienen trabajo de taller)
+    const vidsRap = [...new Set((pt || []).filter((p) => p.vehiculo_id).map((p) => p.vehiculo_id))]
+    const cidsRap = [...new Set((pt || []).filter((p) => p.cliente_id).map((p) => p.cliente_id))]
+    let vehMap = {}, cliMap = {}
     if (vidsRap.length) {
-      const { data: vs } = await supabase.from('vehiculos').select('id,patente,marca,modelo,tipo_vehiculo').in('id', vidsRap)
+      const { data: vs } = await supabase.from('vehiculos').select('id,patente,marca,modelo,anio,color,tipo_vehiculo').in('id', vidsRap)
       vehMap = Object.fromEntries((vs || []).map((v) => [v.id, v]))
     }
-    setLista(data || []); setPTaller((pt || []).map((p) => ({ ...p, veh: vehMap[p.vehiculo_id] || null })))
+    if (cidsRap.length) {
+      const { data: cs } = await supabase.from('clientes').select('id,nombre,apellidos,rut').in('id', cidsRap)
+      cliMap = Object.fromEntries((cs || []).map((c) => [c.id, c]))
+    }
+    setLista(data || []); setPTaller((pt || []).map((p) => ({ ...p, veh: vehMap[p.vehiculo_id] || null, cli: cliMap[p.cliente_id] || null })))
     const tids = [...new Set((pt || []).map((p) => p.trabajo_id).filter(Boolean))]
     if (tids.length) {
       const [{ data: dg }, { data: ts }] = await Promise.all([
