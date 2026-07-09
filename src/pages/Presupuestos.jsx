@@ -7,6 +7,8 @@ import { fmtCLP, fmtFecha, ESTADOS_PRESUPUESTO, ESTADOS_PRESUP_TALLER, SECCIONES
 import { useAuth } from '../context/AuthContext'
 import { notificar } from '../lib/notificar'
 import PresupuestoTallerCard from '../components/PresupuestoTallerCard'
+import FacturasRepuestos from '../components/FacturasRepuestos'
+import { nombreCompleto } from '../lib/helpers'
 
 const SEV = {
   critico:    { label: 'Crítico',    color: '#E0382B' },
@@ -27,6 +29,7 @@ function PresupuestosInterno() {
   const [diags, setDiags] = useState([])
   const [tareas, setTareas] = useState([])
   const [detalle, setDetalle] = useState(null)
+  const [modalNuevo, setModalNuevo] = useState(false)
   // v23: el presupuesto de taller lo ELABORA el encargado de presupuestos
   // desde este módulo (no desde el taller).
   const esCompras = ['coordinador_adquisiciones', 'admin'].includes(perfil?.rol)
@@ -58,6 +61,31 @@ function PresupuestosInterno() {
       ])
       setDiags(dg || []); setTareas(ts || [])
     } else { setDiags([]); setTareas([]) }
+  }
+
+  // v33: nuevo presupuesto SIN solicitud — elige cliente y vehículo; el
+  // presupuesto nace 'cotizando' y se edita con la tarjeta de 3 áreas.
+  const [nuevoBusca, setNuevoBusca] = useState('')
+  const [nuevoRes, setNuevoRes] = useState([])
+  const [nuevoVeh, setNuevoVeh] = useState(null)
+  async function buscarClienteVeh(q) {
+    setNuevoBusca(q)
+    if (q.trim().length < 2) { setNuevoRes([]); return }
+    const { data } = await supabase.from('vehiculos')
+      .select('id,patente,marca,modelo,tipo_vehiculo,cliente_id,clientes(nombre,apellidos)')
+      .or(`patente.ilike.%${q.trim()}%,marca.ilike.%${q.trim()}%,modelo.ilike.%${q.trim()}%`).limit(8)
+    setNuevoRes(data || [])
+  }
+  async function crearNuevoPresup() {
+    if (!nuevoVeh) return
+    const { data, error } = await supabase.from('presupuestos_taller').insert({
+      empresa_id: perfil.empresa_id, trabajo_id: null, origen: 'sin_solicitud',
+      cliente_id: nuevoVeh.cliente_id, vehiculo_id: nuevoVeh.id, estado: 'cotizando',
+      elaborado_por: perfil.id, items: [], monto: 0, notas: 'Presupuesto creado sin solicitud.'
+    }).select().single()
+    if (error) return alert('Error: ' + error.message + '\n(¿Migración 37?)')
+    setModalNuevo(false); setNuevoVeh(null); setNuevoBusca(''); setNuevoRes([])
+    setVista('taller'); cargar()
   }
 
   async function guardarPresup(p, campos, aviso) {
@@ -106,11 +134,19 @@ function PresupuestosInterno() {
           <h1 className="text-xl font-bold text-ink">Presupuestos</h1>
           <p className="text-sm text-slate-500">{vista === 'taller' ? 'Solicitados desde el taller · repuestos y consumibles' : 'Seguimiento de cotizaciones · ordenados por próxima gestión'}</p>
         </div>
-        <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-sm">
-          <button onClick={() => setVista('comercial')} className={`px-3 py-1.5 ${vista === 'comercial' ? 'bg-deep text-white' : 'text-slate-500'}`}>Comerciales</button>
-          <button onClick={() => setVista('taller')} className={`px-3 py-1.5 ${vista === 'taller' ? 'bg-deep text-white' : 'text-slate-500'}`}>Taller ({pTaller.length})</button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {esCompras && <button className="btn-primary text-sm" onClick={() => setModalNuevo(true)}>➕ Nuevo presupuesto</button>}
+          <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-sm">
+            <button onClick={() => setVista('comercial')} className={`px-3 py-1.5 ${vista === 'comercial' ? 'bg-deep text-white' : 'text-slate-500'}`}>Comerciales</button>
+            <button onClick={() => setVista('taller')} className={`px-3 py-1.5 ${vista === 'taller' ? 'bg-deep text-white' : 'text-slate-500'}`}>Taller ({pTaller.length})</button>
+            {esCompras && <button onClick={() => setVista('facturas')} className={`px-3 py-1.5 ${vista === 'facturas' ? 'bg-deep text-white' : 'text-slate-500'}`}>Facturas</button>}
+          </div>
         </div>
       </div>
+
+      {vista === 'facturas' && esCompras && (
+        <FacturasRepuestos perfil={perfil} onAsignado={cargar} />
+      )}
 
       {vista === 'taller' && (
         <div className="space-y-3">
@@ -134,6 +170,7 @@ function PresupuestosInterno() {
                   <span className="font-semibold text-ink uppercase text-sm">{t ? tituloDe(t) : [p.veh?.patente, p.veh?.marca, p.veh?.modelo].filter(Boolean).join(' ') || 'Cotización'}</span>
                   <span className="text-xs text-slate-400">{[t?.clientes?.nombre, t?.clientes?.apellidos].filter(Boolean).join(' ')}</span>
                   {p.origen === 'rapida' && <Pill color="#7A5C8E">Cotización rápida</Pill>}
+                  {p.origen === 'sin_solicitud' && <Pill color="#1aa88a">Sin solicitud</Pill>}
                   {(t?.vehiculos?.tipo_vehiculo || p.veh?.tipo_vehiculo) && <span className="text-[10px] text-slate-400 border border-slate-200 rounded px-1.5 py-0.5">{t?.vehiculos?.tipo_vehiculo || p.veh?.tipo_vehiculo}</span>}
                   <span className="ml-auto" />
                   {['aprobado', 'parcial'].includes(p.estado) && !p.compra_gestionada_en && esCompras && (
@@ -280,6 +317,41 @@ function PresupuestosInterno() {
         )}
       </Modal>
 
+
+      {/* v33 · Nuevo presupuesto sin solicitud */}
+      <Modal abierto={modalNuevo} onClose={() => { setModalNuevo(false); setNuevoVeh(null) }} titulo="Nuevo presupuesto (sin solicitud)">
+        <div className="space-y-3">
+          {!nuevoVeh ? (<>
+            <div>
+              <label className="label">Buscar cliente / vehículo</label>
+              <input className="input" autoFocus value={nuevoBusca} onChange={(e) => buscarClienteVeh(e.target.value)}
+                     placeholder="Patente, marca o modelo…" />
+            </div>
+            <div className="space-y-1 max-h-64 overflow-y-auto">
+              {nuevoRes.map((v) => (
+                <button key={v.id} onClick={() => setNuevoVeh(v)}
+                        className="w-full text-left card p-2.5 hover:border-deep transition">
+                  <div className="text-sm text-ink">{[v.marca, v.modelo].filter(Boolean).join(' ')} · <span className="font-mono">{v.patente}</span></div>
+                  <div className="text-xs text-slate-400">{[v.clientes?.nombre, v.clientes?.apellidos].filter(Boolean).join(' ')}{v.tipo_vehiculo ? ` · ${v.tipo_vehiculo}` : ''}</div>
+                </button>
+              ))}
+              {nuevoBusca.length >= 2 && !nuevoRes.length && <p className="text-xs text-slate-400 py-2">Sin resultados.</p>}
+            </div>
+          </>) : (
+            <div className="space-y-3">
+              <div className="card p-3">
+                <div className="text-sm text-ink font-medium">{[nuevoVeh.marca, nuevoVeh.modelo].filter(Boolean).join(' ')} · <span className="font-mono">{nuevoVeh.patente}</span></div>
+                <div className="text-xs text-slate-400">{[nuevoVeh.clientes?.nombre, nuevoVeh.clientes?.apellidos].filter(Boolean).join(' ')}</div>
+              </div>
+              <p className="text-xs text-slate-500">Se creará un presupuesto en blanco (3 áreas: Repuestos · Mano de Obra · Lubricantes e Insumos) que podrás completar en la pestaña Taller, incluyendo repuestos asignados desde facturas.</p>
+              <div className="flex justify-end gap-2">
+                <button className="btn-soft" onClick={() => setNuevoVeh(null)}>Volver</button>
+                <button className="btn-primary" onClick={crearNuevoPresup}>Crear presupuesto</button>
+              </div>
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   )
 }

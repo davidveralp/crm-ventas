@@ -331,3 +331,28 @@ Si algún nombre no coincide exactamente en la base, edita los `like` de la migr
 
 ## Nota sobre los botones nuevos (v31)
 Los 4 botones (Nueva OT · Solicitar revisión · Cotizar · Solicitar presupuesto) y el renombre ya están en el código. Si en producción sigues viendo los antiguos ("Solicitar servicio", sin "Solicitar presupuesto"), es que el deploy de v31 aún no se aplicó: vuelve a subir el zip al repo, espera el build "Ready" en Vercel y recarga con Ctrl+Shift+R.
+
+
+---
+
+# ACTUALIZACIÓN v33 · Facturas de repuestos → presupuestos + presupuesto sin solicitud
+
+## Migración
+**`database/37_actualizacion_v33.sql`** (crm-ventas): tablas `facturas_repuestos` (cabeceras), `repuestos_facturados` (detalle por línea, con cantidad asignada parcial), `margenes_repuestos` (config de margen por categoría, %30 por defecto). El origen 'sin_solicitud' reusa `presupuestos_taller` (sin cambio de esquema).
+
+## Apps Script
+**`integraciones/sincronizar_facturas.gs`** → en la planilla de captura de facturas (Extensiones → Apps Script). Sube pestañas FACTURAS y DETALLE al CRM. Control de duplicados doble: idempotente por id (id_factura / id_factura-linea) y marca `sync_crm='SINCRONIZADO'` en la planilla. Sube TODAS las facturas — la validación y la confianza se revisan en el CRM. Actívalo por tiempo.
+
+## En el CRM · módulo Presupuestos (encargado / admin)
+Nueva pestaña **Facturas** con dos sub-vistas:
+- **Facturas**: cada factura capturada con su nivel de **confianza** (alta/media/baja) y alertas de Vision. El encargado la revisa y **Valida** (o Descarta) dentro del CRM. Puede fijar una patente sugerida.
+- **Repuestos por asignar**: una vez validada la factura, sus líneas aparecen aquí. Por cada repuesto el encargado **asigna a una patente** (sugerida por la planilla si vino, siempre editable y verificada contra el CRM), elige **cantidad** (parcial: 1 unidad a una patente, el resto a otra) y fija el **precio de venta** con **margen sugerido** (editable). El repuesto entra al presupuesto de esa patente (área Repuestos); en el presupuesto solo va el precio de venta.
+
+## Nuevo presupuesto sin solicitud
+Botón **"➕ Nuevo presupuesto"**: busca cliente/vehículo y crea un presupuesto en blanco con las 3 áreas (Repuestos · Mano de Obra · Lubricantes e Insumos), que se completa en la pestaña Taller. Etiqueta "Sin solicitud".
+
+## Cierre (ya existente, reutilizado)
+El presupuesto se **envía al asesor** ("Enviar al asesor" en la tarjeta) → aparece en la **ficha del cliente**, con **PDF** descargable (formato oficial DIDIAL con logo) y **notificación al asesor**. La decisión (aprobado/parcial/rechazado) la registra el asesor en la ficha (v24).
+
+## Pendiente acordado
+La asociación fina repuesto→servicio→área (que ya incluiste en la planilla de precios) queda para una etapa posterior: cuando la conectemos, el margen podrá venir por categoría real del repuesto en vez del % por defecto.

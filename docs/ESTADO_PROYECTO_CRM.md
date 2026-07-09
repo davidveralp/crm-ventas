@@ -55,6 +55,12 @@ CRM comercial y operativo para **Servicio Automotriz Didial Ltda.** (La Serena, 
 - **Notificaciones**: tabla `notificaciones` (por usuario o rol), **campanita** en sidebar/móvil con badge, polling 30 s y **sonido de alerta** (WebAudio) al llegar nuevas. Cada hito del flujo de taller notifica al responsable.
 
 
+### Novedades v33 (08-07-2026)
+- **Captura de facturas de repuestos** (planilla Vision) → CRM vía `sincronizar_facturas.gs` (idempotente + marca sync_crm). Validación y confianza se revisan EN el CRM.
+- **Módulo Presupuestos → pestaña Facturas**: validar facturas + bandeja "Repuestos por asignar" (asignar unidad a patente con cantidad parcial y precio de venta con margen sugerido por categoría; entra al área Repuestos del presupuesto de la patente).
+- **Nuevo presupuesto sin solicitud** (botón): cliente+vehículo → presupuesto en blanco de 3 áreas. Envío a ficha + PDF + aviso al asesor ya reutilizados.
+- Pendiente: asociación repuesto→servicio→área desde la planilla de precios (margen por categoría real).
+
 ### Novedades v32 (08-07-2026)
 - Migración 36: roles específicos (Diego→asesor_toyota, David Rivera + Matías Ponce→asesor_multimarca), Ángel Yáñez inactivo, reparto 50/50 de cartera multimarca sin dueño.
 - Cartera multimarca **compartida**: asesores multimarca ven/gestionan todas las tareas de clientes no-Toyota (TareasCampana); filtro rápido "Multimarca" en la lista de Clientes.
@@ -145,6 +151,7 @@ Idempotentes, se ejecutan en orden en el SQL Editor. Estado según lo conversado
 | 24 (v20) | `diagnosticos_taller`, respaldos/autorización en trabajos, config `margenes` | ⚠️ |
 | 25 (v21) | apellidos, tipo_vehiculo, documento en servicios, `tareas_servicio` (seed MAN X PAUTA), `precios_base`, RPC `crm_aplicar_datos_ot`, re-vinculación por patente | 🆕 pendiente |
 | 26 (v21.1) | Seed base de precios (985 filas, precios 09-04-2026; fix celdas combinadas; AC13 quedó "(nombre por completar)") | 🆕 pendiente |
+| 37 (v33) | facturas_repuestos + repuestos_facturados + margenes_repuestos; origen 'sin_solicitud' en presupuestos_taller | 🆕 pendiente |
 | 36 (v32) | Roles asesores (Diego→toyota, David/Matías→multimarca), Ángel inactivo, reparto 50/50 cartera multimarca | 🆕 pendiente |
 | 35 (v31) | presupuestos += items/solicitado_por/origen (solicitud de presupuesto comercial desde la ficha) | 🆕 pendiente |
 | 34 (v29) | audiencia_campana v3 (criterio 'personalizada': rango fechas + tipo servicio + visitas/monto mín; canal tareas no exige email) + seed campaña Fidelización Junio–6 Julio 2026 (tareas, activa) | 🆕 pendiente |
