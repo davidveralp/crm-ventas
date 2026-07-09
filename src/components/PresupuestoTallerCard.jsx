@@ -77,13 +77,49 @@ export default function PresupuestoTallerCard({ p, t, esJefe, esCompras, perfil,
   async function guardarItems(estado) {
     const campos = { items: items.map((x) => ({ ...x, precio: Math.round(+x.precio || 0), costo: Math.round(+x.costo || 0) })), monto: Math.round(totalItems || +monto || 0) }
     let aviso = null
+    // v33: los presupuestos sin solicitud / cotización rápida no tienen
+    // trabajo de taller (t = null): se usa el vehículo/cliente del propio
+    // presupuesto para el título y la notificación.
+    const titulo = t ? tituloDe(t) : [p.veh?.patente, p.veh?.marca, p.veh?.modelo].filter(Boolean).join(' ') || 'Presupuesto'
+    const asesorId = t?.asesor_id || p.vendedor_id || null
     if (estado) {
       campos.estado = estado
-      if (estado === 'enviado') { campos.elaborado_por = perfil.id; aviso = { usuario_id: t.asesor_id, rol: t.asesor_id ? null : 'vendedor', titulo: 'Presupuesto listo para entregar al cliente', cuerpo: tituloDe(t), url: '/taller', empresa_id: perfil.empresa_id } }
-      if (estado === 'aprobado') { campos.resuelto_en = new Date().toISOString(); aviso = { rol: 'coordinador_adquisiciones', titulo: 'Presupuesto APROBADO · gestionar adquisición', cuerpo: tituloDe(t), url: '/taller', empresa_id: perfil.empresa_id } }
-      if (estado === 'rechazado' || estado === 'parcial') { campos.resuelto_en = new Date().toISOString(); aviso = { rol: 'jefe_taller', titulo: `Presupuesto ${estado === 'parcial' ? 'RECHAZADO · entrega parcial' : 'RECHAZADO'}`, cuerpo: tituloDe(t), url: '/taller', empresa_id: perfil.empresa_id } }
+      if (estado === 'enviado') {
+        campos.elaborado_por = perfil.id
+        aviso = { usuario_id: asesorId, rol: asesorId ? null : 'vendedor', titulo: 'Presupuesto listo para entregar al cliente', cuerpo: titulo, url: p.cliente_id ? `/clientes/${p.cliente_id}` : '/taller', empresa_id: perfil.empresa_id }
+      }
+      if (estado === 'aprobado') { campos.resuelto_en = new Date().toISOString(); aviso = { rol: 'coordinador_adquisiciones', titulo: 'Presupuesto APROBADO · gestionar adquisición', cuerpo: titulo, url: '/taller', empresa_id: perfil.empresa_id } }
+      if (estado === 'rechazado' || estado === 'parcial') { campos.resuelto_en = new Date().toISOString(); aviso = { rol: 'jefe_taller', titulo: `Presupuesto ${estado === 'parcial' ? 'RECHAZADO · entrega parcial' : 'RECHAZADO'}`, cuerpo: titulo, url: '/taller', empresa_id: perfil.empresa_id } }
     }
     await guardar(p, campos, aviso)
+  }
+
+  // v33: PDF (formato oficial DIDIAL) y envío por WhatsApp desde el módulo.
+  const veh = t?.vehiculos || p.veh || null
+  function verPDF() {
+    const fmt = (n) => '$' + (Math.round(+n) || 0).toLocaleString('es-CL')
+    const neto = Math.round(totalItems / 1.19), iva = Math.round(totalItems - totalItems / 1.19)
+    const filas = items.filter((x) => !x.en_stock).map((x) =>
+      `<tr><td>${(x.detalle || '').replace(/</g, '&lt;')}</td><td style="text-align:center">${x.cant || 1}</td><td style="text-align:right">${fmt((+x.precio || 0) * (+x.cant || 1))}</td></tr>`).join('')
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Presupuesto</title>
+      <style>body{font-family:Arial,sans-serif;color:#1a1c20;max-width:720px;margin:20px auto;padding:0 16px}
+      table{width:100%;border-collapse:collapse;margin:12px 0}th,td{padding:7px 6px;border-bottom:1px solid #e2e8f0;font-size:13px}
+      th{text-align:left;color:#6b7a8a;font-size:11px;text-transform:uppercase}
+      .tot{text-align:right;font-size:14px;margin-top:4px}.tot b{font-size:18px}</style></head><body>
+      <div style="text-align:center"><img src="${window.location.origin}/logo-didial.png" style="width:210px"><div style="font-size:10px;color:#6b7a8a;letter-spacing:1px">Cuidamos lo que te mueve</div></div>
+      <h2 style="text-align:center;font-size:16px">PRESUPUESTO</h2>
+      <div style="font-size:13px">${veh ? `<b>Vehículo:</b> ${[veh.marca, veh.modelo].filter(Boolean).join(' ')} · ${veh.patente || ''}<br>` : ''}<b>Fecha:</b> ${new Date().toLocaleDateString('es-CL')}</div>
+      <table><thead><tr><th>Detalle</th><th style="text-align:center">Cant.</th><th style="text-align:right">Precio</th></tr></thead><tbody>${filas}</tbody></table>
+      <div class="tot">NETO: ${fmt(neto)}</div><div class="tot">IVA (19%): ${fmt(iva)}</div><div class="tot"><b>TOTAL: ${fmt(totalItems)}</b></div>
+      <p style="font-size:11px;color:#6b7a8a;text-align:center;margin-top:20px">Valores con IVA incluido · Presupuesto válido por 15 días · ¡Gracias por preferir DIDIAL!</p>
+      <script>window.onload=()=>window.print()</script></body></html>`
+    const w = window.open('', '_blank'); w.document.write(html); w.document.close()
+  }
+  function enviarWhatsApp() {
+    const fmt = (n) => '$' + (Math.round(+n) || 0).toLocaleString('es-CL')
+    const lineas = items.filter((x) => !x.en_stock).map((x) => `• ${x.detalle} (x${x.cant || 1}): ${fmt((+x.precio || 0) * (+x.cant || 1))}`).join('%0A')
+    const msg = `*Presupuesto DIDIAL*%0A${veh ? [veh.marca, veh.modelo, veh.patente].filter(Boolean).join(' ') + '%0A' : ''}%0A${lineas}%0A%0A*Total: ${fmt(totalItems)}* (IVA incl.)%0A_Cuidamos lo que te mueve_`
+    window.open(`https://wa.me/?text=${msg}`, '_blank')
   }
 
   const BOTON_SECCION = { repuesto: '+ Repuesto', insumo: '+ Lubricante / insumo', mano_obra: '+ Mano de obra', servicio_externo: '+ Servicio externo' }
@@ -170,6 +206,10 @@ export default function PresupuestoTallerCard({ p, t, esJefe, esCompras, perfil,
           <div className="flex items-center justify-between pt-1">
             <span className="text-xs text-slate-500">Total a cotizar (sin stock): <b className="text-ink">{fmtCLP(totalItems)}</b></span>
             <div className="flex gap-1.5 flex-wrap">
+              {items.some((x) => !x.en_stock) && <>
+                <button className="btn-soft text-xs" onClick={verPDF}>📄 PDF</button>
+                <button className="text-xs px-3 py-1.5 rounded-lg text-white" style={{ background: '#1f9d57' }} onClick={enviarWhatsApp}>WhatsApp</button>
+              </>}
               {puedeEditar && ['solicitado', 'cotizando'].includes(p.estado) && <>
                 <button className="btn-soft text-xs" onClick={() => guardarItems('cotizando')}>Guardar cotización</button>
                 <button className="btn-primary text-xs" onClick={() => guardarItems('enviado')}>Enviar al asesor</button>

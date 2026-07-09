@@ -88,6 +88,26 @@ function PresupuestosInterno() {
     setVista('taller'); cargar()
   }
 
+  // v33: convierte una solicitud comercial (tabla presupuestos) en un
+  // presupuesto de taller cotizable (3 áreas), pre-cargando los ítems que
+  // sugirió el asesor. Marca la solicitud como 'en_seguimiento'.
+  async function crearPresupDesdeSolicitud(sol) {
+    const items = (sol.items || []).map((x) => ({
+      tipo: 'repuesto', codigo: x.codigo || '', detalle: x.detalle,
+      cant: +x.cant || 1, costo: 0, precio: Math.round(+x.precio_ref || 0), en_stock: null
+    }))
+    const { error } = await supabase.from('presupuestos_taller').insert({
+      empresa_id: perfil.empresa_id, trabajo_id: null, origen: 'sin_solicitud',
+      cliente_id: sol.cliente_id, vehiculo_id: sol.vehiculo_id, estado: 'cotizando',
+      elaborado_por: perfil.id, items,
+      monto: Math.round(items.reduce((a, x) => a + (+x.precio || 0) * (+x.cant || 1), 0)),
+      notas: `Desde solicitud comercial del asesor. ${sol.descripcion || ''}`.trim()
+    })
+    if (error) return alert('Error: ' + error.message)
+    await supabase.from('presupuestos').update({ estado: 'en_seguimiento' }).eq('id', sol.id)
+    setDetalle(null); setVista('taller'); cargar()
+  }
+
   async function guardarPresup(p, campos, aviso) {
     await supabase.from('presupuestos_taller').update(campos).eq('id', p.id)
     if (aviso) notificar({ empresa_id: perfil.empresa_id, ...aviso })
@@ -305,13 +325,10 @@ function PresupuestosInterno() {
               </div>
             )}
             <div className="flex flex-wrap justify-end gap-2 pt-1">
-              <button className="btn-soft text-sm" onClick={() => navigate(`/clientes/${detalle.cliente_id}`)}>Abrir ficha para cotizar</button>
-              {detalle.estado === 'borrador' && (
-                <button className="btn-primary text-sm" onClick={async () => {
-                  await supabase.from('presupuestos').update({ estado: 'en_seguimiento' }).eq('id', detalle.id)
-                  setDetalle(null); cargar()
-                }}>Tomar solicitud (en seguimiento)</button>
-              )}
+              <button className="btn-soft text-sm" onClick={() => navigate(`/clientes/${detalle.cliente_id}`)}>Ver ficha</button>
+              <button className="btn-primary text-sm" onClick={() => crearPresupDesdeSolicitud(detalle)}>
+                Crear presupuesto para cotizar
+              </button>
             </div>
           </div>
         )}

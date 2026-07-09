@@ -356,3 +356,13 @@ El presupuesto se **envía al asesor** ("Enviar al asesor" en la tarjeta) → ap
 
 ## Pendiente acordado
 La asociación fina repuesto→servicio→área (que ya incluiste en la planilla de precios) queda para una etapa posterior: cuando la conectemos, el margen podrá venir por categoría real del repuesto en vez del % por defecto.
+
+
+---
+
+# ACTUALIZACIÓN v33.1 · Correcciones del flujo de presupuestos
+
+- **Fix botones Guardar/Enviar en presupuestos sin solicitud**: la tarjeta fallaba cuando el presupuesto no tenía trabajo de taller asociado (t = null) al intentar leer t.asesor_id. Ahora usa el cliente/vehículo/vendedor del propio presupuesto.
+- **PDF y WhatsApp en el módulo Presupuestos**: la tarjeta de taller ahora tiene botón "📄 PDF" (formato oficial DIDIAL con logo) y "WhatsApp", además de los que ya estaban en la ficha del cliente.
+- **Solicitud comercial → presupuesto cotizable**: al abrir una solicitud del asesor (pestaña Comerciales) el botón "Crear presupuesto para cotizar" genera un presupuesto de taller (3 áreas) con los ítems sugeridos pre-cargados y marca la solicitud "en seguimiento", en vez de solo navegar a la ficha.
+- **Enviar al asesor** notifica correctamente (a la ficha del cliente) también para presupuestos sin solicitud y de factura.
