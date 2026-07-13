@@ -217,14 +217,23 @@ export default function NuevaOT() {
       setMsg({ t: 'err', m: 'Escribe el motivo de la anulación para poder solicitar anular la OT.' })
       return
     }
-    // v25: validación de duplicados — la OT no debe existir ya en la base
+    // v37: validación de duplicados — solo bloquea si la OT YA tiene datos
+    // reales (patente, monto o cliente). Una fila "vacía" (el típico caso
+    // de una OT marcada como faltante en Control de OT: el número quedó
+    // registrado sin datos) NO bloquea — se completa con el upsert de más
+    // abajo en vez de tratarse como duplicado.
     if (f.ot_numero?.trim()) {
       const { data: dup } = await supabase.from('servicios')
-        .select('id').eq('ot_numero', f.ot_numero.trim()).limit(1)
-      if (dup?.length) {
-        setMsg({ t: 'err', m: `⚠ La OT ${f.ot_numero.trim()} YA está cargada en la base (historial sincronizado). Verifica el número antes de guardar; si corresponde corregirla, hazlo en la planilla o en la ficha del cliente.` })
+        .select('id,fecha,patente,monto,cliente_id')
+        .eq('empresa_id', perfil.empresa_id).eq('ot_numero', f.ot_numero.trim()).limit(1)
+      const existente = dup?.[0]
+      const tieneD = existente && (existente.patente || existente.monto > 0 || existente.cliente_id)
+      if (tieneD) {
+        setMsg({ t: 'err', m: `⚠ La OT ${f.ot_numero.trim()} YA está cargada con datos (${existente.patente || 's/patente'} · ${existente.fecha || 's/fecha'} · $${existente.monto || 0}). Verifica el número antes de guardar; si corresponde corregirla, hazlo en la ficha del cliente.` })
         return
       }
+      // si existe pero está vacía (placeholder de una OT antes "faltante"),
+      // se deja continuar: el upsert de abajo la completa con los datos reales.
     }
     setGuardando(true); setMsg(null)
 

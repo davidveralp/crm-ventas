@@ -439,3 +439,20 @@ La sincronización posterior con la planilla ya no necesita crear el cliente (lo
 
 ## Alcance y una limitación honesta
 Esto cubre el ingreso a través del formulario Nueva OT del CRM, que es el canal principal. Las OT que se registran fuera del CRM (directamente en la app de terreno / planilla, sin pasar por este formulario) seguirán creando el cliente sin dueño asignado, porque ese canal no identifica qué asesor la registró — es una limitación de origen de datos, no del CRM. Si se necesita resolver ese caso también, requeriría agregar la identidad del asesor a esa app externa, lo cual queda fuera del alcance de esta actualización.
+
+
+---
+
+# ACTUALIZACIÓN v37 · Nueva OT ya no bloquea las OT "faltantes" de Control de OT
+
+Sin migración (solo frontend).
+
+## El problema
+La validación de "OT ya cargada" (v25) bloqueaba el guardado si **cualquier** fila existía en `servicios` con ese número — sin distinguir entre un duplicado real (con patente, monto y cliente) y una fila **vacía**, que es exactamente lo que significa una OT marcada como "faltante" en Control de OT: el número quedó registrado en el historial sin datos reales asociados. Por eso, precisamente las OT que aparecían en Control de OT → Faltantes eran las que NO se podían registrar — la validación las trataba como si ya existieran de verdad.
+
+## La corrección
+Ahora la validación revisa si esa fila **tiene datos** (patente, monto > 0 o cliente asociado):
+- **Si tiene datos reales** → sigue bloqueando, mostrando además qué patente/fecha/monto ya está cargado, para que sea fácil verificar si es un error de tipeo del número de OT.
+- **Si está vacía** (el caso de las "faltantes") → deja continuar. El guardado final ya usaba `upsert` por (empresa_id, ot_numero), así que esa misma fila se completa con los datos reales en vez de bloquear o duplicar.
+
+Con esto, las OT que ves en Control de OT → Faltantes ya se pueden registrar normalmente desde Nueva OT.

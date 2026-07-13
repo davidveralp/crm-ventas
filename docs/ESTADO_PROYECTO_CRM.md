@@ -55,6 +55,9 @@ CRM comercial y operativo para **Servicio Automotriz Didial Ltda.** (La Serena, 
 - **Notificaciones**: tabla `notificaciones` (por usuario o rol), **campanita** en sidebar/móvil con badge, polling 30 s y **sonido de alerta** (WebAudio) al llegar nuevas. Cada hito del flujo de taller notifica al responsable.
 
 
+### Novedades v37 (13-07-2026)
+- Fix: la validación de "OT duplicada" en Nueva OT bloqueaba también las filas vacías (placeholders) de OT marcadas como "faltantes" en Control de OT. Ahora solo bloquea duplicados con datos reales (patente/monto/cliente); las vacías se completan vía upsert.
+
 ### Novedades v36 (08-07-2026)
 - Verificado: permisos entre asesores (vendedor/asesor_toyota/asesor_multimarca) ya son equivalentes salvo diferencias intencionales (sucursal fija, cartera multimarca compartida).
 - **Fix real**: Nueva OT ahora crea cliente+vehículo de inmediato (no espera la sync async) cuando la patente es nueva, asignado al asesor logueado (vendedor_id). Esto dispara el seguimiento de fidelización (actividad en el calendario del asesor, día siguiente) para TODO ingreso nuevo, no solo vehículos ya existentes.
