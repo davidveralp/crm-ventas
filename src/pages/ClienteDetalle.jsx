@@ -302,7 +302,7 @@ export default function ClienteDetalle() {
   }
 
   async function eliminarCliente() {
-    if (!confirm(`¿Eliminar al cliente "${nombreCompleto(cliente)}" y todos sus vehículos, actividades y presupuestos? Esta acción no se puede deshacer.`)) return
+    if (!confirm(`¿Eliminar al cliente "${nombreCompleto(cliente)}"?\n\nSe eliminará TODO lo asociado: vehículos, trabajos de taller, presupuestos (taller y comerciales), tareas de campaña y actividades (agenda y gestiones). Esta acción no se puede deshacer.`)) return
     const { error } = await supabase.from('clientes').delete().eq('id', id)
     if (error) { alert('No se pudo eliminar: ' + error.message); return }
     navigate('/clientes')

@@ -55,6 +55,15 @@ CRM comercial y operativo para **Servicio Automotriz Didial Ltda.** (La Serena, 
 - **Notificaciones**: tabla `notificaciones` (por usuario o rol), **campanita** en sidebar/móvil con badge, polling 30 s y **sonido de alerta** (WebAudio) al llegar nuevas. Cada hito del flujo de taller notifica al responsable.
 
 
+### Novedades v36 (08-07-2026)
+- Verificado: permisos entre asesores (vendedor/asesor_toyota/asesor_multimarca) ya son equivalentes salvo diferencias intencionales (sucursal fija, cartera multimarca compartida).
+- **Fix real**: Nueva OT ahora crea cliente+vehículo de inmediato (no espera la sync async) cuando la patente es nueva, asignado al asesor logueado (vendedor_id). Esto dispara el seguimiento de fidelización (actividad en el calendario del asesor, día siguiente) para TODO ingreso nuevo, no solo vehículos ya existentes.
+- Limitación conocida: OT ingresadas fuera del CRM (app de terreno/planilla directa) siguen sin asesor identificado — requiere cambio en esa app externa, fuera de alcance.
+
+### Novedades v35 (08-07-2026)
+- FK de cliente_id en trabajos_taller y presupuestos_taller pasan de "set null" a "cascade" — "Eliminar ficha" (admin) ahora sí arrastra todo Taller y Presupuestos de ese cliente, sin dejar huérfanos.
+- Limpieza única de las pruebas: vaciados trabajos_taller, presupuestos_taller y presupuestos (comercial). Clientes, vehículos y facturas de repuestos quedaron intactos.
+
 ### Novedades v34 (08-07-2026)
 - WhatsApp retirado del módulo Presupuestos (queda solo en la ficha, gestionado por el asesor).
 - PDF del módulo reescrito con el **formato oficial DIDIAL** (réplica exacta del presupuesto físico Nº 6268: cabecera, datos vehículo/cliente, Cliente Solicita, 3 secciones con subtotales, NETO/IVA/TOTAL, Times New Roman).
@@ -155,6 +164,7 @@ Idempotentes, se ejecutan en orden en el SQL Editor. Estado según lo conversado
 | 24 (v20) | `diagnosticos_taller`, respaldos/autorización en trabajos, config `margenes` | ⚠️ |
 | 25 (v21) | apellidos, tipo_vehiculo, documento en servicios, `tareas_servicio` (seed MAN X PAUTA), `precios_base`, RPC `crm_aplicar_datos_ot`, re-vinculación por patente | 🆕 pendiente |
 | 26 (v21.1) | Seed base de precios (985 filas, precios 09-04-2026; fix celdas combinadas; AC13 quedó "(nombre por completar)") | 🆕 pendiente |
+| 40 (v35) | FK trabajos_taller/presupuestos_taller.cliente_id → cascade; limpieza única de pruebas en taller/presupuestos | 🆕 pendiente |
 | 38 (v34) | vehiculos += color (para el PDF oficial de presupuesto) | 🆕 pendiente |
 | 37 (v33) | facturas_repuestos + repuestos_facturados + margenes_repuestos; origen 'sin_solicitud' en presupuestos_taller | 🆕 pendiente |
 | 36 (v32) | Roles asesores (Diego→toyota, David/Matías→multimarca), Ángel inactivo, reparto 50/50 cartera multimarca | 🆕 pendiente |

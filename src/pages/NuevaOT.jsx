@@ -230,9 +230,40 @@ export default function NuevaOT() {
 
     const patFmt = formatPatente(f.patente)
     const kmNum = parseInt(f.km, 10) || null
+
+    // v36: si la patente no existe en el CRM, el cliente y el vehículo se
+    // crean AQUÍ MISMO, de inmediato, asignados al asesor que ingresa la
+    // OT — no se espera a la sincronización con la planilla (que además
+    // nunca asignaba dueño). Así, todo ingreso nuevo queda con su asesor
+    // y dispara el seguimiento de fidelización de más abajo.
+    let vehActivo = veh
+    if (!vehActivo) {
+      const { data: nuevoCli, error: eCli } = await supabase.from('clientes').insert({
+        empresa_id: perfil.empresa_id,
+        nombre: f.propietario.trim(), apellidos: esEmpresa ? '' : f.apellidos.trim(),
+        rut: f.rut.trim(), telefono: f.telefono.trim() || null,
+        email: f.sin_correo ? null : f.email.trim(),
+        direccion: f.direccion.trim() || null, ciudad: f.comuna?.trim() || null,
+        tipo: esEmpresa ? 'EMPRESA' : 'PERSONA',
+        contacto_nombre: esEmpresa ? f.contacto_nombre.trim() : null,
+        segmento: 'nuevo', vendedor_id: perfil.id,
+        notas: 'Ingresado desde Nueva OT.'
+      }).select('id').single()
+      if (eCli) { setGuardando(false); setMsg({ t: 'err', m: 'No se pudo crear el cliente: ' + eCli.message }); return }
+      const { data: nuevoVeh, error: eVeh } = await supabase.from('vehiculos').insert({
+        empresa_id: perfil.empresa_id, cliente_id: nuevoCli.id, patente: patFmt,
+        marca: marcaFinal()?.trim() || null, modelo: f.modelo?.trim() || null,
+        anio: parseInt(f.anio, 10) || null, tipo_vehiculo: f.tipo_vehiculo || null,
+        km_ultimo: kmNum, km_actual_estimado: kmNum
+      }).select('id,cliente_id').single()
+      if (eVeh) { setGuardando(false); setMsg({ t: 'err', m: 'No se pudo crear el vehículo: ' + eVeh.message }); return }
+      vehActivo = nuevoVeh
+      setVeh(nuevoVeh)
+    }
+
     const fila = {
       empresa_id: perfil.empresa_id,
-      vehiculo_id: veh?.id || null, cliente_id: veh?.cliente_id || null,
+      vehiculo_id: vehActivo?.id || null, cliente_id: vehActivo?.cliente_id || null,
       ot_numero: f.ot_numero.trim() || null, fecha: f.fecha || null,
       patente: patFmt, marca: marcaFinal(), modelo: f.modelo.trim(),
       cilindrada: f.cilindrada.trim(), anio: f.anio.trim(), km: kmNum,
@@ -266,9 +297,9 @@ export default function NuevaOT() {
       patente: patenteLimpia(f.patente), tipo_servicio: f.tipo_servicio_1,
       tipo_servicio_2: f.tipo_servicio_2 || null, monto: total, km: kmNum,
       tipo_documento: f.tipo_documento || null, nro_documento: f.nro_documento.trim() || null,
-      vehiculo_id: veh?.id || null, cliente_id: veh?.cliente_id || null
+      vehiculo_id: vehActivo?.id || null, cliente_id: vehActivo?.cliente_id || null
     }, { onConflict: 'empresa_id,ot_numero' })
-    if (veh?.id && kmNum) await supabase.from('vehiculos').update({ km_ultimo: kmNum }).eq('id', veh.id)
+    if (vehActivo?.id && kmNum) await supabase.from('vehiculos').update({ km_ultimo: kmNum }).eq('id', vehActivo.id)
 
     // Presupuestos de taller: marca aprobado (completo) o parcial según selección
     for (const p of presups) {
@@ -283,8 +314,8 @@ export default function NuevaOT() {
     }
 
     // v27: guarda el tipo de vehículo en la ficha (asociación con precios)
-    if (veh?.id && f.tipo_vehiculo && veh.tipo_vehiculo !== f.tipo_vehiculo) {
-      await supabase.from('vehiculos').update({ tipo_vehiculo: f.tipo_vehiculo }).eq('id', veh.id)
+    if (vehActivo?.id && f.tipo_vehiculo && vehActivo.tipo_vehiculo !== f.tipo_vehiculo) {
+      await supabase.from('vehiculos').update({ tipo_vehiculo: f.tipo_vehiculo }).eq('id', vehActivo.id)
     }
 
     // v23: solicitud de anulación → notifica a administración para registrarla como nula
@@ -297,13 +328,14 @@ export default function NuevaOT() {
       })
     }
 
-    // Fidelización: seguimiento automático para el asesor a cargo (día siguiente)
-    if (veh?.cliente_id) {
+    // v36: Fidelización — seguimiento automático en el calendario del
+    // asesor a cargo (día siguiente), para TODO ingreso nuevo o existente.
+    if (vehActivo?.cliente_id) {
       const { data: cli } = await supabase.from('clientes')
-        .select('vendedor_id').eq('id', veh.cliente_id).maybeSingle()
+        .select('vendedor_id').eq('id', vehActivo.cliente_id).maybeSingle()
       const manana = new Date(Date.now() + 864e5).toISOString().slice(0, 10)
       await supabase.from('actividades').insert({
-        empresa_id: perfil.empresa_id, cliente_id: veh.cliente_id,
+        empresa_id: perfil.empresa_id, cliente_id: vehActivo.cliente_id,
         tipo: 'llamada', resultado: 'pendiente',
         fecha: hoy(), descripcion: `Seguimiento fidelización post-servicio · OT ${fila.ot_numero || ''}`.trim(),
         proxima_accion: 'Llamar al cliente por su experiencia de servicio',

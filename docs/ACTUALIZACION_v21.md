@@ -402,3 +402,40 @@ Para esto, la carga de presupuestos en el módulo ahora trae también los datos 
 
 ## Solicitud comercial → presupuesto (confirmado, ya en v33.1)
 El botón "Crear presupuesto para cotizar" en el detalle de una solicitud comercial sigue creando el presupuesto de taller cotizable con los ítems sugeridos — reconfirmado en esta entrega.
+
+
+---
+
+# ACTUALIZACIÓN v35 · Limpieza de pruebas + "Eliminar ficha" en cascada real
+
+## Migración
+**`database/40_actualizacion_v35.sql`** (crm-ventas):
+1. Corrige las FK `trabajos_taller.cliente_id` y `presupuestos_taller.cliente_id` de "on delete set null" a **"on delete cascade"**. Antes, al eliminar una ficha, esas dos tablas quedaban con filas huérfanas (cliente_id en null) en vez de borrarse. El resto (vehículos, presupuestos comerciales, tareas de campaña, actividades/agenda) ya cascadeaba bien.
+2. **Limpieza única**: vacía todo lo existente hoy en `trabajos_taller`, `presupuestos_taller` y `presupuestos` (comercial) — confirmado que era todo prueba. **No toca** clientes, vehículos, ni las facturas de repuestos (se dejan intactas por si ya hay sincronización real).
+
+## "Eliminar ficha" (admin) — función única, ya reforzada
+No requirió cambios de frontend: al arreglar las FK, el mismo botón "Eliminar" de la ficha (ya restringido a admin) ahora borra en cascada de verdad: vehículos, trabajos de taller, presupuestos (taller y comerciales), tareas de campaña y actividades (agenda y gestiones) de ese cliente. Se actualizó el texto de confirmación para que sea explícito sobre el alcance.
+
+## De ahora en adelante
+Trabajarás con clientes de prueba reales dentro del CRM; cuando termines de probar algo, "Eliminar ficha" en la ficha del cliente de prueba se encarga de limpiar todo lo asociado en Taller y Presupuestos sin dejar residuos.
+
+
+---
+
+# ACTUALIZACIÓN v36 · Ingreso nuevo = dueño automático + calendario de fidelización
+
+Sin migración (solo frontend). Hallazgo tras revisar permisos y el flujo de ingreso:
+
+## Permisos entre asesores (verificado, sin cambios necesarios)
+Los tres roles de asesor (Vendedor genérico, Asesor Toyota, Asesor Multimarca) ya tienen exactamente las mismas capacidades en menú y páginas. Las únicas diferencias existentes son intencionales: sucursal fija en Nueva OT (v27) y cartera compartida multimarca en Tareas (v32). No se encontró ninguna condición de permisos que discriminara entre ellos por error.
+
+## El problema real encontrado
+Cuando en Nueva OT la patente NO existía todavía en el CRM, el cliente y el vehículo se creaban **después, de forma asíncrona**, vía la sincronización con la planilla (Apps Script → función SQL `crm_aplicar_datos_ot`). Esa función **nunca asignaba un asesor dueño** (el nombre del asesor no viaja por ese canal) y, como el seguimiento de fidelización solo se disparaba si el vehículo ya existía al momento de guardar la OT, los clientes genuinamente nuevos quedaban sin dueño y sin su recordatorio en el calendario.
+
+## La solución
+**Nueva OT ahora crea el cliente y el vehículo de inmediato**, en el momento del envío, cuando la patente no existe — asignados al asesor que está ingresando la información (`vendedor_id = perfil.id`). Esto activa automáticamente, para cualquier ingreso (nuevo o existente), el seguimiento de fidelización que ya existía: una actividad en el calendario del asesor para el día siguiente ("Llamar al cliente por su experiencia de servicio"), visible en Calendario y en Clientes → Tareas.
+
+La sincronización posterior con la planilla ya no necesita crear el cliente (lo encuentra por patente y solo completa datos vacíos), evitando duplicados.
+
+## Alcance y una limitación honesta
+Esto cubre el ingreso a través del formulario Nueva OT del CRM, que es el canal principal. Las OT que se registran fuera del CRM (directamente en la app de terreno / planilla, sin pasar por este formulario) seguirán creando el cliente sin dueño asignado, porque ese canal no identifica qué asesor la registró — es una limitación de origen de datos, no del CRM. Si se necesita resolver ese caso también, requeriría agregar la identidad del asesor a esa app externa, lo cual queda fuera del alcance de esta actualización.
