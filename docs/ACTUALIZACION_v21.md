@@ -383,3 +383,22 @@ Se quitó el botón de WhatsApp del módulo Presupuestos: el envío por WhatsApp
 
 ## Clic en solicitud comercial → crea presupuesto
 Desde la pestaña Comerciales, al abrir una solicitud del asesor, el botón "Crear presupuesto para cotizar" genera el presupuesto de taller (3 áreas) con los ítems sugeridos y marca la solicitud "en seguimiento", en vez de solo abrir la ficha.
+
+
+---
+
+# ACTUALIZACIÓN v34 · WhatsApp solo en la ficha + PDF con formato oficial
+
+## Migración
+**`database/38_actualizacion_v34.sql`**: agrega `color` a `vehiculos` (usado en el PDF oficial).
+
+## WhatsApp: solo en la ficha del cliente (gestionado por el asesor)
+Se quitó el botón WhatsApp del módulo Presupuestos — el trato con el cliente es del asesor, no del encargado de presupuestos. El módulo conserva únicamente el botón **📄 PDF**. WhatsApp sigue disponible donde corresponde: en la ficha del cliente (sección de presupuestos del taller), gestionado por el asesor.
+
+## PDF con el formato oficial DIDIAL
+Reescribí `verPDF()` en la tarjeta del módulo para replicar exactamente el presupuesto físico que compartiste (Nº 6268): cabecera con datos de la empresa (SERVICIO AUTOMOTRIZ DIDIAL LTDA, dirección, correo, teléfono) + logo centrado + número de presupuesto/fecha/página; datos del vehículo y cliente (Patente, RUT, Nombre, Color, Año, Marca, Modelo); "Cliente Solicita"; las 3 secciones (Repuestos y Lubricantes e Insumos con Código/Detalle/Cantidad/Precio/Total + subtotal; Mano de Obra con Detalle/Total + subtotal); y NETO/I.V.A./TOTAL. Tipografía Times New Roman como el original.
+
+Para esto, la carga de presupuestos en el módulo ahora trae también los datos de cliente (nombre, apellidos, RUT) y vehículo (patente, marca, modelo, año, color) cuando el presupuesto no viene de un trabajo de taller (sin_solicitud, factura, cotización rápida).
+
+## Solicitud comercial → presupuesto (confirmado, ya en v33.1)
+El botón "Crear presupuesto para cotizar" en el detalle de una solicitud comercial sigue creando el presupuesto de taller cotizable con los ítems sugeridos — reconfirmado en esta entrega.
