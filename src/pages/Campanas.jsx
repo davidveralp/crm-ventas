@@ -132,9 +132,16 @@ export default function Campanas() {
     // "cartera"), las existentes se REASIGNAN explícitamente a ese
     // asesor (sin tocar su estado/comentario ya trabajado).
     const idsCliente = coincidencias.map((c) => c.id)
-    const { data: existentes } = await supabase.from('tareas_campana')
-      .select('id,cliente_id').eq('campana_id', sel.id).in('cliente_id', idsCliente)
-    const idsExistentes = new Set((existentes || []).map((e) => e.cliente_id))
+    // v38.2: se consulta en LOTES (no toda la lista de una vez) — con
+    // campañas de varios cientos de clientes, meter todos los UUIDs en un
+    // solo .in() genera una URL demasiado larga y puede fallar en silencio.
+    let existentes = []
+    for (let i = 0; i < idsCliente.length; i += 200) {
+      const { data: lote } = await supabase.from('tareas_campana')
+        .select('id,cliente_id').eq('campana_id', sel.id).in('cliente_id', idsCliente.slice(i, i + 200))
+      existentes.push(...(lote || []))
+    }
+    const idsExistentes = new Set(existentes.map((e) => e.cliente_id))
 
     const nuevas = coincidencias.filter((c) => !idsExistentes.has(c.id)).map((c) => ({
       empresa_id: perfil.empresa_id, campana_id: sel.id, cliente_id: c.id,
@@ -147,11 +154,14 @@ export default function Campanas() {
         .upsert(nuevas, { onConflict: 'campana_id,cliente_id', ignoreDuplicates: true }))
     }
     let reasignadas = 0
-    if (!error && asesorDestino !== 'cartera' && existentes?.length) {
-      const { error: eReasig } = await supabase.from('tareas_campana')
-        .update({ vendedor_id: asesorDestino })
-        .eq('campana_id', sel.id).in('cliente_id', [...idsExistentes])
-      error = eReasig
+    if (!error && asesorDestino !== 'cartera' && existentes.length) {
+      const listaExistentes = [...idsExistentes]
+      for (let i = 0; i < listaExistentes.length && !error; i += 200) {
+        const { error: eReasig } = await supabase.from('tareas_campana')
+          .update({ vendedor_id: asesorDestino })
+          .eq('campana_id', sel.id).in('cliente_id', listaExistentes.slice(i, i + 200))
+        error = eReasig
+      }
       reasignadas = existentes.length
     }
 

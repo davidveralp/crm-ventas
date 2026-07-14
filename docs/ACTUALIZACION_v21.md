@@ -489,3 +489,16 @@ Al calcular la audiencia de una campaña personalizada, la consulta que trae el 
 
 ## Verificación de la política de permisos (RLS)
 Se confirmó que `tareas_campana` tiene su política RLS en modo "for all" (cubre update), por empresa — no hay restricción que bloquee la reasignación agregada en v38.
+
+
+---
+
+# ACTUALIZACIÓN v38.2 · Batching para campañas grandes (asignar a asesor)
+
+Sin migración.
+
+## Bug 4: URL demasiado larga con campañas de varios cientos de clientes
+Tanto la consulta de "tareas ya existentes" como el update de reasignación armaban un único `.in('cliente_id', [...])` con TODA la lista de clientes de la campaña de una sola vez. Con campañas grandes, esa lista de UUIDs (36 caracteres cada uno) puede generar una URL demasiado larga para el servidor, fallando en silencio o con error. Se corrigió consultando y actualizando **en lotes de 200** clientes por vez.
+
+## Estado de la revisión
+Van 4 correcciones sobre esta misma función tras 3 revisiones (ignoreDuplicates que bloqueaba la reasignación, el selector que no se reiniciaba entre campañas, el corte silencioso a 1000 en el merge de vendedor_id, y ahora el riesgo de URL larga). Todas fueron encontradas por revisión de código; no he podido probarlas contra tu base real. Si después de este despliegue la función sigue sin funcionar como esperas, necesito que me digas exactamente qué ves — ¿aparece algún error en pantalla?, ¿el mensaje dice "listo" pero el cliente no cambia de asesor en Clientes → Tareas?, ¿el selector no aparece?, ¿algo distinto? — para dejar de conjeturar y resolverlo directo.
