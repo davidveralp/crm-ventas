@@ -523,3 +523,23 @@ Se amplía el permiso de lectura de `clientes`: además del dueño de cartera y 
 
 ## Nota sobre las revisiones anteriores (v38, v38.1, v38.2)
 Esas correcciones (ignoreDuplicates, selector no reiniciado, cortes de 1000 filas, URLs largas) eran reales y siguen siendo necesarias para que la reasignación en sí funcione correctamente — pero ninguna de ellas era la causa de lo que reportaste en la captura. Esta migración 41 es la que resuelve específicamente el síntoma de "filas en blanco / no carga completo".
+
+
+---
+
+# ACTUALIZACIÓN v40 · Campañas de recordatorio de mantención (5–6 y 6–12 meses)
+
+## Migración
+**`database/42_actualizacion_v40.sql`** (crm-ventas). No es una funcionalidad nueva: reutiliza los criterios `mant_proxima` y `mant_vencida` que ya existían en `audiencia_campana` desde hace varias versiones, pero que nunca se habían usado porque el constructor visual solo exponía el criterio de rango de fechas ("personalizada").
+
+## Las dos campañas creadas
+- **"Recordatorio · Próxima mantención (5–6 meses)"** — clientes cuya última mantención (y último servicio de cualquier tipo) ocurrió hace 150 a 180 días. Pensada para recordarles que se acerca su próxima mantención, antes de que se atrase.
+- **"Recordatorio · Mantención atrasada (6–12 meses)"** — clientes cuya última mantención fue hace 181 a 365 días. Su mantención ya está vencida.
+
+Ambas usan canal **tareas** (llamada/WhatsApp personal del asesor), igual que la campaña de fidelización de junio–julio, y quedan **activas** de inmediato en el módulo Campañas — no en Email marketing.
+
+## Un matiz importante del criterio (ya construido, no nuevo)
+Ambas campañas exigen que esa mantención haya sido el **último** servicio del cliente (no ha vuelto por otra razón desde entonces). Esto evita recontactar a alguien que, por ejemplo, tuvo su mantención hace 7 meses pero volvió la semana pasada por una reparación — a esa persona no le corresponde este recordatorio todavía.
+
+## Cómo usarlas
+Igual que la de junio-julio: entra a Campañas, selecciona la campaña, revisa la audiencia calculada en vivo (la migración ya te muestra el conteo en su diagnóstico final), y usa "Cargar a asesores" con el destino que prefieras (cartera o un asesor específico).
