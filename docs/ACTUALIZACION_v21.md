@@ -456,3 +456,20 @@ Ahora la validación revisa si esa fila **tiene datos** (patente, monto > 0 o cl
 - **Si está vacía** (el caso de las "faltantes") → deja continuar. El guardado final ya usaba `upsert` por (empresa_id, ot_numero), así que esa misma fila se completa con los datos reales en vez de bloquear o duplicar.
 
 Con esto, las OT que ves en Control de OT → Faltantes ya se pueden registrar normalmente desde Nueva OT.
+
+
+---
+
+# ACTUALIZACIÓN v38 · Fix: reasignar una campaña a un asesor específico
+
+Sin migración (solo frontend).
+
+## El bug
+En "Cargar a asesores" (Campañas), el guardado usaba `upsert(..., { ignoreDuplicates: true })`. Eso significa que si la campaña ya se había cargado antes (por ejemplo en modo "cartera"), un segundo intento eligiendo un **asesor específico** para reasignar no cambiaba nada en las tareas que ya existían — quedaban silenciosamente ignoradas, aunque el mensaje decía "asignado". Solo funcionaba correctamente la primera vez, cuando ninguna tarea existía aún para esa campaña.
+
+## La corrección
+Ahora "Cargar a asesores" separa dos casos:
+- **Tareas nuevas** (clientes de la campaña que aún no tenían tarea): se insertan como antes, según el destino elegido (cartera o asesor fijo).
+- **Tareas que ya existían**: si se eligió un **asesor específico** (no "cartera"), se **reasignan de verdad** — se actualiza su vendedor_id a ese asesor, sin tocar el estado ni los comentarios que el asesor anterior ya hubiera registrado (para no perder el trabajo hecho). Si el modo elegido es "cartera", las existentes no se tocan (se respeta lo ya asignado, igual que antes).
+
+El resultado ahora informa por separado cuántas son nuevas y cuántas fueron reasignadas.

@@ -55,6 +55,9 @@ CRM comercial y operativo para **Servicio Automotriz Didial Ltda.** (La Serena, 
 - **Notificaciones**: tabla `notificaciones` (por usuario o rol), **campanita** en sidebar/móvil con badge, polling 30 s y **sonido de alerta** (WebAudio) al llegar nuevas. Cada hito del flujo de taller notifica al responsable.
 
 
+### Novedades v38 (13-07-2026)
+- Fix: "Cargar a asesores" con un asesor específico no reasignaba tareas ya existentes (upsert con ignoreDuplicates las omitía). Ahora separa inserción de nuevas vs reasignación explícita (update de vendedor_id) de existentes, sin resetear estado/comentarios.
+
 ### Novedades v37 (13-07-2026)
 - Fix: la validación de "OT duplicada" en Nueva OT bloqueaba también las filas vacías (placeholders) de OT marcadas como "faltantes" en Control de OT. Ahora solo bloquea duplicados con datos reales (patente/monto/cliente); las vacías se completan vía upsert.
 

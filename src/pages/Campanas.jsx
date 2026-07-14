@@ -123,18 +123,43 @@ export default function Campanas() {
       : (asesores.find((a) => a.id === asesorDestino)?.nombre || 'el asesor elegido')
     if (!confirm(`Se asignarán ${coincidencias.length} tarea(s) de campaña a ${destinoNombre}. ¿Continuar?`)) return
     setCargandoAsesores(true); setResultadoEnvio('')
-    // v29: destino = por cartera (vendedor de cada cliente) o un asesor fijo
-    const filas = coincidencias.map((c) => ({
+
+    // v37: se separan las tareas NUEVAS (se insertan) de las que YA
+    // existen para esta campaña. Antes, un re-ingreso con un asesor
+    // específico no reasignaba nada porque el upsert ignoraba duplicados
+    // silenciosamente. Ahora, si se eligió un asesor puntual (no
+    // "cartera"), las existentes se REASIGNAN explícitamente a ese
+    // asesor (sin tocar su estado/comentario ya trabajado).
+    const idsCliente = coincidencias.map((c) => c.id)
+    const { data: existentes } = await supabase.from('tareas_campana')
+      .select('id,cliente_id').eq('campana_id', sel.id).in('cliente_id', idsCliente)
+    const idsExistentes = new Set((existentes || []).map((e) => e.cliente_id))
+
+    const nuevas = coincidencias.filter((c) => !idsExistentes.has(c.id)).map((c) => ({
       empresa_id: perfil.empresa_id, campana_id: sel.id, cliente_id: c.id,
       vendedor_id: asesorDestino === 'cartera' ? (c.vendedor_id || null) : asesorDestino,
       canal: sel.canal || null, estado: 'pendiente'
     }))
-    const { error } = await supabase.from('tareas_campana')
-      .upsert(filas, { onConflict: 'campana_id,cliente_id', ignoreDuplicates: true })
+    let error = null
+    if (nuevas.length) {
+      ({ error } = await supabase.from('tareas_campana')
+        .upsert(nuevas, { onConflict: 'campana_id,cliente_id', ignoreDuplicates: true }))
+    }
+    let reasignadas = 0
+    if (!error && asesorDestino !== 'cartera' && existentes?.length) {
+      const { error: eReasig } = await supabase.from('tareas_campana')
+        .update({ vendedor_id: asesorDestino })
+        .eq('campana_id', sel.id).in('cliente_id', [...idsExistentes])
+      error = eReasig
+      reasignadas = existentes.length
+    }
+
     setCargandoAsesores(false)
     if (error) { setResultadoEnvio('Error: ' + error.message); return }
-    const sinVend = asesorDestino === 'cartera' ? filas.filter((f) => !f.vendedor_id).length : 0
-    setResultadoEnvio(`Listo: ${filas.length} tarea(s) asignada(s) a ${destinoNombre}. Se ven en Clientes → pestaña Tareas.` +
+    const sinVend = asesorDestino === 'cartera' ? nuevas.filter((f) => !f.vendedor_id).length : 0
+    setResultadoEnvio(`Listo: ${nuevas.length} tarea(s) nueva(s) asignada(s) a ${destinoNombre}` +
+      (reasignadas ? ` · ${reasignadas} ya existente(s) reasignada(s) a ${destinoNombre}` : '') +
+      `. Se ven en Clientes → pestaña Tareas.` +
       (sinVend ? ` ${sinVend} cliente(s) sin vendedor quedaron sin asignar: reasígnalos o vuelve a cargar eligiendo un asesor.` : ''))
   }
 
