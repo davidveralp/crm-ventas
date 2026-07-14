@@ -209,7 +209,9 @@ export default function Campanas() {
           <h1 className="text-xl font-bold text-ink">Campañas</h1>
           <p className="text-sm text-slate-500">Oportunidades por segmento y campañas personalizadas · ordenadas por prioridad</p>
         </div>
-        <button className="btn-primary" onClick={() => { setFN(NUEVA); setModalNueva(true) }}>➕ Nueva campaña</button>
+        {esAdmin && (
+          <button className="btn-primary" onClick={() => { setFN(NUEVA); setModalNueva(true) }}>➕ Nueva campaña</button>
+        )}
       </div>
 
       <div className="grid md:grid-cols-2 gap-4">

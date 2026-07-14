@@ -543,3 +543,10 @@ Ambas campañas exigen que esa mantención haya sido el **último** servicio del
 
 ## Cómo usarlas
 Igual que la de junio-julio: entra a Campañas, selecciona la campaña, revisa la audiencia calculada en vivo (la migración ya te muestra el conteo en su diagnóstico final), y usa "Cargar a asesores" con el destino que prefieras (cartera o un asesor específico).
+
+
+---
+
+# ACTUALIZACIÓN v41 · "Nueva campaña" solo para administración
+
+Sin migración (el permiso ya existía en la base de datos vía RLS `campanas_admin`; solo faltaba ocultar el botón en la interfaz). Ahora el botón "➕ Nueva campaña" solo se muestra a usuarios con rol admin. Los asesores siguen viendo y trabajando las campañas ya creadas (audiencia, Cargar a asesores según corresponda), pero no pueden crear nuevas.
