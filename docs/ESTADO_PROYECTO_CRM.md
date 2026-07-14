@@ -170,6 +170,7 @@ Idempotentes, se ejecutan en orden en el SQL Editor. Estado según lo conversado
 | 24 (v20) | `diagnosticos_taller`, respaldos/autorización en trabajos, config `margenes` | ⚠️ |
 | 25 (v21) | apellidos, tipo_vehiculo, documento en servicios, `tareas_servicio` (seed MAN X PAUTA), `precios_base`, RPC `crm_aplicar_datos_ot`, re-vinculación por patente | 🆕 pendiente |
 | 26 (v21.1) | Seed base de precios (985 filas, precios 09-04-2026; fix celdas combinadas; AC13 quedó "(nombre por completar)") | 🆕 pendiente |
+| 41 (v39) | Fix RLS clientes_select: incluye visibilidad por tarea de campaña asignada (causa real de "filas en blanco" al reasignar) | 🆕 pendiente |
 | 40 (v35) | FK trabajos_taller/presupuestos_taller.cliente_id → cascade; limpieza única de pruebas en taller/presupuestos | 🆕 pendiente |
 | 38 (v34) | vehiculos += color (para el PDF oficial de presupuesto) | 🆕 pendiente |
 | 37 (v33) | facturas_repuestos + repuestos_facturados + margenes_repuestos; origen 'sin_solicitud' en presupuestos_taller | 🆕 pendiente |

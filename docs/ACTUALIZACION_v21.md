@@ -502,3 +502,24 @@ Tanto la consulta de "tareas ya existentes" como el update de reasignación arma
 
 ## Estado de la revisión
 Van 4 correcciones sobre esta misma función tras 3 revisiones (ignoreDuplicates que bloqueaba la reasignación, el selector que no se reiniciaba entre campañas, el corte silencioso a 1000 en el merge de vendedor_id, y ahora el riesgo de URL larga). Todas fueron encontradas por revisión de código; no he podido probarlas contra tu base real. Si después de este despliegue la función sigue sin funcionar como esperas, necesito que me digas exactamente qué ves — ¿aparece algún error en pantalla?, ¿el mensaje dice "listo" pero el cliente no cambia de asesor en Clientes → Tareas?, ¿el selector no aparece?, ¿algo distinto? — para dejar de conjeturar y resolverlo directo.
+
+
+---
+
+# ACTUALIZACIÓN v39 · Causa real encontrada: RLS bloqueaba los datos del cliente
+
+## Migración
+**`database/41_actualizacion_v39.sql`** (crm-ventas) — imprescindible para que la reasignación de campañas funcione de verdad.
+
+## La causa raíz (por fin identificada con evidencia, no por síntomas)
+El sistema tiene DOS "dueños" distintos y separados:
+- El dueño de la **tarea de campaña** (`tareas_campana.vendedor_id`) — el que reasignamos en v38.
+- El dueño de la **ficha del cliente** (`clientes.vendedor_id`) — la cartera real, que la reasignación de campañas NUNCA toca (y no debe tocar: reasignar una campaña no significa transferir la cartera completa del cliente).
+
+La política de seguridad (RLS) de `clientes` solo permite leer un cliente a su dueño de cartera o a admin. Cuando reasignas una tarea de campaña a un asesor que **no** es el dueño de cartera de ese cliente, la fila de `tareas_campana` sí es visible para él (su política solo filtra por empresa), pero el join embebido a `clientes(...)` queda bloqueado por RLS — PostgREST lo devuelve como `null` en silencio. De ahí las rayas "—" en nombre, teléfono y segmento que viste en la captura, y por qué el buscador no encontraba a esos clientes (para Matías, esos campos literalmente llegaban vacíos).
+
+## El fix
+Se amplía el permiso de lectura de `clientes`: además del dueño de cartera y admin, ahora también puede leer los datos básicos del cliente cualquier asesor que tenga una **tarea de campaña activa** sobre él. La cartera real (`clientes.vendedor_id`) no se toca — esto es solo una ventana de visibilidad para trabajar la campaña, no una transferencia de dueño.
+
+## Nota sobre las revisiones anteriores (v38, v38.1, v38.2)
+Esas correcciones (ignoreDuplicates, selector no reiniciado, cortes de 1000 filas, URLs largas) eran reales y siguen siendo necesarias para que la reasignación en sí funcione correctamente — pero ninguna de ellas era la causa de lo que reportaste en la captura. Esta migración 41 es la que resuelve específicamente el síntoma de "filas en blanco / no carga completo".
