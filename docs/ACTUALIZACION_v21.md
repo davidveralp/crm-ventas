@@ -571,3 +571,16 @@ Al usar "Pasar a presupuesto", los tres checklists se informan al encargado (Ser
 
 ## Lo que NO se replicó de la referencia
 "Duración estimada" y "Etiquetas" no se agregaron por no existir aún como datos en el modelo del CRM — se prefirió no fabricar campos sin uso real en vez de imitar la interfaz de forma superficial. "Registrar el tiempo" ya existe funcionalmente vía el cronómetro por tarea (⏱ en Línea de tiempo), que se mantuvo tal como estaba.
+
+
+---
+
+# ACTUALIZACIÓN v42 · Cierra el ciclo de las OT "faltantes"
+
+Sin migración (solo frontend).
+
+## Lo que faltaba
+La v37 corrigió que Nueva OT permitiera registrar una OT marcada como "faltante" en Control de OT. Pero una vez registrada, esa OT seguía apareciendo como **pendiente de revisión** en Control de OT → Faltantes, porque nada le avisaba al sistema que ya se había resuelto — el admin tenía que acordarse de ir a clasificarla manualmente.
+
+## El cierre
+Al guardar exitosamente cualquier OT desde Nueva OT, ahora se marca automáticamente en `control_ot_revision` con el nuevo motivo **"Registrada"** (verde), indicando quién y cuándo. Así, si esa OT figuraba pendiente en Control de OT, pasa a "Revisadas" sola, sin trabajo manual extra. Se agregó el motivo "Registrada" a la leyenda de Control de OT.

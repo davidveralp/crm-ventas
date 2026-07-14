@@ -384,6 +384,17 @@ export default function NuevaOT() {
       aviso += ' · (planilla no configurada)'
     }
 
+    // v42: si esta OT figuraba pendiente en Control de OT (faltante), se
+    // marca automáticamente como "Registrada" — así deja de aparecer como
+    // pendiente de revisión sin que el admin tenga que clasificarla a mano.
+    if (f.ot_numero?.trim()) {
+      await supabase.from('control_ot_revision').upsert({
+        empresa_id: perfil.empresa_id, ot_numero: f.ot_numero.trim(), motivo: 'registrada',
+        nota: `Registrada automáticamente por ${perfil?.nombre || 'un asesor'} vía Nueva OT.`,
+        revisado_por: perfil.id, actualizado_en: new Date().toISOString()
+      }, { onConflict: 'empresa_id,ot_numero' })
+    }
+
     setGuardando(false)
     setMsg({ t: 'ok', m: aviso })
     setF({ ...VACIA, fecha: hoy(), fecha_entrega: hoy() }); setVeh(null)

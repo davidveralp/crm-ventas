@@ -8,6 +8,7 @@ import { formatPatente, formatRut, formatTelefono, fmtCLP, fmtFecha, TIPOS_CLIEN
 const MOTIVOS = {
   en_taller: { label: 'Vehículo en taller', color: '#2f6fb0' },
   pendiente_ingreso: { label: 'OT nula', color: '#C98A1B' },   // v23: reemplaza "Pendiente de ingreso"
+  registrada: { label: 'Registrada', color: '#1f9d57' },       // v42: auto-marcada al ingresarla por Nueva OT
   otro: { label: 'Otro motivo', color: '#7A5C8E' }
 }
 
