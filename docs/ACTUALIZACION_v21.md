@@ -473,3 +473,19 @@ Ahora "Cargar a asesores" separa dos casos:
 - **Tareas que ya existían**: si se eligió un **asesor específico** (no "cartera"), se **reasignan de verdad** — se actualiza su vendedor_id a ese asesor, sin tocar el estado ni los comentarios que el asesor anterior ya hubiera registrado (para no perder el trabajo hecho). Si el modo elegido es "cartera", las existentes no se tocan (se respeta lo ya asignado, igual que antes).
 
 El resultado ahora informa por separado cuántas son nuevas y cuántas fueron reasignadas.
+
+
+---
+
+# ACTUALIZACIÓN v38.1 · Dos bugs más en la asignación de campañas a un asesor
+
+Revisión más profunda de la misma función, sin migración.
+
+## Bug 2: el destino elegido se arrastraba entre campañas
+El selector "Asignar a:" no se reiniciaba al abrir una campaña distinta. Si elegías un asesor específico para la Campaña A y luego abrías la Campaña B sin fijarte, el selector seguía mostrando ese mismo asesor — un clic distraído en "Cargar a asesores" habría asignado la Campaña B también a él. Ahora, cada vez que se abre una campaña, el destino vuelve a "Vendedor de cada cliente (cartera)" por defecto.
+
+## Bug 3: truncamiento silencioso a 1000 clientes
+Al calcular la audiencia de una campaña personalizada, la consulta que trae el vendedor_id de cada cliente (necesaria para el modo "cartera") tenía un `.slice(0, 1000)` que cortaba la lista ahí. Con campañas de más de 1000 clientes coincidentes, los que quedaban fuera del corte se habrían tratado como "sin vendedor" aunque sí tuvieran uno. Se corrigió con una consulta por lotes que cubre a todos, sin límite.
+
+## Verificación de la política de permisos (RLS)
+Se confirmó que `tareas_campana` tiene su política RLS en modo "for all" (cubre update), por empresa — no hay restricción que bloquee la reasignación agregada en v38.

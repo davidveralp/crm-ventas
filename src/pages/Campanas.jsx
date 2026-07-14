@@ -74,17 +74,18 @@ export default function Campanas() {
 
   async function abrir(c) {
     setSel(c); setResultadoEnvio(''); setCoincidencias([])
+    setAsesorDestino('cartera')  // v38: evita arrastrar el destino elegido en otra campaña
     // v22: las campañas de email con criterio calculan su audiencia desde el
     // historial real de servicios (función audiencia_campana)
     if (c.criterio) {
       const { data, error } = await supabase.rpc('audiencia_campana', { p_campana: c.id })
       if (error) { setResultadoEnvio('Error calculando audiencia: ' + error.message); return }
-      // trae vendedor_id para poder asignar tareas
+      // trae vendedor_id para poder asignar tareas (en lotes: sin límite de 1000)
       const ids = (data || []).map((x) => x.cliente_id)
       let vend = {}
-      if (ids.length) {
-        const { data: cl } = await supabase.from('clientes').select('id,vendedor_id').in('id', ids.slice(0, 1000))
-        vend = Object.fromEntries((cl || []).map((x) => [x.id, x.vendedor_id]))
+      for (let i = 0; i < ids.length; i += 1000) {
+        const { data: cl } = await supabase.from('clientes').select('id,vendedor_id').in('id', ids.slice(i, i + 1000))
+        ;(cl || []).forEach((x) => { vend[x.id] = x.vendedor_id })
       }
       setCoincidencias((data || []).map((x) => ({
         id: x.cliente_id, nombre: [x.nombre, x.apellidos].filter(Boolean).join(' '),
