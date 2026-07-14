@@ -50,7 +50,7 @@ function TallerInterno() {
 
   async function cargar() {
     const [t, ta, pr, us, dg, mg] = await Promise.all([
-      supabase.from('trabajos_taller').select('*, clientes(nombre,apellidos), vehiculos(patente,marca,modelo,tipo_vehiculo)').order('creado_en', { ascending: false }),
+      supabase.from('trabajos_taller').select('*, clientes(nombre,apellidos,telefono), vehiculos(patente,marca,modelo,tipo_vehiculo)').order('creado_en', { ascending: false }),
       supabase.from('tareas_taller').select('*').order('orden'),
       supabase.from('presupuestos_taller').select('*').order('creado_en', { ascending: false }),
       supabase.from('usuarios').select('id,nombre,rol,activo'),
@@ -151,12 +151,16 @@ function TallerInterno() {
     const hallazgos = diags.filter((d) => d.trabajo_id === t.id && d.severidad !== 'ok')
     const reps = t.repuestos_requeridos || []
     const inss = t.insumos_requeridos || []
-    if (!hallazgos.length && !reps.length && !inss.length) return alert('Registra el diagnóstico o los requerimientos (repuestos/insumos) antes de pasar a presupuesto.')
-    // v24: la cotización parte prellenada con los requerimientos del técnico
+    const exts = t.servicio_externo_requerido || []
+    if (!hallazgos.length && !reps.length && !inss.length && !exts.length) return alert('Registra el diagnóstico o los requerimientos (repuestos/insumos/servicio externo) antes de pasar a presupuesto.')
+    // v24/v41: la cotización parte prellenada con los requerimientos del
+    // técnico (ahora objetos {texto,hecho,tecnico_id} de las listas de control)
+    const txt = (r) => (typeof r === 'string' ? r : r?.texto || '')
     const items = [
-      ...reps.map((r) => ({ tipo: 'repuesto', codigo: '', detalle: r, cant: 1, costo: 0, precio: 0, en_stock: null })),
-      ...inss.map((r) => ({ tipo: 'insumo', codigo: '', detalle: r, cant: 1, costo: 0, precio: 0, en_stock: null })),
-      ...hallazgos.filter((d) => !reps.length && !inss.length).map((d) => ({
+      ...reps.map((r) => ({ tipo: 'repuesto', codigo: '', detalle: txt(r), cant: 1, costo: 0, precio: 0, en_stock: null })),
+      ...inss.map((r) => ({ tipo: 'insumo', codigo: '', detalle: txt(r), cant: 1, costo: 0, precio: 0, en_stock: null })),
+      ...exts.map((r) => ({ tipo: 'servicio_externo', codigo: '', detalle: txt(r), cant: 1, costo: 0, precio: 0, en_stock: null })),
+      ...hallazgos.filter((d) => !reps.length && !inss.length && !exts.length).map((d) => ({
         tipo: 'repuesto', codigo: '', detalle: d.item + (d.recomendacion ? ' — ' + d.recomendacion : ''),
         cant: 1, costo: 0, precio: 0, en_stock: null, severidad: d.severidad
       }))
@@ -469,38 +473,87 @@ function Detalle({ t, onClose, tareas, presups, tecnicos, nombreDe, diags, marge
   const pend = tareas.filter((x) => x.estado !== 'terminada')
   const misTareas = tareas.filter((x) => x.tecnico_id === perfil?.id)
 
+  // v41: progreso % combinado (tareas + los 3 checklists de requerimientos)
+  const chkItems = [...(t.repuestos_requeridos || []), ...(t.insumos_requeridos || []), ...(t.servicio_externo_requerido || [])]
+  const totalItems = tareas.length + chkItems.length
+  const hechosItems = tareas.filter((x) => x.estado === 'terminada').length + chkItems.filter((x) => x?.hecho).length
+  const progreso = totalItems ? Math.round((hechosItems / totalItems) * 100) : 0
+  // Personas asignadas: técnicos únicos entre tareas y los ítems de checklist
+  const idsAsignados = [...new Set([
+    ...tareas.map((x) => x.tecnico_id), ...chkItems.map((x) => x?.tecnico_id)
+  ].filter(Boolean))]
+
   return (
     <Modal abierto titulo={tituloDe(t)} onClose={onClose} ancho="max-w-3xl">
       <div className="space-y-5">
-        {/* Estado + prioridad + fecha */}
-        <div className="grid sm:grid-cols-3 gap-3">
-          <div>
-            <label className="label">Etapa</label>
-            <select className="input" value={t.estado} disabled={!esJefe}
-                    onChange={(e) => acciones.moverEstado(t, e.target.value)}>
-              {Object.entries(ESTADOS_TALLER).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-            </select>
+        {/* v41: cabecera estilo ficha de tarea — estado/fechas a la izquierda,
+            personas asignadas/prioridad/progreso a la derecha */}
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div className="space-y-3">
+            <div>
+              <label className="label">Estado</label>
+              <select className="input" value={t.estado} disabled={!esJefe}
+                      onChange={(e) => acciones.moverEstado(t, e.target.value)}>
+                {Object.entries(ESTADOS_TALLER).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Fecha límite</label>
+              <input type="date" className="input" value={t.fecha_limite || ''} disabled={!esJefe}
+                     onChange={(e) => acciones.guardarTrabajo(t, { fecha_limite: e.target.value || null })} />
+            </div>
           </div>
-          <div>
-            <label className="label">Prioridad</label>
-            <select className="input" value={t.prioridad || 'normal'} disabled={!esJefe}
-                    onChange={(e) => acciones.guardarTrabajo(t, { prioridad: e.target.value })}>
-              {Object.entries(PRIORIDADES_TALLER).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="label">Fecha límite</label>
-            <input type="date" className="input" value={t.fecha_limite || ''} disabled={!esJefe}
-                   onChange={(e) => acciones.guardarTrabajo(t, { fecha_limite: e.target.value || null })} />
+          <div className="space-y-3">
+            <div>
+              <label className="label">Personas asignadas</label>
+              {idsAsignados.length ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {idsAsignados.map((id) => (
+                    <span key={id} className="pill bg-mist text-deep text-xs">{nombreDe(id)}</span>
+                  ))}
+                </div>
+              ) : <p className="text-sm text-slate-300">Vacío</p>}
+            </div>
+            <div>
+              <label className="label">Prioridad</label>
+              <select className="input" value={t.prioridad || 'normal'} disabled={!esJefe}
+                      onChange={(e) => acciones.guardarTrabajo(t, { prioridad: e.target.value })}>
+                {Object.entries(PRIORIDADES_TALLER).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+              </select>
+            </div>
           </div>
         </div>
 
         {(t.servicio_solicitado || t.observaciones_cliente) && (
-          <div className="rounded-lg bg-paper p-3 text-sm space-y-1">
-            {t.servicio_solicitado && <div><span className="text-slate-400 text-xs">Servicio solicitado:</span> <b>{t.servicio_solicitado}</b></div>}
-            {t.observaciones_cliente && <div><span className="text-slate-400 text-xs">Indica el cliente:</span> {t.observaciones_cliente}</div>}
+          <div>
+            <div className="text-xs font-semibold text-slate-400 uppercase mb-1.5">Solicitud del cliente</div>
+            <div className="rounded-lg bg-paper p-3 text-sm space-y-1">
+              {t.servicio_solicitado && <div className="text-ink">{t.servicio_solicitado}</div>}
+              {t.observaciones_cliente && <div className="text-slate-500">{t.observaciones_cliente}</div>}
+            </div>
           </div>
         )}
+
+        {/* v41: tarjeta de datos del cliente + barra de progreso, como en la
+            referencia (sección "Campos") */}
+        <div className="grid sm:grid-cols-2 gap-4">
+          {t.clientes && (
+            <div className="rounded-lg bg-paper p-3">
+              <div className="text-[11px] font-semibold text-slate-400 uppercase mb-1">Datos del cliente</div>
+              <div className="text-sm text-ink font-medium">{[t.clientes.nombre, t.clientes.apellidos].filter(Boolean).join(' ')}</div>
+              {t.clientes.telefono && <div className="text-sm text-slate-500">{t.clientes.telefono}</div>}
+            </div>
+          )}
+          <div className="rounded-lg bg-paper p-3">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[11px] font-semibold text-slate-400 uppercase">Progreso</span>
+              <span className="text-xs font-semibold text-ink">{progreso}%</span>
+            </div>
+            <div className="h-2 rounded bg-mist overflow-hidden">
+              <div className="h-full rounded bg-didial-red" style={{ width: `${progreso}%` }} />
+            </div>
+          </div>
+        </div>
 
         {/* Línea de tiempo */}
         <div>
@@ -521,7 +574,7 @@ function Detalle({ t, onClose, tareas, presups, tecnicos, nombreDe, diags, marge
         {/* v24: Requerimientos de la reparación — el técnico registra UNO A
             UNO los repuestos y los insumos necesarios; al pasar a presupuesto
             se informan al encargado (prellenan la cotización). */}
-        <SeccionRequerimientos t={t} puede={esJefe || esTecnico} acciones={acciones} />
+        <ListasControl t={t} puede={esJefe || esTecnico} tecnicos={tecnicos} nombreDe={nombreDe} acciones={acciones} />
 
         {/* v24: el respaldo de garantía es tarea del ASESOR (se solicita al
             aprobar el presupuesto en la ficha del cliente, antes de la
@@ -633,48 +686,74 @@ const SEVERIDADES = {
   ok:         { label: 'En buen estado', color: '#1f9d57' }
 }
 
-function SeccionRequerimientos({ t, puede, acciones }) {
-  const [rep, setRep] = useState('')
-  const [ins, setIns] = useState('')
-  const reps = t.repuestos_requeridos || []
-  const inss = t.insumos_requeridos || []
-  const agregar = (campo, valor, limpiar) => {
-    if (!valor.trim()) return
-    acciones.guardarTrabajo(t, { [campo]: [...(t[campo] || []), valor.trim()] })
-    limpiar('')
+function ListasControl({ t, puede, tecnicos, nombreDe, acciones }) {
+  // v41: listas de control tipo checklist — cada ítem es un objeto
+  // {texto, hecho, tecnico_id}. Casilla marcable + responsable asignado,
+  // como en la referencia de ClickUp. Tres categorías: Repuestos,
+  // Lubricantes e Insumos, Servicio Externo.
+  const [nuevoTxt, setNuevoTxt] = useState({ repuestos_requeridos: '', insumos_requeridos: '', servicio_externo_requerido: '' })
+
+  const agregar = (campo) => {
+    const valor = (nuevoTxt[campo] || '').trim()
+    if (!valor) return
+    const items = [...(t[campo] || []), { texto: valor, hecho: false, tecnico_id: null }]
+    acciones.guardarTrabajo(t, { [campo]: items })
+    setNuevoTxt({ ...nuevoTxt, [campo]: '' })
   }
   const quitar = (campo, i) =>
     acciones.guardarTrabajo(t, { [campo]: (t[campo] || []).filter((_, j) => j !== i) })
-  const Lista = ({ titulo, items, campo, valor, setValor, placeholder }) => (
-    <div className="flex-1 min-w-56">
-      <div className="text-[11px] font-semibold text-slate-400 uppercase mb-1">{titulo} ({items.length})</div>
-      <div className="space-y-1">
-        {items.map((x, i) => (
-          <div key={i} className="flex items-center gap-2 text-sm rounded border border-slate-100 px-2 py-1">
-            <span className="flex-1 text-ink">{x}</span>
-            {puede && <button className="text-slate-300 hover:text-red-500 text-xs" onClick={() => quitar(campo, i)}>✕</button>}
-          </div>
-        ))}
-        {!items.length && <p className="text-xs text-slate-300">Sin requerimientos aún.</p>}
-      </div>
-      {puede && (
-        <div className="flex gap-1.5 mt-1.5">
-          <input className="input text-xs flex-1" value={valor} placeholder={placeholder}
-                 onChange={(e) => setValor(e.target.value)}
-                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); agregar(campo, valor, setValor) } }} />
-          <button className="btn-soft text-xs" onClick={() => agregar(campo, valor, setValor)}>+ Agregar</button>
+  const toggle = (campo, i) => {
+    const items = (t[campo] || []).map((x, j) => j === i ? { ...x, hecho: !x?.hecho } : x)
+    acciones.guardarTrabajo(t, { [campo]: items })
+  }
+  const asignar = (campo, i, tecnico_id) => {
+    const items = (t[campo] || []).map((x, j) => j === i ? { ...x, tecnico_id: tecnico_id || null } : x)
+    acciones.guardarTrabajo(t, { [campo]: items })
+  }
+
+  const Checklist = ({ titulo, campo, placeholder }) => {
+    const items = t[campo] || []
+    const hechos = items.filter((x) => x?.hecho).length
+    return (
+      <div className="flex-1 min-w-64">
+        <div className="text-[11px] font-semibold text-slate-400 uppercase mb-1">{titulo} · {hechos} de {items.length}</div>
+        <div className="space-y-1">
+          {items.map((x, i) => (
+            <div key={i} className="flex items-center gap-2 text-sm rounded border border-slate-100 px-2 py-1.5">
+              <button type="button" onClick={() => puede && toggle(campo, i)}
+                      className={`w-4 h-4 rounded-full border shrink-0 ${x?.hecho ? 'bg-didial-red border-didial-red' : 'border-slate-300'}`} />
+              <span className={`flex-1 ${x?.hecho ? 'text-slate-400 line-through' : 'text-ink'}`}>{typeof x === 'string' ? x : x?.texto}</span>
+              {puede ? (
+                <select className="text-[11px] border border-slate-200 rounded px-1 py-0.5 text-slate-500 max-w-[92px]"
+                        value={x?.tecnico_id || ''} onChange={(e) => asignar(campo, i, e.target.value)}>
+                  <option value="">— asignar</option>
+                  {tecnicos.map((u) => <option key={u.id} value={u.id}>{u.nombre.split(' ')[0]}</option>)}
+                </select>
+              ) : (x?.tecnico_id && <span className="text-[10px] text-slate-400">{nombreDe(x.tecnico_id)}</span>)}
+              {puede && <button className="text-slate-300 hover:text-red-500 text-xs" onClick={() => quitar(campo, i)}>✕</button>}
+            </div>
+          ))}
+          {!items.length && <p className="text-xs text-slate-300">(Agregar detalle)</p>}
         </div>
-      )}
-    </div>
-  )
+        {puede && (
+          <div className="flex gap-1.5 mt-1.5">
+            <input className="input text-xs flex-1" value={nuevoTxt[campo]} placeholder={placeholder}
+                   onChange={(e) => setNuevoTxt({ ...nuevoTxt, [campo]: e.target.value })}
+                   onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); agregar(campo) } }} />
+            <button className="btn-soft text-xs" onClick={() => agregar(campo)}>+ Agregar elemento</button>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="rounded-lg border border-slate-100 p-3">
-      <div className="text-xs font-semibold text-slate-400 uppercase mb-2">Requerimientos para la reparación</div>
+      <div className="text-xs font-semibold text-slate-400 uppercase mb-2">Listas de control</div>
       <div className="flex flex-wrap gap-4">
-        <Lista titulo="Repuestos requeridos" items={reps} campo="repuestos_requeridos"
-               valor={rep} setValor={setRep} placeholder="Ej: Kit de embrague completo…" />
-        <Lista titulo="Insumos requeridos" items={inss} campo="insumos_requeridos"
-               valor={ins} setValor={setIns} placeholder="Ej: 4L aceite 5W-30, líquido de frenos…" />
+        <Checklist titulo="Repuestos" campo="repuestos_requeridos" placeholder="Ej: Kit de embrague completo…" />
+        <Checklist titulo="Lubricantes e Insumos" campo="insumos_requeridos" placeholder="Ej: 4L aceite 5W-30, líquido de frenos…" />
+        <Checklist titulo="Servicio Externo" campo="servicio_externo_requerido" placeholder="Ej: Rectificado en torno externo…" />
       </div>
       <p className="text-[10px] text-slate-400 mt-2">Se informan al encargado de presupuestos al usar "Pasar a presupuesto" (prellenan la cotización, ítem por ítem).</p>
     </div>
@@ -688,7 +767,7 @@ function SeccionDiag({ t, diags, esJefe, esTecnico, nombreDe, acciones }) {
     <div>
       <div className="flex items-center justify-between mb-2">
         <div className="text-xs font-semibold text-slate-400 uppercase">Diagnóstico técnico ({diags.length})</div>
-        {esJefe && (diags.some((x) => x.severidad !== 'ok') || (t.repuestos_requeridos || []).length > 0 || (t.insumos_requeridos || []).length > 0) && (
+        {esJefe && (diags.some((x) => x.severidad !== 'ok') || (t.repuestos_requeridos || []).length > 0 || (t.insumos_requeridos || []).length > 0 || (t.servicio_externo_requerido || []).length > 0) && (
           <button className="btn-soft text-xs" onClick={() => acciones.diagAPresupuesto(t)}>→ Pasar a presupuesto</button>
         )}
       </div>

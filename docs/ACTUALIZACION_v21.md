@@ -550,3 +550,24 @@ Igual que la de junio-julio: entra a Campañas, selecciona la campaña, revisa l
 # ACTUALIZACIÓN v41 · "Nueva campaña" solo para administración
 
 Sin migración (el permiso ya existía en la base de datos vía RLS `campanas_admin`; solo faltaba ocultar el botón en la interfaz). Ahora el botón "➕ Nueva campaña" solo se muestra a usuarios con rol admin. Los asesores siguen viendo y trabajando las campañas ya creadas (audiencia, Cargar a asesores según corresponda), pero no pueden crear nuevas.
+
+
+---
+
+# ACTUALIZACIÓN v41 · Detalle de Taller restyleado (imitación ClickUp)
+
+## Migración
+**`database/43_actualizacion_v41.sql`** (crm-ventas): agrega `servicio_externo_requerido` (jsonb) a `trabajos_taller`, y convierte los ítems existentes de `repuestos_requeridos`/`insumos_requeridos` (antes texto plano) al nuevo formato `{texto, hecho, tecnico_id}`.
+
+## Cabecera del modal reorganizada
+Dos columnas: **Estado** y **Fecha límite** a la izquierda; **Personas asignadas** (chips con los técnicos involucrados en tareas y checklist), **Prioridad** a la derecha. **"Solicitud del cliente"** como encabezado en mayúsculas seguido del texto. Tarjeta **"Datos del cliente"** (nombre + teléfono) junto a una **barra de progreso %** — calculada combinando tareas terminadas + ítems de checklist marcados, sobre el total de ambos.
+
+## Listas de control (antes "Requerimientos de la reparación")
+Ahora son checklist de verdad, con tres categorías — **Repuestos**, **Lubricantes e Insumos** y **Servicio Externo** (nueva) — donde cada ítem tiene:
+- **Casilla marcable** (hecho/pendiente, con tachado visual al completar).
+- **Responsable asignado** por ítem (selector de técnico), visible como su nombre para quien no puede editar.
+
+Al usar "Pasar a presupuesto", los tres checklists se informan al encargado (Servicio Externo ahora también prellena su sección correspondiente en la cotización).
+
+## Lo que NO se replicó de la referencia
+"Duración estimada" y "Etiquetas" no se agregaron por no existir aún como datos en el modelo del CRM — se prefirió no fabricar campos sin uso real en vez de imitar la interfaz de forma superficial. "Registrar el tiempo" ya existe funcionalmente vía el cronómetro por tarea (⏱ en Línea de tiempo), que se mantuvo tal como estaba.
