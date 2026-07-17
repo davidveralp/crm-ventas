@@ -584,3 +584,50 @@ La v37 corrigió que Nueva OT permitiera registrar una OT marcada como "faltante
 
 ## El cierre
 Al guardar exitosamente cualquier OT desde Nueva OT, ahora se marca automáticamente en `control_ot_revision` con el nuevo motivo **"Registrada"** (verde), indicando quién y cuándo. Así, si esa OT figuraba pendiente en Control de OT, pasa a "Revisadas" sola, sin trabajo manual extra. Se agregó el motivo "Registrada" a la leyenda de Control de OT.
+
+
+---
+
+# ACTUALIZACIÓN v42 · Integración bidireccional CRM ↔ ClickUp (Taller)
+
+Diseñada sobre tu espacio real de ClickUp (consultado vía MCP): space **SERVICIO TECNICO**, lista **Vehiculos en Taller** (id `901324296305`, team `90132937173`). Confirmé que tus 10 estados de taller en el CRM calzan casi textual con los 11 estados de esa lista en ClickUp.
+
+## Migración
+**`database/44_actualizacion_v42.sql`**: agrega `clickup_task_id` y `clickup_synced_at` a `trabajos_taller`.
+
+## Edge Function nueva
+**`supabase/functions/clickup-sync/index.ts`** — maneja las DOS direcciones:
+- **CRM → ClickUp**: al "Solicitar revisión" desde la ficha (nace el trabajo_taller), se crea automáticamente la tarjeta espejo en ClickUp con nombre, prioridad, fecha límite y los campos personalizados "Datos del cliente" y "Observaciones". Al cambiar estado, prioridad o fecha límite en el CRM, se empuja la actualización a ClickUp.
+- **ClickUp → CRM**: un webhook (se registra una sola vez, ver más abajo) notifica a esta función cuando cambian estado/prioridad/fecha en ClickUp, y actualiza `trabajos_taller` en Supabase.
+
+**No se sincronizan** los checklists (Repuestos/Insumos/Servicio Externo) — quedan independientes en cada sistema, tal como definiste.
+
+## Mapeo de estados (CRM ⇄ ClickUp)
+| CRM | ClickUp |
+|---|---|
+| por_designar | por designar |
+| en_reparacion | en reparación |
+| servicio_externo | en rep. servicio externo |
+| compra_repuestos | compra de repuestos |
+| pintura_dyp | pintura/desabolladura |
+| lavado | lavado |
+| alineacion | alineacion |
+| prueba_ruta | prueba en ruta |
+| retroceso | retroceso |
+| listo_entrega | listo para entrega |
+| *(sin equivalente)* | complete → se lee como listo_entrega |
+
+**revision** y **esperando_aprobacion** (diagnóstico y presupuesto, antes de que el vehículo entre a reparación física) no tienen equivalente en ClickUp — durante esas etapas la tarjeta espejo se queda en "por designar" y no se empuja cambio de estado. Prioridad: normal→3, alta→2, urgente→1 (y viceversa).
+
+## Despliegue (instrucciones completas dentro del propio archivo .ts)
+1. Ejecutar la migración 44 en crm-ventas.
+2. Subir el zip (incluye la nueva Edge Function).
+3. Desplegar la función: `supabase functions deploy clickup-sync`.
+4. Configurar 2 secrets en Supabase → Edge Functions → Secrets: `CLICKUP_API_TOKEN` (tu token personal de ClickUp) y `CLICKUP_LIST_ID` (`901324296305`).
+5. Registrar el webhook **una sola vez** con el comando curl que está documentado al final de `clickup-sync/index.ts` (usa tu token y la URL de tu función desplegada).
+
+## Diseño anti-loop
+La sincronización CRM→ClickUp se dispara solo cuando un humano actúa en el CRM (Taller.jsx llama a la función explícitamente). La sincronización ClickUp→CRM actualiza Supabase directamente vía service role, sin volver a llamar a ClickUp — así no hay ping-pong infinito entre ambos sistemas.
+
+## Limitación conocida
+Si en ClickUp alguien mueve manualmente una tarjeta a "por designar" mientras el CRM está en `revision` o `esperando_aprobacion` (estados que ClickUp no puede distinguir, ambos se ven como "por designar" allá), el webhook no tiene forma de saber cuál de los dos era — en este caso no debería pasar porque esos dos estados nunca llegan a pisar el estado en ClickUp (se omiten al empujar), así que ClickUp seguiría mostrando lo que tenía antes, no "por designar" a menos que alguien lo cambie ahí manualmente.

@@ -404,6 +404,10 @@ export default function ClienteDetalle() {
       asesor_id: perfil.id
     }).select().single()
     if (error) return alert('Error: ' + error.message)
+    // v42: crea la tarjeta espejo en ClickUp (lista "Vehiculos en Taller").
+    // No bloquea el flujo si falla — el trabajo ya quedó creado en el CRM.
+    supabase.functions.invoke('clickup-sync', { body: { accion: 'crear', trabajo_id: t.id } })
+      .catch((e) => console.warn('ClickUp sync (crear) falló:', e))
     const tareas = ft.tareas.map((x) => x.trim()).filter(Boolean)
     if (tareas.length) {
       await supabase.from('tareas_taller').insert(tareas.map((titulo, i) => ({

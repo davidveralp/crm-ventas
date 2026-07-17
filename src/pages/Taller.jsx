@@ -87,6 +87,11 @@ function TallerInterno() {
     if (estado === 'en_reparacion') { upd.autorizado_por = perfil.id; upd.autorizado_en = ahoraISO() }
     if (estado === 'completada') upd.cerrado_en = ahoraISO()
     await supabase.from('trabajos_taller').update(upd).eq('id', t.id)
+    // v42: empuja el cambio de estado a la tarjeta espejo en ClickUp (si existe)
+    if (t.clickup_task_id) {
+      supabase.functions.invoke('clickup-sync', { body: { accion: 'actualizar', trabajo_id: t.id } })
+        .catch((e) => console.warn('ClickUp sync (estado) falló:', e))
+    }
     const lbl = ESTADOS_TALLER[estado]?.label || estado
     if (estado === 'listo_entrega' && t.asesor_id) {
       notificar({ empresa_id: perfil.empresa_id, usuario_id: t.asesor_id, titulo: 'Vehículo listo para retiro', cuerpo: tituloDe(t), url: '/taller' })
@@ -100,7 +105,14 @@ function TallerInterno() {
     cargar()
   }
   async function guardarTrabajo(t, campos) {
-    await supabase.from('trabajos_taller').update(campos).eq('id', t.id); cargar()
+    await supabase.from('trabajos_taller').update(campos).eq('id', t.id)
+    // v42: solo re-sincroniza con ClickUp si cambió algo que también vive
+    // allá (prioridad/fecha límite) — los checklists no viajan.
+    if (t.clickup_task_id && ('prioridad' in campos || 'fecha_limite' in campos)) {
+      supabase.functions.invoke('clickup-sync', { body: { accion: 'actualizar', trabajo_id: t.id } })
+        .catch((e) => console.warn('ClickUp sync (campos) falló:', e))
+    }
+    cargar()
   }
   async function agregarTarea(t, titulo, tecnico_id) {
     if (!titulo.trim()) return
