@@ -27,8 +27,8 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const SB_URL = Deno.env.get('SUPABASE_URL')!
-const SB_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+const SB_URL = Deno.env.get('SUPABASE_URL') ?? ''
+const SB_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 const CLICKUP_TOKEN = Deno.env.get('CLICKUP_API_TOKEN')!
 const CLICKUP_LIST_ID = Deno.env.get('CLICKUP_LIST_ID') || '901324296305'
 const CLICKUP_API = 'https://api.clickup.com/api/v2'
@@ -87,6 +87,14 @@ async function cuHeaders() {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
+  // v42.2: guardia explícita — si el entorno de la función no tiene las
+  // variables reservadas de Supabase, se reporta un error claro en vez del
+  // mensaje interno críptico "supabaseUrl is required" (síntoma de un
+  // despliegue que no terminó de vincular el entorno). Solución: redesplegar
+  // con `supabase functions deploy clickup-sync`.
+  if (!SB_URL || !SB_SERVICE_KEY) {
+    return json({ error: 'Faltan SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY en el entorno de esta función. Redespliega con: supabase functions deploy clickup-sync' }, 500)
+  }
   const body = await req.json().catch(() => ({}))
   const service = createClient(SB_URL, SB_SERVICE_KEY)
 
