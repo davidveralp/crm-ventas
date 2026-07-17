@@ -631,3 +631,10 @@ La sincronización CRM→ClickUp se dispara solo cuando un humano actúa en el C
 
 ## Limitación conocida
 Si en ClickUp alguien mueve manualmente una tarjeta a "por designar" mientras el CRM está en `revision` o `esperando_aprobacion` (estados que ClickUp no puede distinguir, ambos se ven como "por designar" allá), el webhook no tiene forma de saber cuál de los dos era — en este caso no debería pasar porque esos dos estados nunca llegan a pisar el estado en ClickUp (se omiten al empujar), así que ClickUp seguiría mostrando lo que tenía antes, no "por designar" a menos que alguien lo cambie ahí manualmente.
+
+
+---
+
+# ACTUALIZACIÓN v42.1 · Fix CORS en clickup-sync (causaba el 4xx)
+
+Sin migración. La función clickup-sync no incluía el manejo del preflight `OPTIONS` ni las cabeceras `Access-Control-Allow-*` — cuando el navegador intenta hacer un POST a una función distinta, primero envía una petición OPTIONS de verificación; sin esas cabeceras, el navegador bloquea la petición real antes de que llegue el POST (coincide exactamente con lo visto en el dashboard: 1 invocación, 100% 4xx). Se corrigió agregando el mismo bloque CORS que ya usa `gestionar-usuario`. **Requiere volver a desplegar la función**: `supabase functions deploy clickup-sync`.

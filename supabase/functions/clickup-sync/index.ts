@@ -63,8 +63,16 @@ const PRIORIDAD_CLICKUP_A_CRM: Record<number, string> = { 1: 'urgente', 2: 'alta
 const CAMPO_DATOS_CLIENTE = '61ad3618-8fe4-49e8-9b74-9beae1e15ec5'
 const CAMPO_OBSERVACIONES = 'd2337ca4-7808-42ee-972a-40bfc0f83fec'
 
+// v42.1: CORS — sin esto, el navegador bloquea el preflight OPTIONS antes
+// de que el POST real llegue a la función (causa exacta del 4xx visto en
+// el dashboard con 1 invocación / 100% 4xx).
+const cors = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS'
+}
 function json(data: unknown, status = 200) {
-  return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
+  return new Response(JSON.stringify(data), { status, headers: { ...cors, 'Content-Type': 'application/json' } })
 }
 
 function tituloDe(t: any) {
@@ -77,6 +85,7 @@ async function cuHeaders() {
 }
 
 Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
   const body = await req.json().catch(() => ({}))
   const service = createClient(SB_URL, SB_SERVICE_KEY)
