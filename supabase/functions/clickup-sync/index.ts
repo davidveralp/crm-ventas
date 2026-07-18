@@ -116,7 +116,7 @@ Deno.serve(async (req) => {
     const { data: t, error: eT } = await service.from('trabajos_taller')
       .select('*, clientes(nombre,apellidos,telefono), vehiculos(patente,marca,modelo)')
       .eq('id', body.trabajo_id).single()
-    if (eT || !t) return json({ error: 'Trabajo no encontrado' }, 404)
+    if (eT || !t) { console.error('Trabajo no encontrado:', body.trabajo_id, eT?.message); return json({ error: 'Trabajo no encontrado' }, 404) }
 
     const nombreCliente = [t.clientes?.nombre, t.clientes?.apellidos].filter(Boolean).join(' ')
     const datosCliente = [nombreCliente, t.clientes?.telefono].filter(Boolean).join('\n')
@@ -136,7 +136,7 @@ Deno.serve(async (req) => {
         })
       })
       const cu = await resp.json()
-      if (!resp.ok) return json({ error: 'ClickUp: ' + JSON.stringify(cu) }, 400)
+      if (!resp.ok) { console.error('ClickUp crear falló:', JSON.stringify(cu)); return json({ error: 'ClickUp: ' + JSON.stringify(cu) }, 400) }
       await service.from('trabajos_taller')
         .update({ clickup_task_id: cu.id, clickup_synced_at: new Date().toISOString() })
         .eq('id', t.id)
@@ -154,7 +154,7 @@ Deno.serve(async (req) => {
         due_date: t.fecha_limite ? new Date(t.fecha_limite).getTime() : null
       })
     })
-    if (!resp.ok) return json({ error: 'ClickUp: ' + JSON.stringify(await resp.json()) }, 400)
+    if (!resp.ok) { const errBody = await resp.json(); console.error('ClickUp actualizar falló:', JSON.stringify(errBody)); return json({ error: 'ClickUp: ' + JSON.stringify(errBody) }, 400) }
     await service.from('trabajos_taller').update({ clickup_synced_at: new Date().toISOString() }).eq('id', t.id)
     return json({ ok: true })
   }
