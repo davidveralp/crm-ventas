@@ -23,12 +23,19 @@
 // Secrets requeridos (Project Settings → Edge Functions → Secrets):
 //   CLICKUP_API_TOKEN   → token personal de ClickUp (Settings → Apps)
 //   CLICKUP_LIST_ID     → 901324296305 (lista "Vehiculos en Taller")
+//   SB_PROJECT_URL      → https://ehpstxrzsjwcevcafxgk.supabase.co
+//   SB_SERVICE_KEY      → tu Service Role / Secret Key (Settings → API)
 // ---------------------------------------------------------------------
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const SB_URL = Deno.env.get('SUPABASE_URL') ?? ''
-const SB_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+// v42.3: no depende de la inyección automática de SUPABASE_URL /
+// SUPABASE_SERVICE_ROLE_KEY (en proyectos con el sistema nuevo de llaves
+// de Supabase — publishable/secret key — esas variables reservadas
+// pueden no llegar igual). Se leen como secrets propios primero, con la
+// reservada como respaldo por si el proyecto sí las inyecta.
+const SB_URL = Deno.env.get('SB_PROJECT_URL') || Deno.env.get('SUPABASE_URL') || ''
+const SB_SERVICE_KEY = Deno.env.get('SB_SERVICE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
 const CLICKUP_TOKEN = Deno.env.get('CLICKUP_API_TOKEN')!
 const CLICKUP_LIST_ID = Deno.env.get('CLICKUP_LIST_ID') || '901324296305'
 const CLICKUP_API = 'https://api.clickup.com/api/v2'
@@ -93,7 +100,7 @@ Deno.serve(async (req) => {
   // despliegue que no terminó de vincular el entorno). Solución: redesplegar
   // con `supabase functions deploy clickup-sync`.
   if (!SB_URL || !SB_SERVICE_KEY) {
-    return json({ error: 'Faltan SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY en el entorno de esta función. Redespliega con: supabase functions deploy clickup-sync' }, 500)
+    return json({ error: 'Faltan las variables SB_PROJECT_URL / SB_SERVICE_KEY. Configúralas en Edge Functions → clickup-sync → Settings → Secrets (o a nivel de proyecto) y vuelve a desplegar.' }, 500)
   }
   const body = await req.json().catch(() => ({}))
   const service = createClient(SB_URL, SB_SERVICE_KEY)
