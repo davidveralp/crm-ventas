@@ -5,6 +5,7 @@ import { Modal, Pill } from '../components/UI'
 import { notificar } from '../lib/notificar'
 
 import PresupuestoTallerCard from '../components/PresupuestoTallerCard'
+import BandejaClickUp from '../components/BandejaClickUp'
 import {
   ESTADOS_TALLER, PRIORIDADES_TALLER, ESTADOS_PRESUP_TALLER, fmtCrono, fmtCLP,
   SECCIONES_PRESUP, seccionDe
@@ -286,6 +287,8 @@ function TallerInterno() {
           ))}
         </div>
       </div>
+
+      {esJefe && <BandejaClickUp perfil={perfil} onVinculado={cargar} />}
 
       {/* ---- TABLERO (kanban) ---- */}
       {vista === 'tablero' && (

@@ -638,3 +638,27 @@ Si en ClickUp alguien mueve manualmente una tarjeta a "por designar" mientras el
 # ACTUALIZACIÓN v42.1 · Fix CORS en clickup-sync (causaba el 4xx)
 
 Sin migración. La función clickup-sync no incluía el manejo del preflight `OPTIONS` ni las cabeceras `Access-Control-Allow-*` — cuando el navegador intenta hacer un POST a una función distinta, primero envía una petición OPTIONS de verificación; sin esas cabeceras, el navegador bloquea la petición real antes de que llegue el POST (coincide exactamente con lo visto en el dashboard: 1 invocación, 100% 4xx). Se corrigió agregando el mismo bloque CORS que ya usa `gestionar-usuario`. **Requiere volver a desplegar la función**: `supabase functions deploy clickup-sync`.
+
+
+---
+
+# ACTUALIZACIÓN v43 · Tareas creadas directo en ClickUp → bandeja de revisión
+
+## Migración
+**`database/45_actualizacion_v43.sql`**: tabla `clickup_tareas_pendientes` (título, descripción, patente sugerida, estado).
+
+## El problema real (confirmado con un caso real vía MCP)
+Al revisar una tarea creada directo en ClickUp, encontramos que el título era texto libre sin formato fijo: `"JS WW 16 TOYOTA HILUX NELSON VALLEJO OT 12902/TRAS 1667"` — patente, marca, modelo, cliente y OT todo mezclado, y la "Solicitud del cliente" en la descripción en vez del campo Observaciones. Automatizar la creación del cliente/vehículo desde ese texto sería poco confiable y arriesgaría ensuciar la base con datos mal interpretados.
+
+## La solución: bandeja de revisión (no auto-creación)
+El webhook ahora también escucha el evento **taskCreated**. Cuando alguien crea una tarea directo en ClickUp (sin pasar por el CRM), se registra en una bandeja visible en el módulo Taller (solo jefe de taller/admin) — **no se crea nada automáticamente**. Desde ahí, cada tarea se revisa y:
+- **Vincular a vehículo existente**: busca por patente y crea el trabajo de taller ya conectado a esa tarjeta de ClickUp.
+- **Crear cliente y vehículo nuevo**: formulario con los datos sugeridos (la patente se intenta extraer del título por patrón, siempre editable) — nada se guarda sin que alguien lo revise primero.
+- **Descartar**: si es una tarea de prueba o duplicada.
+
+## Registrar el evento nuevo en el webhook
+El webhook que ya registraste solo escucha `taskStatusUpdated`, `taskPriorityUpdated`, `taskDueDateUpdated`. Para que la bandeja funcione, hay que agregar `taskCreated`. Lo más simple: bórralo y créalo de nuevo con los 4 eventos:
+```
+curl.exe -X POST "https://api.clickup.com/api/v2/team/90132937173/webhook" -H "Authorization: TU_TOKEN" -H "Content-Type: application/json" -d '{\"endpoint\": \"https://ehpstxrzsjwcevcafxgk.supabase.co/functions/v1/clickup-sync\", \"events\": [\"taskCreated\", \"taskStatusUpdated\", \"taskPriorityUpdated\", \"taskDueDateUpdated\"], \"list_id\": 901324296305}'
+```
+(primero elimina el webhook anterior con el `id` que guardaste: `DELETE /webhook/{id}`).

@@ -36,7 +36,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 // reservada como respaldo por si el proyecto sí las inyecta.
 const SB_URL = Deno.env.get('SB_PROJECT_URL') || Deno.env.get('SUPABASE_URL') || ''
 const SB_SERVICE_KEY = Deno.env.get('SB_SERVICE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
-const CLICKUP_TOKEN = Deno.env.get('CLICKUP_API_TOKEN')!
+const CLICKUP_TOKEN = Deno.env.get('CLICKUP_API_TOKEN') ?? ''
 const CLICKUP_LIST_ID = Deno.env.get('CLICKUP_LIST_ID') || '901324296305'
 const CLICKUP_API = 'https://api.clickup.com/api/v2'
 
@@ -82,6 +82,14 @@ function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { ...cors, 'Content-Type': 'application/json' } })
 }
 
+// v43: intenta extraer una patente del título de una tarea creada en
+// ClickUp (texto libre, sin formato fijo). Es solo una SUGERENCIA — el
+// jefe de taller la confirma o corrige antes de vincular/crear nada.
+function extraerPatente(titulo: string): string | null {
+  const m = (titulo || '').toUpperCase().match(/\b([A-Z]{2}\s?[A-Z]{2}\s?\d{2}|[A-Z]{2}\s?\d{4})\b/)
+  return m ? m[1].replace(/\s+/g, ' ').trim() : null
+}
+
 function tituloDe(t: any) {
   const v = t.vehiculos
   return [v?.marca, v?.modelo, v?.patente, t.ot_numero ? `OT ${t.ot_numero}` : null].filter(Boolean).join(' ')
@@ -100,9 +108,13 @@ Deno.serve(async (req) => {
   // despliegue que no terminó de vincular el entorno). Solución: redesplegar
   // con `supabase functions deploy clickup-sync`.
   if (!SB_URL || !SB_SERVICE_KEY) {
-    return json({ error: 'Faltan las variables SB_PROJECT_URL / SB_SERVICE_KEY. Configúralas en Edge Functions → clickup-sync → Settings → Secrets (o a nivel de proyecto) y vuelve a desplegar.' }, 500)
+    return json({ error: 'Faltan las variables SB_PROJECT_URL / SB_SERVICE_KEY.' }, 500)
   }
   const body = await req.json().catch(() => ({}))
+  if ((body.accion === 'crear' || body.accion === 'actualizar') && !CLICKUP_TOKEN) {
+    console.error('CLICKUP_API_TOKEN no está definido en el entorno de esta función.')
+    return json({ error: 'Falta el secret CLICKUP_API_TOKEN (revisa Edge Functions → Secrets — debe estar EXACTAMENTE con ese nombre, sin espacios).' }, 500)
+  }
   const service = createClient(SB_URL, SB_SERVICE_KEY)
 
   // ============== 1) DESDE EL CRM: crear o actualizar en ClickUp ======
@@ -161,6 +173,26 @@ Deno.serve(async (req) => {
 
   // ============== 2) DESDE CLICKUP: webhook de cambios ================
   if (body.event && body.task_id) {
+    // v43: tarea creada DIRECTO en ClickUp (no viene del CRM) — no se
+    // auto-crea el cliente/vehículo (texto libre, no confiable). Se
+    // registra en la bandeja de revisión con una patente sugerida.
+    if (body.event === 'taskCreated') {
+      const { data: yaVinculado } = await service.from('trabajos_taller')
+        .select('id').eq('clickup_task_id', body.task_id).maybeSingle()
+      if (yaVinculado) return json({ ok: true, ignorado: 'ya vinculada (creada desde el CRM)' })
+
+      const resp = await fetch(`${CLICKUP_API}/task/${body.task_id}`, { headers: await cuHeaders() })
+      const tarea = await resp.json()
+      if (!resp.ok) { console.error('No se pudo leer la tarea creada en ClickUp:', JSON.stringify(tarea)); return json({ ok: false }, 200) }
+
+      await service.from('clickup_tareas_pendientes').upsert({
+        clickup_task_id: body.task_id, titulo: tarea.name,
+        descripcion: tarea.text_content || tarea.description || null,
+        patente_candidata: extraerPatente(tarea.name), estado: 'pendiente'
+      }, { onConflict: 'clickup_task_id' })
+      return json({ ok: true, registrado_en_bandeja: true })
+    }
+
     const { data: t } = await service.from('trabajos_taller')
       .select('id, estado, prioridad').eq('clickup_task_id', body.task_id).maybeSingle()
     if (!t) return json({ ok: true, ignorado: 'tarea sin trabajo vinculado' })
