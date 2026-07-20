@@ -117,11 +117,16 @@ function TallerInterno() {
   }
   async function agregarTarea(t, titulo, tecnico_id) {
     if (!titulo.trim()) return
-    await supabase.from('tareas_taller').insert({
+    const { data: nueva } = await supabase.from('tareas_taller').insert({
       empresa_id: perfil.empresa_id, trabajo_id: t.id, titulo: titulo.trim(),
       tecnico_id: tecnico_id || null, orden: tareasDe(t.id).length
-    })
+    }).select().single()
     if (tecnico_id) notificar({ empresa_id: perfil.empresa_id, usuario_id: tecnico_id, titulo: 'Nueva tarea asignada', cuerpo: `${titulo} · ${tituloDe(t)}`, url: '/taller' })
+    // v44: crea la subtarea espejo en ClickUp (si el trabajo ya tiene tarjeta)
+    if (t.clickup_task_id && nueva) {
+      supabase.functions.invoke('clickup-sync', { body: { accion: 'crear_subtarea', tarea_id: nueva.id } })
+        .catch((e) => console.warn('ClickUp sync (subtarea) falló:', e))
+    }
     cargar()
   }
   async function asignarTarea(tarea, tecnico_id) {
@@ -140,6 +145,12 @@ function TallerInterno() {
       estado: 'terminada', observacion: observacion.trim(),
       terminada_en: ahoraISO(), tiempo_seg: (tarea.tiempo_seg || 0) + extra, iniciada_en: null
     }).eq('id', tarea.id)
+    // v44: marca la subtarea espejo como completada en ClickUp
+    const trabajoDe = trabajos.find((x) => x.id === tarea.trabajo_id)
+    if (trabajoDe?.clickup_task_id && tarea.clickup_subtask_id) {
+      supabase.functions.invoke('clickup-sync', { body: { accion: 'actualizar_subtarea', tarea_id: tarea.id } })
+        .catch((e) => console.warn('ClickUp sync (terminar subtarea) falló:', e))
+    }
     cargar()
   }
   async function terminarTodas(t) {

@@ -662,3 +662,30 @@ El webhook que ya registraste solo escucha `taskStatusUpdated`, `taskPriorityUpd
 curl.exe -X POST "https://api.clickup.com/api/v2/team/90132937173/webhook" -H "Authorization: TU_TOKEN" -H "Content-Type: application/json" -d '{\"endpoint\": \"https://ehpstxrzsjwcevcafxgk.supabase.co/functions/v1/clickup-sync\", \"events\": [\"taskCreated\", \"taskStatusUpdated\", \"taskPriorityUpdated\", \"taskDueDateUpdated\"], \"list_id\": 901324296305}'
 ```
 (primero elimina el webhook anterior con el `id` que guardaste: `DELETE /webhook/{id}`).
+
+
+---
+
+# ACTUALIZACIÓN v44 · Subtareas de ClickUp + "Solicitar revisión" nace en reparación
+
+## Corrección del diagnóstico anterior
+Las 31 tareas de MAN X PAUTA no aparecían en ClickUp porque la función de sincronización nunca las contemplaba — no era por el paso de "revisión previa" como se sospechaba. Confirmado revisando el código: las tareas sí se creaban bien en el CRM, solo no se empujaban a ClickUp.
+
+## Migración
+**`database/46_actualizacion_v44.sql`**: agrega `clickup_subtask_id` a `tareas_taller`.
+
+## Tareas de reparación → Subtareas de ClickUp (bidireccional)
+- Al crear el trabajo ("Solicitar revisión"), TODAS sus tareas (las 31 de MAN X PAUTA u otras) se crean automáticamente como **Subtareas** de la tarjeta en ClickUp.
+- Agregar una tarea nueva después (botón "+ Nueva tarea" en el taller) también crea su subtarea espejo.
+- Marcar una tarea como **terminada** en el CRM la marca "complete" en ClickUp.
+- Marcar una subtarea como completada en ClickUp la refleja como "terminada" en el CRM (webhook).
+- Se blindó el webhook para que las subtareas que el propio CRM crea no se confundan con "tareas nuevas sueltas" de la bandeja de revisión (v43).
+
+## "Solicitar revisión" nace directo en reparación
+Por decisión tuya, se eliminó el paso previo de diagnóstico/presupuesto (`revision`/`esperando_aprobacion`) de este flujo: el trabajo ahora se crea directamente en estado **`en_reparacion`**, igual que en ClickUp (que no distingue esa etapa). Esto solo afecta el estado INICIAL al usar este botón — el resto de estados y el flujo de diagnóstico/presupuesto en otras partes del sistema no se tocaron.
+
+## Nota que dejo pendiente de tu confirmación
+El botón sigue llamándose "Solicitar revisión", pero ya no hay ninguna revisión previa — nace directo en reparación. Si te parece que el nombre ya no calza con lo que hace, dime y lo cambio (por ejemplo a "Enviar a taller").
+
+## Webhook: agregar el evento taskCreated (si aún no lo hiciste)
+Recuerda que para que la bandeja de tareas sueltas (v43) y el reconocimiento de subtareas funcionen, el webhook debe incluir el evento `taskCreated` además de los 3 anteriores — usa el script `registrar_webhook.ps1` que ya tienes.

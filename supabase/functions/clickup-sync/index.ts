@@ -152,7 +152,21 @@ Deno.serve(async (req) => {
       await service.from('trabajos_taller')
         .update({ clickup_task_id: cu.id, clickup_synced_at: new Date().toISOString() })
         .eq('id', t.id)
-      return json({ ok: true, clickup_task_id: cu.id })
+
+      // v44: crea como Subtareas de ClickUp las tareas de reparación que
+      // ya existan para este trabajo (ej. las 31 de MAN X PAUTA).
+      const { data: tareas } = await service.from('tareas_taller')
+        .select('id,titulo,estado').eq('trabajo_id', t.id).order('orden')
+      for (const tarea of tareas || []) {
+        const respSub = await fetch(`${CLICKUP_API}/list/${CLICKUP_LIST_ID}/task`, {
+          method: 'POST', headers: await cuHeaders(),
+          body: JSON.stringify({ name: tarea.titulo, parent: cu.id })
+        })
+        const cuSub = await respSub.json()
+        if (respSub.ok) await service.from('tareas_taller').update({ clickup_subtask_id: cuSub.id }).eq('id', tarea.id)
+        else console.error('ClickUp subtarea falló:', tarea.titulo, JSON.stringify(cuSub))
+      }
+      return json({ ok: true, clickup_task_id: cu.id, subtareas: (tareas || []).length })
     }
 
     // actualizar tarjeta existente
@@ -171,8 +185,60 @@ Deno.serve(async (req) => {
     return json({ ok: true })
   }
 
+  // ============== 1b) Subtarea individual: crear o marcar terminada =====
+  if (body.accion === 'crear_subtarea' || body.accion === 'actualizar_subtarea') {
+    const auth = req.headers.get('Authorization') || ''
+    if (!auth) return json({ error: 'Falta Authorization' }, 401)
+    const userClient = createClient(SB_URL, SB_SERVICE_KEY, { global: { headers: { Authorization: auth } } })
+    const { data: { user } } = await userClient.auth.getUser()
+    if (!user) return json({ error: 'No autenticado' }, 401)
+
+    const { data: tarea, error: eTar } = await service.from('tareas_taller')
+      .select('*, trabajos_taller(clickup_task_id)').eq('id', body.tarea_id).single()
+    if (eTar || !tarea) return json({ error: 'Tarea no encontrada' }, 404)
+    const clickupTrabajoId = tarea.trabajos_taller?.clickup_task_id
+    if (!clickupTrabajoId) return json({ ok: true, ignorado: 'trabajo sin tarjeta en ClickUp' })
+
+    if (body.accion === 'crear_subtarea' || !tarea.clickup_subtask_id) {
+      const resp = await fetch(`${CLICKUP_API}/list/${CLICKUP_LIST_ID}/task`, {
+        method: 'POST', headers: await cuHeaders(),
+        body: JSON.stringify({ name: tarea.titulo, parent: clickupTrabajoId })
+      })
+      const cuSub = await resp.json()
+      if (!resp.ok) { console.error('ClickUp crear subtarea falló:', JSON.stringify(cuSub)); return json({ error: 'ClickUp: ' + JSON.stringify(cuSub) }, 400) }
+      await service.from('tareas_taller').update({ clickup_subtask_id: cuSub.id }).eq('id', tarea.id)
+      return json({ ok: true, clickup_subtask_id: cuSub.id })
+    }
+
+    // actualizar_subtarea: refleja el estado (terminada -> complete)
+    const resp = await fetch(`${CLICKUP_API}/task/${tarea.clickup_subtask_id}`, {
+      method: 'PUT', headers: await cuHeaders(),
+      body: JSON.stringify({ status: tarea.estado === 'terminada' ? 'complete' : 'por designar' })
+    })
+    if (!resp.ok) { const errBody = await resp.json(); console.error('ClickUp actualizar subtarea falló:', JSON.stringify(errBody)); return json({ error: 'ClickUp: ' + JSON.stringify(errBody) }, 400) }
+    return json({ ok: true })
+  }
+
   // ============== 2) DESDE CLICKUP: webhook de cambios ================
   if (body.event && body.task_id) {
+    // v44: si es una subtarea que el propio CRM creó (MAN X PAUTA, etc.),
+    // nunca debe tratarse como "tarea nueva sin vincular" — se identifica
+    // primero contra tareas_taller antes de mirar la bandeja.
+    const { data: tareaVinculada } = await service.from('tareas_taller')
+      .select('id, estado').eq('clickup_subtask_id', body.task_id).maybeSingle()
+    if (tareaVinculada) {
+      let nuevoEstado: string | null = null
+      for (const h of body.history_items || []) {
+        if (h.field === 'status') {
+          nuevoEstado = (h.after?.status || '').toLowerCase() === 'complete' ? 'terminada' : 'pendiente'
+        }
+      }
+      if (nuevoEstado && nuevoEstado !== tareaVinculada.estado) {
+        await service.from('tareas_taller').update({ estado: nuevoEstado }).eq('id', tareaVinculada.id)
+      }
+      return json({ ok: true, tarea_actualizada: nuevoEstado })
+    }
+
     // v43: tarea creada DIRECTO en ClickUp (no viene del CRM) — no se
     // auto-crea el cliente/vehículo (texto libre, no confiable). Se
     // registra en la bandeja de revisión con una patente sugerida.
@@ -184,6 +250,11 @@ Deno.serve(async (req) => {
       const resp = await fetch(`${CLICKUP_API}/task/${body.task_id}`, { headers: await cuHeaders() })
       const tarea = await resp.json()
       if (!resp.ok) { console.error('No se pudo leer la tarea creada en ClickUp:', JSON.stringify(tarea)); return json({ ok: false }, 200) }
+
+      // Si viene con "parent", es una subtarea de algo que YA está vinculado
+      // (recién creada por el CRM, el webhook llegó antes de que guardáramos
+      // el clickup_subtask_id) — se ignora, no es una tarjeta nueva suelta.
+      if (tarea.parent) return json({ ok: true, ignorado: 'es una subtarea (aún sincronizando)' })
 
       await service.from('clickup_tareas_pendientes').upsert({
         clickup_task_id: body.task_id, titulo: tarea.name,

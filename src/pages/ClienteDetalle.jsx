@@ -401,24 +401,29 @@ export default function ClienteDetalle() {
     const { data: t, error } = await supabase.from('trabajos_taller').insert({
       empresa_id: perfil.empresa_id, cliente_id: cliente.id, vehiculo_id: v?.id || null,
       titulo, servicio_solicitado: ft.servicio.trim(), observaciones_cliente: ft.obs.trim(),
-      asesor_id: perfil.id
+      asesor_id: perfil.id,
+      // v44: nace directo en reparación — se eliminó el paso previo de
+      // diagnóstico/presupuesto (revision/esperando_aprobacion), igual
+      // que en ClickUp (donde no existe esa distinción).
+      estado: 'en_reparacion'
     }).select().single()
     if (error) return alert('Error: ' + error.message)
-    // v42: crea la tarjeta espejo en ClickUp (lista "Vehiculos en Taller").
-    // No bloquea el flujo si falla — el trabajo ya quedó creado en el CRM.
-    supabase.functions.invoke('clickup-sync', { body: { accion: 'crear', trabajo_id: t.id } })
-      .catch((e) => console.warn('ClickUp sync (crear) falló:', e))
     const tareas = ft.tareas.map((x) => x.trim()).filter(Boolean)
     if (tareas.length) {
       await supabase.from('tareas_taller').insert(tareas.map((titulo, i) => ({
         empresa_id: perfil.empresa_id, trabajo_id: t.id, titulo, orden: i
       })))
     }
+    // v42/v44: crea la tarjeta espejo en ClickUp y, con las tareas ya
+    // guardadas arriba, también sus Subtareas (ej. las 31 de MAN X PAUTA).
+    // No bloquea el flujo si falla — el trabajo ya quedó creado en el CRM.
+    supabase.functions.invoke('clickup-sync', { body: { accion: 'crear', trabajo_id: t.id } })
+      .catch((e) => console.warn('ClickUp sync (crear) falló:', e))
     // Gestión comercial abierta pasa a "En taller"
     const abierta = gestiones.find((g) => g.abierta)
     if (abierta) await supabase.from('gestiones').update({ estado: 'en_taller' }).eq('id', abierta.id)
     notificar({ empresa_id: perfil.empresa_id, rol: 'jefe_taller',
-      titulo: 'Vehículo enviado a revisión', cuerpo: `${titulo} · ${ft.servicio}`, url: '/taller' })
+      titulo: 'Vehículo enviado a reparación', cuerpo: `${titulo} · ${ft.servicio}`, url: '/taller' })
     setModalTaller(null); setFt({ servicio: '', tareas: [''], obs: '' })
     cargar()
   }
