@@ -689,3 +689,40 @@ El botón sigue llamándose "Solicitar revisión", pero ya no hay ninguna revisi
 
 ## Webhook: agregar el evento taskCreated (si aún no lo hiciste)
 Recuerda que para que la bandeja de tareas sueltas (v43) y el reconocimiento de subtareas funcionen, el webhook debe incluir el evento `taskCreated` además de los 3 anteriores — usa el script `registrar_webhook.ps1` que ya tienes.
+
+
+---
+
+# ACTUALIZACIÓN v45 · Inspección de ingreso (paso previo a Nueva OT)
+
+Módulo nuevo completo, diseñado sobre las 13 capturas de referencia y las 7 siluetas que compartiste.
+
+## Migración
+**`database/47_actualizacion_v45.sql`**: tabla `inspecciones_ingreso` (datos generales, luces, inventario, combustible, daños marcados, checklist, fotos, firma). Incluye las políticas RLS para el bucket de Storage.
+
+## Paso manual obligatorio: crear el bucket de Storage
+Las fotos y la firma se guardan en Supabase Storage, algo que este CRM no usaba hasta ahora. **Debes crearlo a mano, una sola vez**:
+1. Supabase → Storage → **New bucket**.
+2. Nombre exacto: `inspecciones`.
+3. Público: **NO** (privado).
+4. Guardar.
+
+Sin este paso, los pasos de Fotos y Firma del asistente fallarán al intentar subir archivos.
+
+## El flujo
+Desde **Nueva OT**, botón **"📋 Iniciar con inspección de ingreso"** abre el asistente de 7 pasos:
+1. **Datos**: patente (busca vehículo existente o detecta que es nuevo y pide datos del cliente), kilometraje, fechas, ingreso en grúa, trabajo a realizar, observaciones del cliente.
+2. **Luces e inventario**: 10 luces de advertencia (toggle) + 18 ítems de inventario (checkbox), tal como en tu referencia.
+3. **Combustible**: control deslizante E↔F en octavos.
+4. **Daños**: 7 siluetas (Sedán, Camioneta, Moto, Camión Europeo, Camión Americano, Furgón, Tractor) — se elige el tipo y se toca la imagen para marcar daños numerados, cada uno con su descripción editable.
+5. **Fotos**: carga múltiple, subidas al bucket `inspecciones`, con vista previa y opción de quitar.
+6. **Checklist**: ítems personalizados con 3 estados (✕ / — / ✓), más observaciones del asesor.
+7. **Firma**: lienzo de firma simple (mouse o dedo), se guarda como imagen. **No es una firma electrónica certificada** — es un trazo capturado, como definimos.
+
+Al registrar, todo se guarda en `inspecciones_ingreso`, y el formulario de Nueva OT se precarga con patente, marca/modelo, tipo de vehículo y kilometraje — quedando visible un indicador "✓ Con inspección de ingreso". Al guardar la OT finalmente, se vincula el número de OT de vuelta al registro de inspección para trazabilidad completa.
+
+## Decisiones y limitaciones que quiero que conozcas
+- **El diagrama de daños marca sobre la imagen completa** (que trae las 5 vistas combinadas: superior, frontal, laterales y trasera en un solo archivo), no vistas separadas y recortadas como en algunas referencias más sofisticadas — es una simplificación consciente para no sobre-construir esa parte; sigue capturando la ubicación aproximada del daño con su descripción.
+- **"Trabajo a realizar" de la inspección no se precarga en Nueva OT** porque ese formulario usa selección de catálogo (Tipo de Servicio), no un campo de texto libre equivalente — el texto queda guardado en el registro de inspección, vinculado por `inspeccion_id`, disponible para quien necesite consultarlo.
+- **La generación del PDF de la inspección** (punto 7 de tu tabla original) no quedó incluida en esta entrega — prioricé completar el flujo funcional de captura de datos primero. Si la quieres, es un siguiente paso natural, reusando el mismo estilo de PDF que ya tienes en Presupuestos (logo, cabecera DIDIAL).
+- **Corregí un bug real durante la integración**: el asistente vive dentro del `<form>` de Nueva OT, y sin `type="button"` explícito en cada botón, un Enter en cualquier campo del asistente habría disparado el envío accidental del formulario completo de la OT. Ya está corregido en los 14 botones del componente.

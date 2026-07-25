@@ -8,6 +8,7 @@ import {
   OT_TIPO_DOCUMENTO, OT_SVC_GRUPOS, otBU, OT_MARCAS, OT_CIUDADES,
   OT_TECNICOS, OT_CONOCIO, OT_ENCUESTA, enviarASheet, TIPOS_VEHICULO, sucursalDeAsesor
 } from '../lib/helpers'
+import InspeccionIngreso from '../components/InspeccionIngreso'
 
 const hoy = () => new Date().toISOString().slice(0, 10)
 
@@ -75,6 +76,8 @@ export default function NuevaOT() {
   const [secOtro, setSecOtro] = useState('') // técnico secundario "Otro"
   const [presups, setPresups] = useState([])   // presupuestos de taller del vehículo
   const [selItems, setSelItems] = useState({}) // "presupId:i" -> true
+  const [mostrarInspeccion, setMostrarInspeccion] = useState(false)  // v45
+  const [inspeccionId, setInspeccionId] = useState(null)             // v45
 
   // URL del Apps Script de la planilla (config por empresa)
   // v27: técnicos = usuarios activos con rol técnico o jefe de taller
@@ -166,6 +169,29 @@ export default function NuevaOT() {
       }
     }
     setPresups([]); setSelItems({})
+  }
+
+  // v45: al terminar el asistente de inspección, precarga el formulario
+  // con lo ya relevado (patente, marca/modelo, km, tipo de vehículo,
+  // datos del cliente si era nuevo, trabajo a realizar/observaciones).
+  function prefillDesdeInspeccion(datos) {
+    setInspeccionId(datos.inspeccion_id)
+    set('patente', datos.patente)
+    if (datos.tipo_vehiculo) set('tipo_vehiculo', datos.tipo_vehiculo)
+    if (datos.km) set('km', datos.km)
+    // Nota: el "trabajo a realizar" de la inspección queda guardado en el
+    // registro de inspección (inspecciones_ingreso), vinculado por
+    // inspeccion_id — el formulario de Nueva OT usa Tipo de Servicio
+    // (selección de catálogo), no un campo de texto libre equivalente.
+    if (!datos.tipo_cliente_nombre) {
+      // era cliente/vehículo nuevo — precarga sus datos también
+      if (datos.propietario) set('propietario', datos.propietario)
+      if (datos.apellidos) set('apellidos', datos.apellidos)
+      if (datos.rut) set('rut', datos.rut)
+      if (datos.telefono) set('telefono', datos.telefono)
+    }
+    buscarVehiculo(datos.patente)
+    setMostrarInspeccion(false)
   }
 
   const marcaFinal = () => (f.marca === '__otra__' ? f.marcaOtra.trim() : f.marca)
@@ -395,9 +421,15 @@ export default function NuevaOT() {
       }, { onConflict: 'empresa_id,ot_numero' })
     }
 
+    // v45: si esta OT nació de una inspección de ingreso, se le guarda el
+    // número de OT final para trazabilidad completa (inspección → OT).
+    if (inspeccionId && f.ot_numero?.trim()) {
+      await supabase.from('inspecciones_ingreso').update({ ot_numero: f.ot_numero.trim() }).eq('id', inspeccionId)
+    }
+
     setGuardando(false)
     setMsg({ t: 'ok', m: aviso })
-    setF({ ...VACIA, fecha: hoy(), fecha_entrega: hoy() }); setVeh(null)
+    setF({ ...VACIA, fecha: hoy(), fecha_entrega: hoy() }); setVeh(null); setInspeccionId(null)
     setSecSel([]); setSecOtro('')
   }
 
@@ -408,11 +440,23 @@ export default function NuevaOT() {
           <h1 className="text-xl font-bold text-ink">Nueva Orden de Trabajo</h1>
           <p className="text-sm text-slate-500">Asesor: <b>{perfil?.nombre}</b></p>
         </div>
-        <div className="text-right">
-          <div className="text-xs text-slate-500">Total reparación</div>
-          <div className="text-2xl font-bold text-deep">$ {fmtMiles(total)}</div>
+        <div className="flex items-center gap-4">
+          {!inspeccionId && (
+            <button type="button" className="btn-soft text-sm" onClick={() => setMostrarInspeccion(true)}>
+              📋 Iniciar con inspección de ingreso
+            </button>
+          )}
+          {inspeccionId && <span className="text-xs text-green-600 font-medium">✓ Con inspección de ingreso</span>}
+          <div className="text-right">
+            <div className="text-xs text-slate-500">Total reparación</div>
+            <div className="text-2xl font-bold text-deep">$ {fmtMiles(total)}</div>
+          </div>
         </div>
       </div>
+
+      {mostrarInspeccion && (
+        <InspeccionIngreso perfil={perfil} onCompletada={prefillDesdeInspeccion} onCancelar={() => setMostrarInspeccion(false)} />
+      )}
 
       <Seccion n={1} titulo="Ingreso de Orden">
         <Campo label="N° Orden de Trabajo">
