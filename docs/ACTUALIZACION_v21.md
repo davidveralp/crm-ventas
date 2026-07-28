@@ -774,3 +774,18 @@ Heatmap: filas = top 10 tipos de servicio por ventas, columnas = las marcas del 
 ## Limitaciones declaradas
 - La matriz corta en 10×10 por legibilidad; cruces fuera de esos tops no se muestran (el Total de fila solo suma las columnas visibles).
 - En DyP, "SIN SERVICIO" agrupa OTs del área sin tipo de servicio informado en la hoja.
+
+---
+
+# Actualización v48 — Matriz Servicio × Marca: Ticket promedio en vez de Ventas
+
+Solo frontend (`src/pages/PanelOperativo.jsx`). Sin migración SQL.
+
+- El toggle de la matriz pasa de **Ventas | OTs** a **Ticket promedio | OTs**, con Ticket promedio como vista por defecto.
+- Cada celda muestra el ticket promedio de ese cruce servicio×marca = ventas del cruce ÷ OTs con venta > 0 (mismo criterio del KPI global de ticket).
+- **Total de fila**: ticket ponderado del servicio (suma de ventas ÷ suma de OTs con venta de las columnas visibles), no un promedio de promedios — que distorsionaría dando el mismo peso a una marca con 1 OT y a otra con 40.
+- La intensidad del color ahora es relativa al mayor ticket de la tabla, no al mayor monto de ventas: la lectura cambia de "dónde está el volumen" a "dónde está el valor por OT".
+- El tooltip de cada celda muestra las tres cifras: OTs, ventas y ticket.
+
+## Nota de interpretación
+Con ticket promedio, un cruce con 1 sola OT cara se pinta igual de intenso que uno con 40 OTs del mismo ticket. Conviene alternar al modo OTs para verificar el respaldo estadístico de un cruce llamativo.

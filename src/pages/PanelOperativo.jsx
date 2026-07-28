@@ -168,7 +168,7 @@ export default function PanelOperativo() {
   const [brand, setBrand] = useState(null) // 'Toyota' | 'Multimarca' | null
   const [gran, setGran] = useState('dia')
   const [rankM, setRankM] = useState('v') // orden Top marcas: 'v' ventas | 'ot' frecuencia
-  const [matM, setMatM] = useState('v') // métrica de la matriz: 'v' ventas | 'ot' OTs
+  const [matM, setMatM] = useState('tk') // métrica de la matriz: 'tk' ticket promedio | 'ot' OTs
   const [updated, setUpdated] = useState('')
   const cfgRef = useRef(cfg)
 
@@ -312,9 +312,10 @@ export default function PanelOperativo() {
       const s = normServ(r['Tipo Servicio 1']); if (!s || s === '0') return
       const m = normMarca(r['Marca']); if (!m || m === '0') return
       if (!cruce[s]) cruce[s] = { total: 0, marcas: {} }
-      if (!cruce[s].marcas[m]) cruce[s].marcas[m] = { ot: 0, v: 0 }
+      if (!cruce[s].marcas[m]) cruce[s].marcas[m] = { ot: 0, v: 0, cv: 0 }
       const val = num(r[f])
       cruce[s].total += val; cruce[s].marcas[m].ot++; cruce[s].marcas[m].v += val
+      if (val > 0) cruce[s].marcas[m].cv++
     })
 
     // Técnicos con comisión
@@ -389,8 +390,9 @@ export default function PanelOperativo() {
   // Matriz servicio × marcas top 10: top 10 servicios por ventas dentro del cruce
   const matMarcas = top10.map((x) => x.marca)
   const matServs = Object.entries(D.cruce).sort((a, b) => b[1].total - a[1].total).slice(0, 10).map(([s]) => s)
+  const celda = (c) => { if (!c) return 0; return matM === 'ot' ? c.ot : (c.cv ? c.v / c.cv : 0) }
   let matMax = 1
-  matServs.forEach((s) => matMarcas.forEach((m) => { const c = D.cruce[s]?.marcas[m]; if (c) matMax = Math.max(matMax, matM === 'ot' ? c.ot : c.v) }))
+  matServs.forEach((s) => matMarcas.forEach((m) => { matMax = Math.max(matMax, celda(D.cruce[s]?.marcas[m])) }))
 
   return (
     <div className="space-y-5">
@@ -542,11 +544,11 @@ export default function PanelOperativo() {
         <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
           <h3 className="font-semibold text-ink">Servicio × Marca (Top 10)</h3>
           <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-xs">
-            <button onClick={() => setMatM('v')} className={`px-2 py-1 ${matM === 'v' ? 'bg-deep text-white' : 'text-slate-500'}`}>Ventas</button>
+            <button onClick={() => setMatM('tk')} className={`px-2 py-1 ${matM === 'tk' ? 'bg-deep text-white' : 'text-slate-500'}`}>Ticket promedio</button>
             <button onClick={() => setMatM('ot')} className={`px-2 py-1 ${matM === 'ot' ? 'bg-deep text-white' : 'text-slate-500'}`}>OTs</button>
           </div>
         </div>
-        <p className="text-[11px] text-slate-400 mb-2">Top 10 servicios (filas, por ventas) × marcas del Top 10 (columnas, según el orden elegido arriba). Intensidad relativa al mayor cruce.</p>
+        <p className="text-[11px] text-slate-400 mb-2">Top 10 servicios (filas, por ventas) × marcas del Top 10 (columnas, según el orden elegido arriba). {matM === 'tk' ? 'Ticket promedio del cruce, sobre OTs con venta > 0.' : 'Cantidad de OTs del cruce.'} Intensidad relativa al mayor valor de la tabla.</p>
         <div className="overflow-x-auto">
           <table className="text-xs min-w-full">
             <thead>
@@ -559,17 +561,21 @@ export default function PanelOperativo() {
             <tbody>
               {matServs.length ? matServs.map((s) => {
                 const fila = D.cruce[s]
-                const totFila = matMarcas.reduce((acc, m) => { const c = fila.marcas[m]; return acc + (c ? (matM === 'ot' ? c.ot : c.v) : 0) }, 0)
+                const vis = matMarcas.map((m) => fila.marcas[m]).filter(Boolean)
+                const totOTf = vis.reduce((a, c) => a + c.ot, 0)
+                const totVf = vis.reduce((a, c) => a + c.v, 0)
+                const totCVf = vis.reduce((a, c) => a + c.cv, 0)
+                const totFila = matM === 'ot' ? totOTf : (totCVf ? totVf / totCVf : 0)
                 return (
                   <tr key={s} className="border-t border-slate-100">
                     <td className="py-1 pr-2 whitespace-nowrap font-medium text-ink sticky left-0 bg-white">{s}</td>
                     {matMarcas.map((m) => {
                       const c = fila.marcas[m]
-                      const val = c ? (matM === 'ot' ? c.ot : c.v) : 0
+                      const val = celda(c)
                       const alpha = val ? 0.12 + 0.75 * (val / matMax) : 0
                       return (
                         <td key={m} className="text-center px-1 py-1 rounded" style={{ background: alpha ? `rgba(47,111,176,${alpha})` : 'transparent', color: alpha > 0.55 ? '#fff' : C.graphite }}
-                            title={c ? `${m} · ${s}: ${c.ot} OT · ${CLP(c.v)}` : ''}>
+                            title={c ? `${m} · ${s}: ${c.ot} OT · ${CLP(c.v)} · ticket ${CLP(c.cv ? c.v / c.cv : 0)}` : ''}>
                           {val ? (matM === 'ot' ? val : CLPc(val)) : '·'}
                         </td>
                       )
