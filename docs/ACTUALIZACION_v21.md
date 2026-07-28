@@ -726,3 +726,51 @@ Al registrar, todo se guarda en `inspecciones_ingreso`, y el formulario de Nueva
 - **"Trabajo a realizar" de la inspección no se precarga en Nueva OT** porque ese formulario usa selección de catálogo (Tipo de Servicio), no un campo de texto libre equivalente — el texto queda guardado en el registro de inspección, vinculado por `inspeccion_id`, disponible para quien necesite consultarlo.
 - **La generación del PDF de la inspección** (punto 7 de tu tabla original) no quedó incluida en esta entrega — prioricé completar el flujo funcional de captura de datos primero. Si la quieres, es un siguiente paso natural, reusando el mismo estilo de PDF que ya tienes en Presupuestos (logo, cabecera DIDIAL).
 - **Corregí un bug real durante la integración**: el asistente vive dentro del `<form>` de Nueva OT, y sin `type="button"` explícito en cada botón, un Enter en cualquier campo del asistente habría disparado el envío accidental del formulario completo de la OT. Ya está corregido en los 14 botones del componente.
+
+---
+
+# Actualización v46 — Panel operativo: rangos de fechas y segmento por marca
+
+## Qué cambia
+Solo frontend (`src/pages/PanelOperativo.jsx`). **No requiere migración SQL ni cambios en Edge Functions.**
+
+### 1. Filtro de período por rango de fechas
+- Nuevo selector **Mes | Rango** en la barra de controles.
+  - **Mes**: comportamiento idéntico al anterior (selector de mes único).
+  - **Rango**: dos campos de fecha (desde → hasta) + presets rápidos **3M / 6M / 12M / Año** (últimos N meses hasta hoy, o año en curso). Al activar Rango, se precarga con el mes que estaba seleccionado.
+- El rango se refleja en **todo el panel**: gauges, los 10 KPIs, movimiento, donut por área, ventas por marca, tipo de servicio, NPS, técnicos con comisión y DyP.
+- **Metas prorrateadas**: las metas mensuales (Toyota/Multimarca) se multiplican por los "meses equivalentes" del rango (con fracción para meses parciales — ej. 15 días de un mes de 30 cuentan 0,5). El gauge indica los meses en el título cuando el rango supera 1 mes. El "% Cumplimiento" y el máximo de garantías también se escalan.
+- **Avance esperado**: si el rango incluye hoy, "Deberías llevar" se calcula sobre los días transcurridos del rango (no del mes calendario). Si el rango ya cerró, muestra "Período cerrado".
+
+### 2. Segmento por marca (Toyota / Multimarca)
+- Nuevo selector **Todas | Toyota | Multimarca** en la barra de controles, conectado al mismo estado que ya usaba el clic en el donut (quedan sincronizados: elegir en uno se refleja en el otro).
+- Al seleccionar una marca, el gauge de la otra se atenúa visualmente (los gauges siguen mostrando ambos totales, porque son por definición por marca).
+
+### 3. Ajustes de coherencia
+- Movimiento en granularidad **Día** ahora agrupa por fecha completa: un rango que cruza meses muestra "5 jul, 12 ago…" en vez de mezclar días de meses distintos en la misma barra.
+- Movimiento en **Mes/Año**: en modo Rango grafica solo el período seleccionado (respetando marca y área); en modo Mes conserva la vista histórica completa de siempre.
+- Etiquetas "Garantías del mes" y "Ventas del mes" → "del período".
+
+## Limitaciones declaradas
+- El campo de fecha usa el datepicker nativo del navegador (sin calendario custom).
+- "Vehículos en taller" sigue siendo un conteo sobre toda la base (estado actual), no del período — es un indicador de foto presente, no histórico.
+- Los presets 3M/6M/12M parten del día 1 del mes inicial y llegan hasta hoy.
+
+---
+
+# Actualización v47 — Panel operativo: análisis DyP por servicio, Top 10 marcas y matriz Servicio × Marca
+
+Solo frontend (`src/pages/PanelOperativo.jsx`). **Sin migración SQL ni cambios en Edge Functions.** Todo respeta los filtros globales (período mes/rango, marca, área, bruto/neto).
+
+## 1. DyP · Desglose por servicio
+Dentro de la tarjeta DyP, bajo la tabla de técnicos: tabla por tipo de servicio (DESABOLLADURA Y PINTURA, LAVADO, PULIDO, etc.) con OTs, Ventas, MO neta y Ticket (sobre OTs con venta > 0), ordenada por ventas. Nota: el universo DyP sigue definido por técnico principal (`tecnicos_dyp` de la config), igual que los KPIs de esa tarjeta.
+
+## 2. Top 10 marcas (reemplaza el gráfico "Ventas por marca")
+Tabla con ranking, OTs (frecuencia), % de OTs, Ventas (con barra de proporción de fondo) y Ticket promedio por marca. Toggle **Por ventas | Por frecuencia** para cambiar el criterio del ranking. El ticket se pinta verde si supera la meta mínima configurada. Pie de tabla indica qué % de las ventas concentra el Top 10. El gráfico anterior mostraba solo ventas top 8; esta tabla lo supersede con más información.
+
+## 3. Matriz Servicio × Marca (doble entrada)
+Heatmap: filas = top 10 tipos de servicio por ventas, columnas = las marcas del Top 10 (siguen el orden elegido en la tabla). Toggle **Ventas | OTs** como métrica de celda. Intensidad de color relativa al mayor cruce; hover muestra OTs y ventas exactas del cruce; columna Total por servicio. Montos en formato compacto ($1,2M / $850k). Scroll horizontal con la columna de servicio fija si no cabe.
+
+## Limitaciones declaradas
+- La matriz corta en 10×10 por legibilidad; cruces fuera de esos tops no se muestran (el Total de fila solo suma las columnas visibles).
+- En DyP, "SIN SERVICIO" agrupa OTs del área sin tipo de servicio informado en la hoja.

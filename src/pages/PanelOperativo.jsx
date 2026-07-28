@@ -10,6 +10,7 @@ import { fmtMiles } from '../lib/helpers'
 /* ---- Paleta del panel (identidad DIDIAL) ---- */
 const C = { graphite: '#111922', red: '#e0382b', green: '#1f9d57', amber: '#e0a020', blue: '#2f6fb0', muted: '#6b7a8a' }
 const CLP = (n) => '$' + fmtMiles(Math.round(n || 0))
+const CLPc = (n) => { const v = Math.round(n || 0); if (!v) return '—'; if (v >= 1e6) return '$' + (v / 1e6).toFixed(1).replace('.', ',') + 'M'; if (v >= 1e3) return '$' + Math.round(v / 1e3) + 'k'; return '$' + v }
 
 /* ---- Config por defecto (si la empresa no tiene 'dashboard' en config) ---- */
 const DEFAULTS = {
@@ -61,6 +62,23 @@ function parseGvizDate(v) {
 const ymKey = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
 const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
 const ymLabel = (ym) => { const [y, m] = ym.split('-'); return MES[+m - 1] + ' ' + y }
+const parseISO = (s) => { if (!s) return null; const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d) }
+const toISO = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+const dmKey = (d) => toISO(d)
+/* Meses equivalentes cubiertos por un rango (fracción para meses parciales) — para prorratear metas mensuales */
+function mesesEquivalentes(ini, fin) {
+  let total = 0
+  let cur = new Date(ini.getFullYear(), ini.getMonth(), 1)
+  while (cur <= fin) {
+    const dim = new Date(cur.getFullYear(), cur.getMonth() + 1, 0).getDate()
+    const mismoMes = (d) => d.getFullYear() === cur.getFullYear() && d.getMonth() === cur.getMonth()
+    const a = mismoMes(ini) ? ini.getDate() : 1
+    const b = mismoMes(fin) ? fin.getDate() : dim
+    total += (b - a + 1) / dim
+    cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1)
+  }
+  return total
+}
 function npsCalc(rows) {
   let prom = 0, det = 0, enc = 0
   rows.forEach((r) => { const v = txt(r['N.P.S']).toLowerCase(); if (v === 'promotor') { prom++; enc++ } else if (v === 'detractor') { det++; enc++ } else if (v === 'pasivo') { enc++ } })
@@ -120,7 +138,7 @@ function Gauge({ label, val, meta, pace, isCurrent }) {
       <div className="text-xs mt-1 text-center">
         {isCurrent
           ? <>Deberías llevar <b>{CLP(objetivo)}</b> · {dif >= 0 ? <span style={{ color: C.green }}>+{CLP(dif)} adelantado</span> : <span style={{ color: C.red }}>{CLP(dif)} atrasado</span>}</>
-          : <span className="text-slate-400">Mes cerrado · meta {CLP(meta)}</span>}
+          : <span className="text-slate-400">Período cerrado · meta {CLP(meta)}</span>}
       </div>
     </div>
   )
@@ -142,10 +160,15 @@ export default function PanelOperativo() {
   const [estado, setEstado] = useState('cargando') // cargando | listo | error
   const [errMsg, setErrMsg] = useState('')
   const [ym, setYm] = useState(null)
+  const [modo, setModo] = useState('mes') // 'mes' | 'rango'
+  const [desde, setDesde] = useState('')
+  const [hasta, setHasta] = useState('')
   const [area, setArea] = useState('Todas')
   const [net, setNet] = useState(false)
   const [brand, setBrand] = useState(null) // 'Toyota' | 'Multimarca' | null
   const [gran, setGran] = useState('dia')
+  const [rankM, setRankM] = useState('v') // orden Top marcas: 'v' ventas | 'ot' frecuencia
+  const [matM, setMatM] = useState('v') // métrica de la matriz: 'v' ventas | 'ot' OTs
   const [updated, setUpdated] = useState('')
   const cfgRef = useRef(cfg)
 
@@ -180,23 +203,61 @@ export default function PanelOperativo() {
   }, [raw])
   useEffect(() => { if (meses.length && (!ym || !meses.includes(ym))) setYm(meses[0]) }, [meses]) // eslint-disable-line
 
+  // Al pasar a modo rango, precargar con el mes seleccionado
+  useEffect(() => {
+    if (modo !== 'rango' || desde || !ym) return
+    const [y, m] = ym.split('-').map(Number)
+    setDesde(toISO(new Date(y, m - 1, 1)))
+    setHasta(toISO(new Date(y, m, 0)))
+  }, [modo]) // eslint-disable-line
+
+  // Presets rápidos: últimos N meses (hasta hoy) o año en curso
+  function preset(tipo) {
+    const hoy = new Date()
+    let ini
+    if (tipo === 'ytd') ini = new Date(hoy.getFullYear(), 0, 1)
+    else ini = new Date(hoy.getFullYear(), hoy.getMonth() - (tipo - 1), 1)
+    setModo('rango'); setDesde(toISO(ini)); setHasta(toISO(hoy))
+  }
+
   const ventasField = net ? 'Neto Total Reparación' : 'Total Reparación'
 
   // Cálculo de todo el panel
   const D = useMemo(() => {
     if (!ym) return null
     const f = ventasField
-    const mesRows = raw.filter((r) => { const d = parseGvizDate(r['F. Ingreso']); return d && ymKey(d) === ym })
-    const areaRows = area === 'Todas' ? mesRows : mesRows.filter((r) => areaDe(r) === area)
+
+    // ---- Período: un mes o un rango de fechas ----
+    let rangoIni, rangoFin
+    if (modo === 'rango' && desde && hasta) {
+      rangoIni = parseISO(desde); rangoFin = parseISO(hasta)
+      if (rangoFin < rangoIni) { const t = rangoIni; rangoIni = rangoFin; rangoFin = t }
+    } else {
+      const [y, m] = ym.split('-').map(Number)
+      rangoIni = new Date(y, m - 1, 1); rangoFin = new Date(y, m, 0)
+    }
+    const finDia = new Date(rangoFin.getFullYear(), rangoFin.getMonth(), rangoFin.getDate(), 23, 59, 59)
+    const periodoRows = raw.filter((r) => { const d = parseGvizDate(r['F. Ingreso']); return d && d >= rangoIni && d <= finDia })
+    const areaRows = area === 'Todas' ? periodoRows : periodoRows.filter((r) => areaDe(r) === area)
     const rows = brand ? areaRows.filter((r) => esToyota(r) === (brand === 'Toyota')) : areaRows
 
-    // Gauges: total del mes por marca (sin filtro de área/donut)
-    const ventasToyota = mesRows.filter(esToyota).reduce((s, r) => s + num(r[f]), 0)
-    const ventasMM = mesRows.filter((r) => !esToyota(r)).reduce((s, r) => s + num(r[f]), 0)
+    // Gauges: total del período por marca (sin filtro de área/donut)
+    const ventasToyota = periodoRows.filter(esToyota).reduce((s, r) => s + num(r[f]), 0)
+    const ventasMM = periodoRows.filter((r) => !esToyota(r)).reduce((s, r) => s + num(r[f]), 0)
     const ventasTotal = ventasToyota + ventasMM
-    const now = new Date(); const isCurrent = ym === ymKey(now)
-    const dim = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
-    const pace = isCurrent ? now.getDate() / dim : 1
+
+    // Metas prorrateadas por meses equivalentes del rango
+    const mesesEq = mesesEquivalentes(rangoIni, rangoFin)
+    const metaT = cfg.meta_toyota * mesesEq
+    const metaM = cfg.meta_multimarca * mesesEq
+
+    // Avance esperado según días del rango transcurridos
+    const now = new Date()
+    const hoy = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const isCurrent = hoy >= rangoIni && hoy <= rangoFin
+    const totalDias = Math.round((rangoFin - rangoIni) / 86400000) + 1
+    const diasTrans = Math.round((hoy - rangoIni) / 86400000) + 1
+    const pace = isCurrent ? diasTrans / totalDias : (hoy < rangoIni ? 0 : 1)
 
     // KPIs sobre rows (área + marca)
     const conVenta = rows.filter((r) => num(r[f]) > 0)
@@ -207,17 +268,24 @@ export default function PanelOperativo() {
     const gen = rows.filter((r) => txt(r['N° Presupuesto']) !== '').length
     const apr = rows.filter((r) => { const np = txt(r['N° Presupuesto']) !== ''; const td = txt(r['Tipo Documento']); return np && td !== '' && td.toLowerCase() !== 'sin documento' }).length
     const aprPct = gen ? Math.round(apr / gen * 100) : 0
-    const cumpl = ventasTotal / (cfg.meta_toyota + cfg.meta_multimarca) * 100
+    const cumpl = (metaT + metaM) ? ventasTotal / (metaT + metaM) * 100 : 0
     const perm = avg(rows, 'Permanencia'), permP = avg(rows, 'Días Recomendados Reparación')
     const enTaller = raw.filter((r) => txt(r['Estado Vehículo']).toLowerCase() === 'en taller').length
 
     // Movimiento
     let mov = []
     if (gran === 'dia') {
-      const m = {}; rows.forEach((r) => { const d = parseGvizDate(r['F. Ingreso']); if (!d) return; const k = d.getDate(); if (!m[k]) m[k] = { veh: 0, v: 0 }; m[k].veh++; m[k].v += num(r[f]) })
-      mov = Object.entries(m).sort((a, b) => +a[0] - +b[0]).map(([k, v]) => ({ name: k, vehiculos: v.veh, ventas: v.v }))
+      const multiMes = rangoIni.getMonth() !== rangoFin.getMonth() || rangoIni.getFullYear() !== rangoFin.getFullYear()
+      const m = {}; rows.forEach((r) => { const d = parseGvizDate(r['F. Ingreso']); if (!d) return; const k = dmKey(d); if (!m[k]) m[k] = { veh: 0, v: 0 }; m[k].veh++; m[k].v += num(r[f]) })
+      mov = Object.entries(m).sort((a, b) => a[0] < b[0] ? -1 : 1).map(([k, v]) => {
+        const [, mm, dd] = k.split('-')
+        return { name: multiMes ? +dd + ' ' + MES[+mm - 1] : +dd, vehiculos: v.veh, ventas: v.v }
+      })
     } else {
-      const base = brand ? raw.filter((r) => esToyota(r) === (brand === 'Toyota')) : raw
+      // En modo rango se grafica solo el período; en modo mes, toda la historia (tendencia)
+      const base = modo === 'rango'
+        ? rows
+        : (brand ? raw.filter((r) => esToyota(r) === (brand === 'Toyota')) : raw)
       const m = {}; base.forEach((r) => { const d = parseGvizDate(r['F. Ingreso']); if (!d) return; const k = gran === 'mes' ? ymKey(d) : String(d.getFullYear()); if (!m[k]) m[k] = { veh: 0, v: 0 }; m[k].veh++; m[k].v += num(r[f]) })
       mov = Object.entries(m).sort((a, b) => a[0] < b[0] ? -1 : 1).map(([k, v]) => ({ name: gran === 'mes' ? ymLabel(k) : k, vehiculos: v.veh, ventas: v.v }))
     }
@@ -228,6 +296,26 @@ export default function PanelOperativo() {
 
     const porMarca = topAgg(rows, 'Marca', f, 8, (m) => normMarca(m))
     const porServicio = topAgg(rows, 'Tipo Servicio 1', f, 8)
+
+    // Estadísticas por marca: frecuencia (OTs), ventas y ticket promedio (sobre OTs con venta)
+    const mmap = {}
+    rows.forEach((r) => {
+      const k = normMarca(r['Marca']); if (!k || k === '0') return
+      if (!mmap[k]) mmap[k] = { ot: 0, v: 0, cv: 0 }
+      mmap[k].ot++; const val = num(r[f]); mmap[k].v += val; if (val > 0) mmap[k].cv++
+    })
+    const marcasStats = Object.entries(mmap).map(([marca, x]) => ({ marca, ot: x.ot, v: x.v, ticket: x.cv ? x.v / x.cv : 0 }))
+
+    // Cruce tipo de servicio × marca (para la matriz de doble entrada)
+    const cruce = {}
+    rows.forEach((r) => {
+      const s = normServ(r['Tipo Servicio 1']); if (!s || s === '0') return
+      const m = normMarca(r['Marca']); if (!m || m === '0') return
+      if (!cruce[s]) cruce[s] = { total: 0, marcas: {} }
+      if (!cruce[s].marcas[m]) cruce[s].marcas[m] = { ot: 0, v: 0 }
+      const val = num(r[f])
+      cruce[s].total += val; cruce[s].marcas[m].ot++; cruce[s].marcas[m].v += val
+    })
 
     // Técnicos con comisión
     const tmap = {}
@@ -251,12 +339,24 @@ export default function PanelOperativo() {
     dypRows.forEach((r) => { const t = txt(r['Técnico Principal']); if (!dmap[t]) dmap[t] = { ot: 0, v: 0, mo: 0 }; dmap[t].ot++; dmap[t].v += num(r[f]); dmap[t].mo += num(r['Neto Mano de Obra']) })
     const dypDet = Object.entries(dmap).map(([t, v]) => ({ t, ...v })).sort((a, b) => b.v - a.v)
 
+    // DyP: desglose por tipo de servicio
+    const dsmap = {}
+    dypRows.forEach((r) => {
+      const s = normServ(r['Tipo Servicio 1']) || 'SIN SERVICIO'
+      if (!dsmap[s]) dsmap[s] = { ot: 0, v: 0, mo: 0, cv: 0 }
+      dsmap[s].ot++; const val = num(r[f]); dsmap[s].v += val; dsmap[s].mo += num(r['Neto Mano de Obra']); if (val > 0) dsmap[s].cv++
+    })
+    const dypServicios = Object.entries(dsmap)
+      .map(([s, x]) => ({ s, ot: x.ot, v: x.v, mo: x.mo, ticket: x.cv ? x.v / x.cv : 0 }))
+      .sort((a, b) => b.v - a.v)
+
     return {
-      ventasToyota, ventasMM, ventasTotal, pace, isCurrent, ticket, garantias, vehiculos, nps,
+      ventasToyota, ventasMM, ventasTotal, metaT, metaM, mesesEq, pace, isCurrent, ticket, garantias, vehiculos, nps,
       gen, apr, aprPct, cumpl, perm, permP, enTaller, mov, vt, vm, porMarca, porServicio,
-      tecnicos, moTotal, dyp: { rows: dypRows, ventas: dypVentas, mo: dypMo, ticket: dypTicket, det: dypDet }
+      marcasStats, cruce,
+      tecnicos, moTotal, dyp: { rows: dypRows, ventas: dypVentas, mo: dypMo, ticket: dypTicket, det: dypDet, servicios: dypServicios }
     }
-  }, [raw, ym, area, net, brand, gran, cfg])
+  }, [raw, ym, modo, desde, hasta, area, net, brand, gran, cfg])
 
   if (estado === 'cargando' && !raw.length) return <div className="text-slate-400 text-sm py-10 text-center">Conectando con la base de datos…</div>
   if (estado === 'error') return (
@@ -270,9 +370,9 @@ export default function PanelOperativo() {
   if (!D) return <div className="text-slate-400 text-sm py-10 text-center">Sin datos en la hoja.</div>
 
   const kpis = [
-    { titulo: '% Cumplimiento metas', valor: D.cumpl.toFixed(0) + '%', estado: D.cumpl >= 80 ? 'g' : D.cumpl >= 50 ? 'a' : 'r', sub: 'Meta total ' + CLP(cfg.meta_toyota + cfg.meta_multimarca) },
+    { titulo: '% Cumplimiento metas', valor: D.cumpl.toFixed(0) + '%', estado: D.cumpl >= 80 ? 'g' : D.cumpl >= 50 ? 'a' : 'r', sub: 'Meta total ' + CLP(D.metaT + D.metaM) },
     { titulo: 'Ticket promedio', valor: CLP(D.ticket), estado: D.ticket >= cfg.meta_ticket ? 'g' : 'r', sub: 'Meta mín. ' + CLP(cfg.meta_ticket) },
-    { titulo: 'Garantías del mes', valor: D.garantias, estado: D.garantias > cfg.max_garantias ? 'r' : 'g', sub: 'Máx. ' + cfg.max_garantias },
+    { titulo: 'Garantías del período', valor: D.garantias, estado: D.garantias > cfg.max_garantias * Math.max(D.mesesEq, 1) ? 'r' : 'g', sub: 'Máx. ' + Math.round(cfg.max_garantias * Math.max(D.mesesEq, 1)) },
     { titulo: 'Vehículos ingresados', valor: D.vehiculos, estado: null, sub: 'OTs del período' },
     { titulo: 'NPS', valor: (D.nps.nps >= 0 ? '+' : '') + D.nps.nps.toFixed(0), estado: D.nps.nps >= 50 ? 'g' : D.nps.nps >= 0 ? 'a' : 'r', sub: `${D.nps.prom} prom · ${D.nps.det} det` },
     { titulo: 'Presup. aprobados', valor: D.aprPct + '%', estado: null, sub: `${D.apr} de ${D.gen} generados` }
@@ -280,13 +380,50 @@ export default function PanelOperativo() {
   const donutArea = [{ name: 'Toyota', value: D.vt, c: C.red }, { name: 'Multimarca', value: D.vm, c: C.graphite }]
   const npsData = [{ name: 'Promotores', value: D.nps.prom, c: C.green }, { name: 'Pasivos', value: D.nps.pas, c: C.amber }, { name: 'Detractores', value: D.nps.det, c: C.red }]
 
+  // Top 10 marcas según el orden elegido (ventas o frecuencia)
+  const top10 = [...D.marcasStats].sort((a, b) => rankM === 'ot' ? (b.ot - a.ot || b.v - a.v) : (b.v - a.v)).slice(0, 10)
+  const totOT = D.marcasStats.reduce((s, x) => s + x.ot, 0)
+  const totV = D.marcasStats.reduce((s, x) => s + x.v, 0)
+  const maxVMarca = Math.max(...top10.map((x) => x.v), 1)
+
+  // Matriz servicio × marcas top 10: top 10 servicios por ventas dentro del cruce
+  const matMarcas = top10.map((x) => x.marca)
+  const matServs = Object.entries(D.cruce).sort((a, b) => b[1].total - a[1].total).slice(0, 10).map(([s]) => s)
+  let matMax = 1
+  matServs.forEach((s) => matMarcas.forEach((m) => { const c = D.cruce[s]?.marcas[m]; if (c) matMax = Math.max(matMax, matM === 'ot' ? c.ot : c.v) }))
+
   return (
     <div className="space-y-5">
       {/* Controles */}
       <div className="flex flex-wrap items-center gap-3">
-        <select className="input w-auto" value={ym || ''} onChange={(e) => setYm(e.target.value)}>
-          {meses.map((m) => <option key={m} value={m}>{ymLabel(m)}</option>)}
-        </select>
+        {/* Período: mes único o rango de fechas */}
+        <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-sm">
+          <button onClick={() => setModo('mes')} className={`px-3 py-1.5 ${modo === 'mes' ? 'bg-deep text-white' : 'text-slate-500'}`}>Mes</button>
+          <button onClick={() => setModo('rango')} className={`px-3 py-1.5 ${modo === 'rango' ? 'bg-deep text-white' : 'text-slate-500'}`}>Rango</button>
+        </div>
+        {modo === 'mes' ? (
+          <select className="input w-auto" value={ym || ''} onChange={(e) => setYm(e.target.value)}>
+            {meses.map((m) => <option key={m} value={m}>{ymLabel(m)}</option>)}
+          </select>
+        ) : (
+          <div className="flex items-center gap-2 flex-wrap">
+            <input type="date" className="input w-auto" value={desde} onChange={(e) => setDesde(e.target.value)} />
+            <span className="text-slate-400 text-sm">→</span>
+            <input type="date" className="input w-auto" value={hasta} onChange={(e) => setHasta(e.target.value)} />
+            <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-xs">
+              <button onClick={() => preset(3)} className="px-2 py-1.5 text-slate-500 hover:bg-slate-100">3M</button>
+              <button onClick={() => preset(6)} className="px-2 py-1.5 text-slate-500 hover:bg-slate-100 border-l border-slate-200">6M</button>
+              <button onClick={() => preset(12)} className="px-2 py-1.5 text-slate-500 hover:bg-slate-100 border-l border-slate-200">12M</button>
+              <button onClick={() => preset('ytd')} className="px-2 py-1.5 text-slate-500 hover:bg-slate-100 border-l border-slate-200">Año</button>
+            </div>
+          </div>
+        )}
+        {/* Segmento de marca */}
+        <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-sm">
+          {[[null, 'Todas'], ['Toyota', 'Toyota'], ['Multimarca', 'Multimarca']].map(([v, lbl]) => (
+            <button key={lbl} onClick={() => setBrand(v)} className={`px-3 py-1.5 ${brand === v ? (v === 'Toyota' ? 'bg-didial-red text-white' : 'bg-deep text-white') : 'text-slate-500'}`}>{lbl}</button>
+          ))}
+        </div>
         <select className="input w-auto" value={area} onChange={(e) => setArea(e.target.value)}>
           {['Todas', 'DyP', 'Servicio Rápido', 'Taller', 'Por clasificar', 'Sin servicio'].map((a) => <option key={a}>{a}</option>)}
         </select>
@@ -294,9 +431,6 @@ export default function PanelOperativo() {
           <button onClick={() => setNet(false)} className={`px-3 py-1.5 ${!net ? 'bg-deep text-white' : 'text-slate-500'}`}>Bruto</button>
           <button onClick={() => setNet(true)} className={`px-3 py-1.5 ${net ? 'bg-deep text-white' : 'text-slate-500'}`}>Neto</button>
         </div>
-        {brand && (
-          <button onClick={() => setBrand(null)} className="pill bg-didial-red text-white">Marca: {brand} ✕</button>
-        )}
         <div className="ml-auto flex items-center gap-3">
           <span className="text-xs text-slate-400">Actualizado {updated}</span>
           <button onClick={() => refrescar()} className="btn-soft text-sm">↻ Actualizar</button>
@@ -305,8 +439,12 @@ export default function PanelOperativo() {
 
       {/* Gauges */}
       <div className="grid sm:grid-cols-2 gap-4">
-        <Gauge label="Meta Toyota" val={D.ventasToyota} meta={cfg.meta_toyota} pace={D.pace} isCurrent={D.isCurrent} />
-        <Gauge label="Meta Multimarca" val={D.ventasMM} meta={cfg.meta_multimarca} pace={D.pace} isCurrent={D.isCurrent} />
+        <div className={brand === 'Multimarca' ? 'opacity-40 transition-opacity' : 'transition-opacity'}>
+          <Gauge label={'Meta Toyota' + (D.mesesEq > 1.02 ? ` (${D.mesesEq.toFixed(1)} meses)` : '')} val={D.ventasToyota} meta={D.metaT} pace={D.pace} isCurrent={D.isCurrent} />
+        </div>
+        <div className={brand === 'Toyota' ? 'opacity-40 transition-opacity' : 'transition-opacity'}>
+          <Gauge label={'Meta Multimarca' + (D.mesesEq > 1.02 ? ` (${D.mesesEq.toFixed(1)} meses)` : '')} val={D.ventasMM} meta={D.metaM} pace={D.pace} isCurrent={D.isCurrent} />
+        </div>
       </div>
 
       {/* KPIs */}
@@ -316,7 +454,7 @@ export default function PanelOperativo() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KPI titulo="Vehículos en taller" valor={D.enTaller} color={C.blue} sub="Estado = En taller (toda la base)" />
         <KPI titulo="Permanencia real" valor={D.perm.toFixed(1) + ' días'} color={null} sub={'Presupuestada ' + D.permP.toFixed(1) + ' días'} />
-        <KPI titulo="Ventas del mes" valor={CLP(D.ventasTotal)} color={C.green} sub={net ? 'Neto' : 'Bruto'} />
+        <KPI titulo="Ventas del período" valor={CLP(D.ventasTotal)} color={C.green} sub={net ? 'Neto' : 'Bruto'} />
         <KPI titulo="MO comisionable" valor={CLP(D.moTotal)} color={C.green} sub={'Comisión ' + CLP(D.moTotal * cfg.comision_pct)} />
       </div>
 
@@ -364,15 +502,84 @@ export default function PanelOperativo() {
           </div>
         </div>
         <div className="card p-4">
-          <h3 className="font-semibold text-ink mb-2">Ventas por marca</h3>
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={D.porMarca} layout="vertical" margin={{ left: 20 }}>
-              <XAxis type="number" hide />
-              <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 11 }} />
-              <Tooltip formatter={(v) => CLP(v)} />
-              <Bar dataKey="value" fill={C.blue} radius={[0, 3, 3, 0]} barSize={14} />
-            </BarChart>
-          </ResponsiveContainer>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="font-semibold text-ink">Top 10 marcas</h3>
+            <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-xs">
+              <button onClick={() => setRankM('v')} className={`px-2 py-1 ${rankM === 'v' ? 'bg-deep text-white' : 'text-slate-500'}`}>Por ventas</button>
+              <button onClick={() => setRankM('ot')} className={`px-2 py-1 ${rankM === 'ot' ? 'bg-deep text-white' : 'text-slate-500'}`}>Por frecuencia</button>
+            </div>
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-slate-400 text-xs border-b">
+                <th className="text-left py-1 w-6">#</th><th className="text-left">Marca</th>
+                <th className="text-right">OTs</th><th className="text-right">% OTs</th>
+                <th className="text-right">Ventas</th><th className="text-right">Ticket prom.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {top10.length ? top10.map((x, i) => (
+                <tr key={x.marca} className="border-b last:border-0">
+                  <td className="py-1.5 text-slate-400">{i + 1}</td>
+                  <td className="font-medium relative">
+                    <div className="absolute inset-y-1 left-0 rounded-sm bg-slate-100 -z-0" style={{ width: (x.v / maxVMarca * 100) + '%' }} />
+                    <span className="relative z-10">{x.marca}</span>
+                  </td>
+                  <td className="text-right">{x.ot}</td>
+                  <td className="text-right text-slate-400">{totOT ? Math.round(x.ot / totOT * 100) : 0}%</td>
+                  <td className="text-right">{CLP(x.v)}</td>
+                  <td className="text-right font-medium" style={{ color: x.ticket >= cfg.meta_ticket ? C.green : C.muted }}>{CLP(x.ticket)}</td>
+                </tr>
+              )) : <tr><td colSpan={6} className="text-slate-400 py-3">Sin OTs con marca en este período.</td></tr>}
+            </tbody>
+          </table>
+          <p className="text-[11px] text-slate-400 mt-2">Ticket promedio sobre OTs con venta &gt; 0. Verde = sobre la meta mínima ({CLP(cfg.meta_ticket)}). Top 10 concentra {totV ? Math.round(top10.reduce((s, x) => s + x.v, 0) / totV * 100) : 0}% de las ventas.</p>
+        </div>
+      </div>
+
+      {/* Matriz doble entrada: tipo de servicio × marcas top 10 */}
+      <div className="card p-4">
+        <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
+          <h3 className="font-semibold text-ink">Servicio × Marca (Top 10)</h3>
+          <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-xs">
+            <button onClick={() => setMatM('v')} className={`px-2 py-1 ${matM === 'v' ? 'bg-deep text-white' : 'text-slate-500'}`}>Ventas</button>
+            <button onClick={() => setMatM('ot')} className={`px-2 py-1 ${matM === 'ot' ? 'bg-deep text-white' : 'text-slate-500'}`}>OTs</button>
+          </div>
+        </div>
+        <p className="text-[11px] text-slate-400 mb-2">Top 10 servicios (filas, por ventas) × marcas del Top 10 (columnas, según el orden elegido arriba). Intensidad relativa al mayor cruce.</p>
+        <div className="overflow-x-auto">
+          <table className="text-xs min-w-full">
+            <thead>
+              <tr>
+                <th className="text-left py-1 pr-2 text-slate-400 font-normal sticky left-0 bg-white">Servicio</th>
+                {matMarcas.map((m) => <th key={m} className="text-center px-1 py-1 text-slate-500 font-medium whitespace-nowrap">{m}</th>)}
+                <th className="text-right pl-2 text-slate-400 font-normal">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {matServs.length ? matServs.map((s) => {
+                const fila = D.cruce[s]
+                const totFila = matMarcas.reduce((acc, m) => { const c = fila.marcas[m]; return acc + (c ? (matM === 'ot' ? c.ot : c.v) : 0) }, 0)
+                return (
+                  <tr key={s} className="border-t border-slate-100">
+                    <td className="py-1 pr-2 whitespace-nowrap font-medium text-ink sticky left-0 bg-white">{s}</td>
+                    {matMarcas.map((m) => {
+                      const c = fila.marcas[m]
+                      const val = c ? (matM === 'ot' ? c.ot : c.v) : 0
+                      const alpha = val ? 0.12 + 0.75 * (val / matMax) : 0
+                      return (
+                        <td key={m} className="text-center px-1 py-1 rounded" style={{ background: alpha ? `rgba(47,111,176,${alpha})` : 'transparent', color: alpha > 0.55 ? '#fff' : C.graphite }}
+                            title={c ? `${m} · ${s}: ${c.ot} OT · ${CLP(c.v)}` : ''}>
+                          {val ? (matM === 'ot' ? val : CLPc(val)) : '·'}
+                        </td>
+                      )
+                    })}
+                    <td className="text-right pl-2 font-medium">{matM === 'ot' ? totFila : CLPc(totFila)}</td>
+                  </tr>
+                )
+              }) : <tr><td colSpan={matMarcas.length + 2} className="text-slate-400 py-3">Sin datos para cruzar en este período.</td></tr>}
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -436,6 +643,19 @@ export default function PanelOperativo() {
               {D.dyp.det.length ? D.dyp.det.map((x) => (
                 <tr key={x.t} className="border-b last:border-0"><td className="py-1.5">{x.t}</td><td className="text-right">{x.ot}</td><td className="text-right">{CLP(x.v)}</td><td className="text-right">{CLP(x.mo)}</td></tr>
               )) : <tr><td colSpan={4} className="text-slate-400 py-3">Sin OTs del área DyP en este período.</td></tr>}
+            </tbody>
+          </table>
+          <h4 className="font-semibold text-ink text-sm mt-4 mb-1">Desglose por servicio</h4>
+          <table className="w-full text-sm">
+            <thead><tr className="text-slate-400 text-xs border-b"><th className="text-left py-1">Servicio</th><th className="text-right">OT</th><th className="text-right">Ventas</th><th className="text-right">MO neta</th><th className="text-right">Ticket</th></tr></thead>
+            <tbody>
+              {D.dyp.servicios.length ? D.dyp.servicios.map((x) => (
+                <tr key={x.s} className="border-b last:border-0">
+                  <td className="py-1.5">{x.s}</td><td className="text-right">{x.ot}</td>
+                  <td className="text-right">{CLP(x.v)}</td><td className="text-right">{CLP(x.mo)}</td>
+                  <td className="text-right text-slate-500">{CLP(x.ticket)}</td>
+                </tr>
+              )) : <tr><td colSpan={5} className="text-slate-400 py-3">Sin servicios DyP en este período.</td></tr>}
             </tbody>
           </table>
         </div>
