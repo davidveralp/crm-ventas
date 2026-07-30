@@ -822,3 +822,43 @@ Si **no** encuentra la columna de centro, en vez de fallar muestra una tarjeta d
 - **Bases mezcladas**: si una naturaleza solo existe en versión Neto, en modo Bruto se usa igual y el panel lo advierte en amarillo en "Columnas usadas".
 - Los valores del centro se homologan por texto (TOYOTA/MULTI/DYP-PINTURA-DESABOLL). Cualquier valor no reconocido aparece tal cual, para que se vea qué hay realmente en la hoja en lugar de ocultarlo en "Otros".
 - El % de composición se calcula sobre el total del período; con períodos muy cortos, un solo trabajo grande puede dominar la mezcla.
+
+---
+
+# Actualización v50 — Fuente de datos: de Dashboard_Data a Hoja 1 (habilita Centro de Ingreso)
+
+## Diagnóstico (verificado leyendo la planilla real vía Zapier)
+El análisis de Centro de Ingreso de la v49 mostraba la tarjeta de diagnóstico ("19 columnas detectadas") porque **el panel no estaba leyendo la hoja que contiene la columna**.
+
+Planilla `DIDIAL_Base_OT` (`1UTgOhJ5…`), pestañas:
+
+| Pestaña | gid | Columnas | Tiene Centro de Ingreso |
+|---|---|---|---|
+| **Hoja 1** | `0` | 60 | **Sí** (col. BH) |
+| Tabla dinámica 1 | 1129531022 | 26 | no |
+| Log_Errores | 171637413 | 26 | no |
+| **Dashboard_Data** | `174121810` | 19 | **no** ← lo que leía el panel |
+| Map_Areas | 1099465507 | 3 | no |
+| Control_OTs | 330354306 | 8 | no |
+
+`Dashboard_Data` (A–S) es un subconjunto derivado: `N° Orden Trabajo, F. Ingreso, Marca, Tipo de Ingreso, Total Reparación, Neto Total Reparación, Tipo Servicio 1, Tipo Documento, N° Presupuesto, N.P.S, Permanencia, Días Recomendados Reparación, Técnico Principal, Técnicos Secundarios, Neto Mano de Obra, Neto Repuestos, Neto Lubricantes, Neto Descuento, Estado Vehículo`.
+
+Le faltan: **Centro de Ingreso** (BH), **Monto Servicio Externo** (W) y las versiones brutas de repuestos / lubricantes / mano de obra (T, U, V).
+
+`Hoja 1` es **superconjunto** de todas las columnas que el panel ya usaba, así que el cambio no rompe nada existente.
+
+## Cambios
+- `DEFAULTS.gid` pasa de `174121810` a `0` (Hoja 1).
+- Timeout de carga gviz de 15 s → 40 s (Hoja 1 son ~4.400 filas × 60 columnas, payload bastante mayor).
+- **Migración `48_fuente_hoja1.sql`**: actualiza `empresa_config` (clave `dashboard`) si existe una fila con el gid antiguo guardado, ya que la config de base de datos *pisa* los valores por defecto del código. Si esa fila no existe, no hay que hacer nada.
+- Fix de la advertencia de "bases mezcladas": ahora cubre las dos direcciones. El caso real de esta planilla es el inverso al previsto — `Monto Servicio Externo` existe **solo en bruto**, sin columna `Neto Servicio Externo`, así que en modo Neto se usa el bruto y el panel lo advierte.
+
+## Columnas que ahora alimentan el análisis de centros
+- Centro: `Centro de Ingreso` (BH) — valores observados: `Toyota`, `Multimarca`.
+- Mano de obra: `Monto Mano de Obra` (V) / `Neto Mano de Obra` (BC)
+- Repuestos: `Monto Repuestos` (T) / `Neto Repuestos` (BA)
+- Lubricantes e insumos: `Monto Lubricantes` (U) / `Neto Lubricantes` (BB)
+- Servicios externos: `Monto Servicio Externo` (W) — sin versión neta
+
+## Observación importante sobre DyP
+En las muestras revisadas de la columna BH solo aparecen **Toyota** y **Multimarca**; no se observó ningún valor **DyP**. Si DyP no se registra como centro de ingreso en la planilla, el análisis mostrará solo dos centros y la separación de DyP que se pidió no será posible desde esta columna — habría que empezar a poblarla con ese tercer valor en el origen. Cualquier valor distinto que exista aparecerá en la tabla tal cual, sin agruparse en "Otros".

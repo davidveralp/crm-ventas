@@ -14,7 +14,7 @@ const CLPc = (n) => { const v = Math.round(n || 0); if (!v) return '—'; if (v 
 
 /* ---- Config por defecto (si la empresa no tiene 'dashboard' en config) ---- */
 const DEFAULTS = {
-  sheet_id: '1UTgOhJ5fffCfx3RdArmFD-2z3WOCnUNMyfhKu9w59KQ', gid: '174121810',
+  sheet_id: '1UTgOhJ5fffCfx3RdArmFD-2z3WOCnUNMyfhKu9w59KQ', gid: '0',
   meta_toyota: 15000000, meta_multimarca: 25000000, meta_ticket: 150000,
   max_garantias: 5, refresh_min: 15, comision_pct: 0.05,
   tecnicos_comision: ['Felipe', 'Ignacio', 'Shelmy'], tecnicos_dyp: ['Wilson', 'Gabriel']
@@ -123,7 +123,7 @@ function loadData(sheetId, gid) {
     const cb = 'gviz_cb_' + Math.floor(Math.random() * 1e9)
     let done = false, s
     const cleanup = () => { try { delete window[cb] } catch { } if (s && s.parentNode) s.parentNode.removeChild(s) }
-    const timer = setTimeout(() => { if (done) return; done = true; cleanup(); reject(new Error('Tiempo de espera agotado. Verifica que la hoja sea pública.')) }, 15000)
+    const timer = setTimeout(() => { if (done) return; done = true; cleanup(); reject(new Error('Tiempo de espera agotado. Verifica que la hoja sea pública.')) }, 40000)
     window[cb] = (resp) => {
       if (done) return; done = true; clearTimeout(timer)
       try {
@@ -688,11 +688,11 @@ export default function PanelOperativo() {
             <ul className="text-[11px] text-slate-500 mt-1 space-y-0.5">
               {cols.sub.map((s) => {
                 const esNeto = s.col && /^NETO/.test(normHdr(s.col))
-                const mezcla = s.col && !net && esNeto
+                const mezcla = s.col && (net ? !esNeto : esNeto)
                 return (
                   <li key={s.k}>
                     {s.label}: {s.col ? <code>{s.col}</code> : <span style={{ color: C.amber }}>no encontrada</span>}
-                    {mezcla && <span style={{ color: C.amber }}> · solo existe en Neto, se usa en modo Bruto (bases mezcladas)</span>}
+                    {mezcla && <span style={{ color: C.amber }}> · solo existe en {esNeto ? 'Neto' : 'Bruto'}, se usa en modo {net ? 'Neto' : 'Bruto'} (bases mezcladas)</span>}
                   </li>
                 )
               })}
