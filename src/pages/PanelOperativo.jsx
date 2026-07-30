@@ -71,8 +71,12 @@ const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct
 
 /* ---- Detección de columnas por encabezado (tolerante a cambios de nombre/posición en la hoja) ---- */
 const normHdr = (s) => txt(s).toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim()
-function pickCol(keys, tokens, net) {
-  const cand = keys.filter((k) => { const n = normHdr(k); return tokens.every((t) => n.includes(t)) })
+function pickCol(keys, tokens, net, excluye) {
+  const cand = keys.filter((k) => {
+    const n = normHdr(k)
+    if (excluye && n.startsWith(excluye)) return false
+    return tokens.every((t) => n.includes(t))
+  })
   if (!cand.length) return null
   const netos = cand.filter((k) => /^NETO/.test(normHdr(k)))
   const brutos = cand.filter((k) => !/^NETO/.test(normHdr(k)))
@@ -92,8 +96,10 @@ const SUBAREAS = [
   { k: 'mo', label: 'Mano de obra', tokens: ['MANO', 'OBRA'], color: C.green },
   { k: 'rep', label: 'Repuestos', tokens: ['REPUESTO'], color: C.blue },
   { k: 'lub', label: 'Lubricantes e insumos', tokens: ['LUBRICANTE'], alt: ['INSUMO'], color: C.amber },
-  { k: 'ext', label: 'Servicios externos', tokens: ['EXTERNO'], color: C.muted }
+  { k: 'ext', label: 'Servicios externos', tokens: ['SERVICIO', 'EXTERNO'], excluye: 'DESC', color: C.muted }
 ]
+/* El descuento RESTA del total de la OT: Total = MO + Repuestos + Lubricantes + Serv.Externo − Descuento */
+const DESC_META = { k: 'desc', label: 'Descuentos', tokens: ['DESCUENTO'], color: C.red }
 const RESIDUO_COLOR = '#d8dee6'
 const ymLabel = (ym) => { const [y, m] = ym.split('-'); return MES[+m - 1] + ' ' + y }
 const parseISO = (s) => { if (!s) return null; const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d) }
@@ -262,11 +268,12 @@ export default function PanelOperativo() {
     const keys = raw.length ? Object.keys(raw[0]) : []
     const centro = pickCol(keys, ['CENTRO', 'INGRESO'], false) || pickCol(keys, ['CENTRO'], false)
     const sub = SUBAREAS.map((s) => {
-      let c = pickCol(keys, s.tokens, net)
-      if (!c && s.alt) c = pickCol(keys, s.alt, net)
+      let c = pickCol(keys, s.tokens, net, s.excluye)
+      if (!c && s.alt) c = pickCol(keys, s.alt, net, s.excluye)
       return { ...s, col: c }
     })
-    return { keys, centro, sub, faltantes: sub.filter((s) => !s.col).map((s) => s.label) }
+    const desc = { ...DESC_META, col: pickCol(keys, DESC_META.tokens, net) }
+    return { keys, centro, sub, desc, faltantes: sub.filter((s) => !s.col).map((s) => s.label) }
   }, [raw, net])
 
   // Cálculo de todo el panel
@@ -355,23 +362,27 @@ export default function PanelOperativo() {
       periodoRows.forEach((r) => {
         const c = normCentro(r[cols.centro])
         const tot = num(r[ventasField])
-        if (!cmap[c]) { cmap[c] = { total: 0, ot: 0, resid: 0 }; SUBAREAS.forEach((s) => { cmap[c][s.k] = 0 }) }
+        if (!cmap[c]) { cmap[c] = { total: 0, ot: 0, resid: 0, desc: 0 }; SUBAREAS.forEach((s) => { cmap[c][s.k] = 0 }) }
         cmap[c].total += tot; cmap[c].ot++
         let suma = 0
         cols.sub.forEach((s) => { if (!s.col) return; const v = num(r[s.col]); cmap[c][s.k] += v; suma += v })
-        cmap[c].resid += (tot - suma)
+        const dsc = cols.desc.col ? num(r[cols.desc.col]) : 0
+        cmap[c].desc += dsc
+        cmap[c].resid += (tot - (suma - dsc))
         // serie temporal
         const d = parseGvizDate(r['F. Ingreso']); if (!d) return
         const k = multiMes ? ymKey(d) : dmKey(d)
         if (!serieMap[k]) { serieMap[k] = { _c: {}, _s: {} } }
         serieMap[k]._c[c] = (serieMap[k]._c[c] || 0) + tot
         cols.sub.forEach((s) => { if (!s.col) return; serieMap[k]._s[s.k] = (serieMap[k]._s[s.k] || 0) + num(r[s.col]) })
-        serieMap[k]._s.resid = (serieMap[k]._s.resid || 0) + (tot - cols.sub.reduce((a, s) => a + (s.col ? num(r[s.col]) : 0), 0))
+        serieMap[k]._s.desc = (serieMap[k]._s.desc || 0) - dsc
+        serieMap[k]._s.resid = (serieMap[k]._s.resid || 0) + (tot - (suma - dsc))
       })
       const lista = Object.entries(cmap).map(([nombre, x]) => ({ nombre, ...x })).sort((a, b) => b.total - a.total)
       const totalGeneral = lista.reduce((s, x) => s + x.total, 0)
       const totalesSub = {}
       SUBAREAS.forEach((s) => { totalesSub[s.k] = lista.reduce((a, x) => a + x[s.k], 0) })
+      totalesSub.desc = lista.reduce((a, x) => a + x.desc, 0)
       totalesSub.resid = lista.reduce((a, x) => a + x.resid, 0)
       const serie = Object.entries(serieMap).sort((a, b) => a[0] < b[0] ? -1 : 1).map(([k, v]) => {
         const [yy, mm, dd] = k.split('-')
@@ -705,7 +716,9 @@ export default function PanelOperativo() {
                   </li>
                 )
               })}
+              <li>Descuentos (se restan): {cols.desc.col ? <code>{cols.desc.col}</code> : <span style={{ color: C.amber }}>no encontrada</span>}</li>
               <li>Total de la OT: <code>{ventasField}</code></li>
+              <li className="text-slate-400">Ecuación: mano de obra + repuestos + lubricantes + servicios externos − descuentos = total.</li>
             </ul>
           </details>
 
@@ -743,6 +756,7 @@ export default function PanelOperativo() {
                 <tr className="text-slate-400 text-xs border-b">
                   <th className="text-left py-1">Centro</th>
                   {SUBAREAS.map((s) => <th key={s.k} className="text-right px-2">{s.label}</th>)}
+                  <th className="text-right px-2">Descuentos</th>
                   <th className="text-right px-2">Sin desglosar</th>
                   <th className="text-right px-2">Total</th>
                   <th className="text-right px-2">% empresa</th>
@@ -760,6 +774,10 @@ export default function PanelOperativo() {
                         <span className="block text-[10px] text-slate-400">{c.total ? (c[s.k] / c.total * 100).toFixed(0) : 0}%</span>
                       </td>
                     ))}
+                    <td className="text-right px-2" style={{ color: c.desc ? C.red : C.muted }}>
+                      {c.desc ? '−' + CLPc(c.desc) : '—'}
+                      {!!c.desc && <span className="block text-[10px] text-slate-400">{c.total ? (c.desc / c.total * 100).toFixed(1) : 0}%</span>}
+                    </td>
                     <td className="text-right px-2 text-slate-400">{CLPc(c.resid)}</td>
                     <td className="text-right px-2 font-semibold">{CLP(c.total)}</td>
                     <td className="text-right px-2">{D.centros.totalGeneral ? (c.total / D.centros.totalGeneral * 100).toFixed(1) : 0}%</td>
@@ -773,6 +791,10 @@ export default function PanelOperativo() {
                       <span className="block text-[10px] text-slate-400 font-normal">{D.centros.totalGeneral ? (D.centros.totalesSub[s.k] / D.centros.totalGeneral * 100).toFixed(0) : 0}%</span>
                     </td>
                   ))}
+                  <td className="text-right px-2" style={{ color: C.red }}>
+                    {D.centros.totalesSub.desc ? '−' + CLPc(D.centros.totalesSub.desc) : '—'}
+                    {!!D.centros.totalesSub.desc && <span className="block text-[10px] text-slate-400 font-normal">{D.centros.totalGeneral ? (D.centros.totalesSub.desc / D.centros.totalGeneral * 100).toFixed(1) : 0}%</span>}
+                  </td>
                   <td className="text-right px-2 text-slate-400">{CLPc(D.centros.totalesSub.resid)}</td>
                   <td className="text-right px-2">{CLP(D.centros.totalGeneral)}</td>
                   <td className="text-right px-2">100%</td>
@@ -799,10 +821,12 @@ export default function PanelOperativo() {
                 ? D.centros.nombres.map((n) => <Bar key={n} dataKey={n} stackId="ci" name={n} fill={CENTRO_COLOR[n] || C.muted} />)
                 : [...SUBAREAS.filter((s) => cols.sub.find((x) => x.k === s.k)?.col).map((s) => (
                     <Bar key={s.k} dataKey={'s_' + s.k} stackId="ci" name={s.label} fill={s.color} />
-                  )), <Bar key="resid" dataKey="s_resid" stackId="ci" name="Sin desglosar" fill={RESIDUO_COLOR} />]}
+                  )),
+                  cols.desc.col ? <Bar key="desc" dataKey="s_desc" stackId="ci" name="Descuentos" fill={C.red} /> : null,
+                  <Bar key="resid" dataKey="s_resid" stackId="ci" name="Sin desglosar" fill={RESIDUO_COLOR} />]}
             </BarChart>
           </ResponsiveContainer>
-          <p className="text-[11px] text-slate-400 mt-1">Se agrupa por día si el período cae dentro de un mismo mes, y por mes si lo cruza. "Sin desglosar" = total de la OT menos la suma de las cuatro naturalezas; si es alto, hay montos en columnas que este análisis no está leyendo.</p>
+          <p className="text-[11px] text-slate-400 mt-1">Se agrupa por día si el período cae dentro de un mismo mes, y por mes si lo cruza. "Sin desglosar" = total de la OT − (mano de obra + repuestos + lubricantes + servicios externos − descuentos). Debería ser cercano a cero; lo que queda son diferencias de redondeo de la planilla (cada columna neta se redondea por separado, ±1 peso por OT). Si aparece un monto relevante, hay conceptos en columnas que este análisis no está leyendo.</p>
         </div>
       )}
       <div className="grid lg:grid-cols-2 gap-4">

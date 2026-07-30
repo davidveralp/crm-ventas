@@ -918,3 +918,38 @@ Se reemplazó `supabase/functions/clickup-sync/index.ts` (313 líneas) por la ve
 - Redesplegar la función (`supabase functions deploy clickup-sync` o pegar el código en el dashboard). Un push a GitHub NO despliega Edge Functions.
 - Sigue vigente: **Verify JWT en OFF** para esta función.
 - Sigue pendiente de confirmar: que el webhook incluya el evento `taskCreated`.
+
+---
+
+# Actualización v54 — "Sin desglosar": causa identificada y corregida (faltaba restar los descuentos)
+
+## Diagnóstico
+En el reporte de julio 2026 la columna "Sin desglosar" mostraba montos **negativos** (Multimarca −$5.208, Toyota −$48.739, DyP −$40.336, total −$94.284). Un residuo negativo significa que las partes suman **más** que el total, lo que descartaba de entrada la hipótesis de "columnas no leídas" (esa haría el residuo positivo).
+
+Verificado contra la planilla: la ecuación real de `Hoja 1` es
+
+```
+Total Reparación = Repuestos + Lubricantes + Mano de Obra + Servicio Externo − Descuento
+```
+
+Existen las columnas **`Descuento` (Y)** y **`Neto Descuento` (BD)**, que el análisis no estaba restando. Por eso el residuo era exactamente el descuento con signo invertido: los $94.284 "sin desglosar" eran $94.284 de descuentos otorgados.
+
+Comprobación fila a fila (modo Neto, filas 4455-4459):
+- 21.429 + 68.326 + 20.167 = 109.922 = Neto Total ✓
+- 374.790 + 15.714 + 325.714 = 716.218 ✓
+- 178.151 + 13.445 + 93.445 = 285.041 vs 285.042 → diferencia de $1 por redondeo
+
+## Cambios
+- Nueva columna **Descuentos** en la matriz, mostrada en negativo y en rojo, con su % sobre el total del centro. Es un dato de gestión por derecho propio, no un ajuste técnico escondido.
+- El residuo pasa a calcularse como `total − (MO + repuestos + lubricantes + serv. externos − descuentos)`, con lo que debería quedar cercano a cero.
+- La serie "Por naturaleza" incluye los descuentos como serie negativa (se dibuja bajo el eje, que es como corresponde leer una deducción).
+- Nota al pie reescrita: explica la ecuación y que el residuo remanente es redondeo de la planilla (cada columna neta se redondea por separado, ±1 peso por OT).
+- El desplegable "Columnas usadas" ahora incluye la columna de descuento y la ecuación completa.
+
+## Fix secundario: detección de "Servicios externos"
+El token era `EXTERNO`, que también coincide con **`Desc Servicio Externo` (X)**. Funcionaba por accidente (el orden de columnas hacía que ganara `Monto Servicio Externo`, W), pero era frágil. Ahora exige `SERVICIO` + `EXTERNO` y descarta explícitamente los encabezados que empiezan con `DESC`.
+
+## Observaciones para gestión
+- **`Monto Servicio Externo` viene en 0** en todas las filas muestreadas; por eso esa columna aparece vacía en el panel. No es un fallo de detección: el concepto no se está registrando en la planilla.
+- **DyP concentra el descuento**: $40.336 sobre $583.697 es un 6,9% del centro, frente a 0,03% en Multimarca. Con solo 12 OTs en el período conviene revisar si es un caso puntual o una práctica del área.
+- No existe `Neto Servicio Externo`; en modo Neto se usaría la columna bruta y el panel lo advertiría. Hoy no tiene efecto porque los valores son 0.
