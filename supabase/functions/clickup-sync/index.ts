@@ -40,6 +40,36 @@ const CLICKUP_TOKEN = Deno.env.get('CLICKUP_API_TOKEN') ?? ''
 const CLICKUP_LIST_ID = Deno.env.get('CLICKUP_LIST_ID') || '901324296305'
 const CLICKUP_API = 'https://api.clickup.com/api/v2'
 
+// v48.1 (SEGURIDAD): secret que devuelve ClickUp al registrar el webhook.
+// Sin esto la rama del webhook era un endpoint PÚBLICO con service role:
+// cualquiera con la URL podía cambiar estados, prioridades y fechas de
+// trabajos_taller. Se obtiene con registrar_webhook.ps1 y se guarda en
+// Edge Functions → Secrets como CLICKUP_WEBHOOK_SECRET.
+const CLICKUP_WEBHOOK_SECRET = Deno.env.get('CLICKUP_WEBHOOK_SECRET') ?? ''
+
+// ClickUp firma cada webhook con HMAC-SHA256 del cuerpo CRUDO usando el
+// secret, y lo envía en el header X-Signature (hex). Hay que comparar
+// contra el texto exacto recibido: si se re-serializa el JSON la firma
+// no calza.
+async function firmaValida(rawBody: string, firmaRecibida: string): Promise<boolean> {
+  if (!CLICKUP_WEBHOOK_SECRET || !firmaRecibida) return false
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(CLICKUP_WEBHOOK_SECRET),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  )
+  const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(rawBody))
+  const esperada = Array.from(new Uint8Array(mac))
+    .map((b) => b.toString(16).padStart(2, '0')).join('')
+  // Comparación de tiempo constante (evita timing attacks)
+  if (esperada.length !== firmaRecibida.length) return false
+  let dif = 0
+  for (let i = 0; i < esperada.length; i++) dif |= esperada.charCodeAt(i) ^ firmaRecibida.charCodeAt(i)
+  return dif === 0
+}
+
 // ---- Mapeo de estados CRM <-> ClickUp -------------------------------
 // "revision" y "esperando_aprobacion" (diagnóstico/presupuesto, antes de
 // que el vehículo entre físicamente a reparación) no tienen equivalente
@@ -110,7 +140,11 @@ Deno.serve(async (req) => {
   if (!SB_URL || !SB_SERVICE_KEY) {
     return json({ error: 'Faltan las variables SB_PROJECT_URL / SB_SERVICE_KEY.' }, 500)
   }
-  const body = await req.json().catch(() => ({}))
+  // v48.1: se lee el cuerpo CRUDO (no req.json()) porque la firma del
+  // webhook se calcula sobre el texto exacto recibido.
+  const rawBody = await req.text().catch(() => '')
+  let body: any = {}
+  try { body = rawBody ? JSON.parse(rawBody) : {} } catch { body = {} }
   if ((body.accion === 'crear' || body.accion === 'actualizar') && !CLICKUP_TOKEN) {
     console.error('CLICKUP_API_TOKEN no está definido en el entorno de esta función.')
     return json({ error: 'Falta el secret CLICKUP_API_TOKEN (revisa Edge Functions → Secrets — debe estar EXACTAMENTE con ese nombre, sin espacios).' }, 500)
@@ -221,6 +255,20 @@ Deno.serve(async (req) => {
 
   // ============== 2) DESDE CLICKUP: webhook de cambios ================
   if (body.event && body.task_id) {
+    // v48.1 (SEGURIDAD): ningún evento se procesa sin firma válida.
+    // Antes esta rama escribía en trabajos_taller con service role sin
+    // verificar el origen. Si falta el secret se rechaza en vez de
+    // "fallar abierto".
+    if (!CLICKUP_WEBHOOK_SECRET) {
+      console.error('CLICKUP_WEBHOOK_SECRET no está configurado — se rechaza el webhook.')
+      return json({ error: 'Webhook no configurado (falta CLICKUP_WEBHOOK_SECRET).' }, 500)
+    }
+    const firma = req.headers.get('X-Signature') || req.headers.get('x-signature') || ''
+    if (!(await firmaValida(rawBody, firma))) {
+      console.error('Firma de webhook inválida — solicitud descartada. task_id:', body.task_id)
+      return json({ error: 'Firma inválida' }, 401)
+    }
+
     // v44: si es una subtarea que el propio CRM creó (MAN X PAUTA, etc.),
     // nunca debe tratarse como "tarea nueva sin vincular" — se identifica
     // primero contra tareas_taller antes de mirar la bandeja.
@@ -265,7 +313,7 @@ Deno.serve(async (req) => {
     }
 
     const { data: t } = await service.from('trabajos_taller')
-      .select('id, estado, prioridad').eq('clickup_task_id', body.task_id).maybeSingle()
+      .select('id, estado, prioridad, fecha_limite').eq('clickup_task_id', body.task_id).maybeSingle()
     if (!t) return json({ ok: true, ignorado: 'tarea sin trabajo vinculado' })
 
     const campos: Record<string, unknown> = {}
@@ -282,10 +330,18 @@ Deno.serve(async (req) => {
         campos.fecha_limite = new Date(Number(h.after)).toISOString().slice(0, 10)
       }
     }
+    // v48.1: guard anti-eco. El CRM empuja un cambio → ClickUp dispara el
+    // webhook de vuelta → antes se reescribía el mismo valor en la base
+    // (escrituras redundantes y riesgo de rebote). Solo se escriben los
+    // campos que realmente difieren del valor actual.
+    for (const k of Object.keys(campos)) {
+      if (campos[k] === (t as Record<string, unknown>)[k]) delete campos[k]
+    }
     if (Object.keys(campos).length) {
       await service.from('trabajos_taller').update(campos).eq('id', t.id)
+      return json({ ok: true, actualizado: campos })
     }
-    return json({ ok: true, actualizado: campos })
+    return json({ ok: true, ignorado: 'sin cambios reales (eco del propio CRM)' })
   }
 
   return json({ error: 'Solicitud no reconocida' }, 400)
@@ -294,20 +350,28 @@ Deno.serve(async (req) => {
 // =======================================================================
 // INSTRUCCIONES DE DESPLIEGUE (una sola vez)
 // =======================================================================
-// 1. Secrets (Supabase → Project Settings → Edge Functions → Secrets):
-//      CLICKUP_API_TOKEN = tu token personal (ClickUp → Settings → Apps → API Token)
-//      CLICKUP_LIST_ID   = 901324296305
+// ORDEN OBLIGATORIO: primero el webhook (para obtener el secret), después
+// los secrets, y al final el deploy. Si se despliega esta versión sin el
+// secret, el webhook queda rechazando todo con 401 (a propósito).
 //
-// 2. Desplegar: supabase functions deploy clickup-sync
+// 1. Registrar el webhook con scripts/registrar_webhook.ps1
+//    (PowerShell nativo — evita los problemas de comillas de curl.exe en
+//    Windows). El script borra el webhook anterior, crea el nuevo con los
+//    4 eventos y muestra el SECRET.
+//    Eventos: taskCreated, taskStatusUpdated, taskPriorityUpdated,
+//             taskDueDateUpdated
 //
-// 3. Registrar el webhook UNA VEZ (reemplaza TU_TOKEN y TU_PROYECTO):
-//    curl -X POST https://api.clickup.com/api/v2/team/90132937173/webhook \
-//      -H "Authorization: TU_TOKEN" -H "Content-Type: application/json" \
-//      -d '{
-//            "endpoint": "https://TU_PROYECTO.supabase.co/functions/v1/clickup-sync",
-//            "events": ["taskStatusUpdated", "taskPriorityUpdated", "taskDueDateUpdated"],
-//            "list_id": 901324296305
-//          }'
-//    Guarda el "id" y "secret" que devuelve la respuesta por si necesitas
-//    eliminarlo o recrearlo más adelante (DELETE /webhook/{id}).
+// 2. Secrets (Supabase → Project Settings → Edge Functions → Secrets):
+//      CLICKUP_API_TOKEN      = token personal (ClickUp → Settings → Apps)
+//      CLICKUP_LIST_ID        = 901324296305
+//      CLICKUP_WEBHOOK_SECRET = el secret que mostró el script del paso 1
+//      SB_PROJECT_URL         = https://ehpstxrzsjwcevcafxgk.supabase.co
+//      SB_SERVICE_KEY         = service role / secret key
+//
+// 3. Desplegar: supabase functions deploy clickup-sync
+//    (Verify JWT debe seguir en OFF: la función valida por su cuenta —
+//     JWT de usuario en la rama del CRM, firma HMAC en la del webhook.)
+//
+// 4. Probar: cambiar el estado de una tarjeta en ClickUp y verificar en
+//    los logs que dice "actualizado", no "Firma inválida".
 // =======================================================================

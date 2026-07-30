@@ -901,3 +901,20 @@ Continuación de la v51. Se retira el toggle "Por servicio | Por técnico" intro
 
 ## Lo que se mantiene
 La tabla de técnicos **dentro** de la tarjeta DyP sigue existiendo, pero ahora responde a otra pregunta: ya no define qué OTs son de DyP, sino que muestra quién ejecutó los trabajos que efectivamente son de DyP. Es un desglose del universo, no el criterio que lo construye.
+
+---
+
+# Nota de estado — clickup-sync v48.1 incorporado al repo (v53)
+
+Se reemplazó `supabase/functions/clickup-sync/index.ts` (313 líneas) por la versión **v48.1** aportada por David (377 líneas). Diferencias respecto de lo que estaba versionado:
+
+1. **Verificación de firma HMAC del webhook (seguridad).** Antes la rama del webhook era un endpoint público que escribía en `trabajos_taller` con service role: cualquiera con la URL podía cambiar estados, prioridades y fechas. Ahora se valida `X-Signature` (HMAC-SHA256 del cuerpo crudo) contra `CLICKUP_WEBHOOK_SECRET`, con comparación de tiempo constante.
+2. **Lectura del cuerpo crudo.** Se pasó de `req.json()` a `req.text()` + `JSON.parse`, porque la firma se calcula sobre el texto exacto recibido; re-serializar el JSON rompería la validación.
+3. **Falla cerrada.** Si `CLICKUP_WEBHOOK_SECRET` no está configurado, la función responde 500 y rechaza el webhook en vez de procesarlo sin verificar.
+4. **Guard anti-eco.** El SELECT ahora también trae `fecha_limite`, y antes de actualizar se descartan los campos cuyo valor ya coincide con el de la base. Evita el rebote CRM → ClickUp → webhook → CRM y las escrituras redundantes. Cuando no queda ningún cambio real, responde `{ ok: true, ignorado: 'sin cambios reales (eco del propio CRM)' }`.
+
+## Requisitos de despliegue (no se cubren con un push a GitHub)
+- Crear el secret **`CLICKUP_WEBHOOK_SECRET`** en Supabase → Edge Functions → Secrets, con el valor que devuelve ClickUp al registrar el webhook (`registrar_webhook.ps1`). **Sin este secret la integración ClickUp → CRM deja de funcionar por completo**, porque ahora falla cerrada por diseño.
+- Redesplegar la función (`supabase functions deploy clickup-sync` o pegar el código en el dashboard). Un push a GitHub NO despliega Edge Functions.
+- Sigue vigente: **Verify JWT en OFF** para esta función.
+- Sigue pendiente de confirmar: que el webhook incluya el evento `taskCreated`.
