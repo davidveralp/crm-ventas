@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip,
-  PieChart, Pie, Cell, BarChart
+  PieChart, Pie, Cell, BarChart, Legend
 } from 'recharts'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
@@ -61,6 +61,33 @@ function parseGvizDate(v) {
 }
 const ymKey = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
 const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+
+/* ---- Detección de columnas por encabezado (tolerante a cambios de nombre/posición en la hoja) ---- */
+const normHdr = (s) => txt(s).toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim()
+function pickCol(keys, tokens, net) {
+  const cand = keys.filter((k) => { const n = normHdr(k); return tokens.every((t) => n.includes(t)) })
+  if (!cand.length) return null
+  const netos = cand.filter((k) => /^NETO/.test(normHdr(k)))
+  const brutos = cand.filter((k) => !/^NETO/.test(normHdr(k)))
+  return net ? (netos[0] || brutos[0]) : (brutos[0] || netos[0])
+}
+/* Centro de ingreso: homologado a Toyota / Multimarca / DyP; valores no reconocidos se muestran tal cual */
+function normCentro(v) {
+  const n = normHdr(v)
+  if (!n || n === '0') return 'Sin centro'
+  if (n.includes('TOYOTA')) return 'Toyota'
+  if (n.includes('DYP') || n.includes('D Y P') || n.includes('DESABOLL') || n.includes('PINTURA')) return 'DyP'
+  if (n.includes('MULTI')) return 'Multimarca'
+  return txt(v)
+}
+const CENTRO_COLOR = { 'Toyota': C.red, 'Multimarca': C.graphite, 'DyP': C.blue, 'Sin centro': '#cbd5e1' }
+const SUBAREAS = [
+  { k: 'mo', label: 'Mano de obra', tokens: ['MANO', 'OBRA'], color: C.green },
+  { k: 'rep', label: 'Repuestos', tokens: ['REPUESTO'], color: C.blue },
+  { k: 'lub', label: 'Lubricantes e insumos', tokens: ['LUBRICANTE'], alt: ['INSUMO'], color: C.amber },
+  { k: 'ext', label: 'Servicios externos', tokens: ['EXTERNO'], color: C.muted }
+]
+const RESIDUO_COLOR = '#d8dee6'
 const ymLabel = (ym) => { const [y, m] = ym.split('-'); return MES[+m - 1] + ' ' + y }
 const parseISO = (s) => { if (!s) return null; const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d) }
 const toISO = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
@@ -169,6 +196,7 @@ export default function PanelOperativo() {
   const [gran, setGran] = useState('dia')
   const [rankM, setRankM] = useState('v') // orden Top marcas: 'v' ventas | 'ot' frecuencia
   const [matM, setMatM] = useState('tk') // métrica de la matriz: 'tk' ticket promedio | 'ot' OTs
+  const [ciVista, setCiVista] = useState('centro') // serie de centros: 'centro' | 'subarea'
   const [updated, setUpdated] = useState('')
   const cfgRef = useRef(cfg)
 
@@ -221,6 +249,18 @@ export default function PanelOperativo() {
   }
 
   const ventasField = net ? 'Neto Total Reparación' : 'Total Reparación'
+
+  /* Columnas detectadas en la hoja para el análisis de centros de ingreso */
+  const cols = useMemo(() => {
+    const keys = raw.length ? Object.keys(raw[0]) : []
+    const centro = pickCol(keys, ['CENTRO', 'INGRESO'], false) || pickCol(keys, ['CENTRO'], false)
+    const sub = SUBAREAS.map((s) => {
+      let c = pickCol(keys, s.tokens, net)
+      if (!c && s.alt) c = pickCol(keys, s.alt, net)
+      return { ...s, col: c }
+    })
+    return { keys, centro, sub, faltantes: sub.filter((s) => !s.col).map((s) => s.label) }
+  }, [raw, net])
 
   // Cálculo de todo el panel
   const D = useMemo(() => {
@@ -297,7 +337,43 @@ export default function PanelOperativo() {
     const porMarca = topAgg(rows, 'Marca', f, 8, (m) => normMarca(m))
     const porServicio = topAgg(rows, 'Tipo Servicio 1', f, 8)
 
-    // Estadísticas por marca: frecuencia (OTs), ventas y ticket promedio (sobre OTs con venta)
+    // ---- Centros de ingreso (clasificación contable de la hoja) ----
+    // Usa SOLO el filtro de período: el centro es una clasificación alternativa a marca/área,
+    // cruzarlas produciría doble filtrado sobre la misma realidad.
+    let centros = null
+    if (cols.centro) {
+      const cmap = {}
+      const serieMap = {}
+      const multiMes = ymKey(rangoIni) !== ymKey(rangoFin)
+      periodoRows.forEach((r) => {
+        const c = normCentro(r[cols.centro])
+        const tot = num(r[ventasField])
+        if (!cmap[c]) { cmap[c] = { total: 0, ot: 0, resid: 0 }; SUBAREAS.forEach((s) => { cmap[c][s.k] = 0 }) }
+        cmap[c].total += tot; cmap[c].ot++
+        let suma = 0
+        cols.sub.forEach((s) => { if (!s.col) return; const v = num(r[s.col]); cmap[c][s.k] += v; suma += v })
+        cmap[c].resid += (tot - suma)
+        // serie temporal
+        const d = parseGvizDate(r['F. Ingreso']); if (!d) return
+        const k = multiMes ? ymKey(d) : dmKey(d)
+        if (!serieMap[k]) { serieMap[k] = { _c: {}, _s: {} } }
+        serieMap[k]._c[c] = (serieMap[k]._c[c] || 0) + tot
+        cols.sub.forEach((s) => { if (!s.col) return; serieMap[k]._s[s.k] = (serieMap[k]._s[s.k] || 0) + num(r[s.col]) })
+        serieMap[k]._s.resid = (serieMap[k]._s.resid || 0) + (tot - cols.sub.reduce((a, s) => a + (s.col ? num(r[s.col]) : 0), 0))
+      })
+      const lista = Object.entries(cmap).map(([nombre, x]) => ({ nombre, ...x })).sort((a, b) => b.total - a.total)
+      const totalGeneral = lista.reduce((s, x) => s + x.total, 0)
+      const totalesSub = {}
+      SUBAREAS.forEach((s) => { totalesSub[s.k] = lista.reduce((a, x) => a + x[s.k], 0) })
+      totalesSub.resid = lista.reduce((a, x) => a + x.resid, 0)
+      const serie = Object.entries(serieMap).sort((a, b) => a[0] < b[0] ? -1 : 1).map(([k, v]) => {
+        const [yy, mm, dd] = k.split('-')
+        const name = multiMes ? MES[+mm - 1] + ' ' + String(yy).slice(2) : (dd ? +dd + '' : k)
+        return { name, ...v._c, ...Object.fromEntries(Object.entries(v._s).map(([kk, vv]) => ['s_' + kk, vv])) }
+      })
+      centros = { lista, totalGeneral, totalesSub, serie, nombres: lista.map((x) => x.nombre) }
+    }
+
     const mmap = {}
     rows.forEach((r) => {
       const k = normMarca(r['Marca']); if (!k || k === '0') return
@@ -354,10 +430,10 @@ export default function PanelOperativo() {
     return {
       ventasToyota, ventasMM, ventasTotal, metaT, metaM, mesesEq, pace, isCurrent, ticket, garantias, vehiculos, nps,
       gen, apr, aprPct, cumpl, perm, permP, enTaller, mov, vt, vm, porMarca, porServicio,
-      marcasStats, cruce,
+      marcasStats, cruce, centros,
       tecnicos, moTotal, dyp: { rows: dypRows, ventas: dypVentas, mo: dypMo, ticket: dypTicket, det: dypDet, servicios: dypServicios }
     }
-  }, [raw, ym, modo, desde, hasta, area, net, brand, gran, cfg])
+  }, [raw, ym, modo, desde, hasta, area, net, brand, gran, cfg, cols])
 
   if (estado === 'cargando' && !raw.length) return <div className="text-slate-400 text-sm py-10 text-center">Conectando con la base de datos…</div>
   if (estado === 'error') return (
@@ -589,7 +665,137 @@ export default function PanelOperativo() {
         </div>
       </div>
 
-      {/* Tipo de servicio + NPS */}
+      {/* ---- Ingresos por centro de ingreso × naturaleza del ingreso ---- */}
+      {!cols.centro ? (
+        <div className="card p-4 border-l-4" style={{ borderLeftColor: C.amber }}>
+          <h3 className="font-semibold text-ink mb-1">Ingresos por centro de ingreso</h3>
+          <p className="text-sm text-slate-500">No se encontró una columna de <strong>Centro de ingreso</strong> en la hoja conectada. El panel busca los encabezados por nombre (no por letra de columna), así que la columna debe tener un encabezado que contenga "centro" e "ingreso".</p>
+          <details className="mt-2">
+            <summary className="text-xs text-slate-400 cursor-pointer">Ver las {cols.keys.length} columnas detectadas en la hoja</summary>
+            <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">{cols.keys.join(' · ') || 'Ninguna (la hoja no cargó).'}</p>
+          </details>
+        </div>
+      ) : (
+        <div className="card p-4">
+          <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
+            <h3 className="font-semibold text-ink">Ingresos por centro de ingreso</h3>
+            <span className="text-[11px] text-slate-400">Columna: {cols.centro} · {net ? 'Neto' : 'Bruto'}</span>
+          </div>
+          <p className="text-[11px] text-slate-400 mb-3">Clasificación contable de la hoja (independiente de los filtros de marca y área, que son clasificaciones alternativas). Responde al período seleccionado.</p>
+
+          <details className="mb-3">
+            <summary className="text-[11px] text-slate-400 cursor-pointer">Columnas usadas en este análisis</summary>
+            <ul className="text-[11px] text-slate-500 mt-1 space-y-0.5">
+              {cols.sub.map((s) => {
+                const esNeto = s.col && /^NETO/.test(normHdr(s.col))
+                const mezcla = s.col && !net && esNeto
+                return (
+                  <li key={s.k}>
+                    {s.label}: {s.col ? <code>{s.col}</code> : <span style={{ color: C.amber }}>no encontrada</span>}
+                    {mezcla && <span style={{ color: C.amber }}> · solo existe en Neto, se usa en modo Bruto (bases mezcladas)</span>}
+                  </li>
+                )
+              })}
+              <li>Total de la OT: <code>{ventasField}</code></li>
+            </ul>
+          </details>
+
+          {cols.faltantes.length > 0 && (
+            <p className="text-[11px] mb-3 px-2 py-1.5 rounded" style={{ background: '#fdf6e3', color: '#8a6d1f' }}>
+              No se encontraron columnas para: <strong>{cols.faltantes.join(', ')}</strong>. Esos montos caen en "Sin desglosar".
+            </p>
+          )}
+
+          {/* Peso de cada centro */}
+          <div className="grid sm:grid-cols-3 gap-3 mb-4">
+            {D.centros.lista.slice(0, 3).map((c) => {
+              const pct = D.centros.totalGeneral ? c.total / D.centros.totalGeneral * 100 : 0
+              return (
+                <div key={c.nombre} className="rounded-lg border border-slate-200 p-3">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-sm" style={{ background: CENTRO_COLOR[c.nombre] || C.muted }} />
+                    <span className="text-sm font-medium text-ink">{c.nombre}</span>
+                    <span className="ml-auto text-lg font-semibold" style={{ color: CENTRO_COLOR[c.nombre] || C.muted }}>{pct.toFixed(1)}%</span>
+                  </div>
+                  <div className="text-xl font-semibold text-ink mt-1">{CLP(c.total)}</div>
+                  <div className="text-xs text-slate-400">{c.ot} OTs · ticket {CLP(c.ot ? c.total / c.ot : 0)}</div>
+                  <div className="h-1.5 rounded-full bg-slate-100 mt-2 overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: pct + '%', background: CENTRO_COLOR[c.nombre] || C.muted }} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Matriz centro × naturaleza del ingreso */}
+          <div className="overflow-x-auto mb-4">
+            <table className="w-full text-sm min-w-[640px]">
+              <thead>
+                <tr className="text-slate-400 text-xs border-b">
+                  <th className="text-left py-1">Centro</th>
+                  {SUBAREAS.map((s) => <th key={s.k} className="text-right px-2">{s.label}</th>)}
+                  <th className="text-right px-2">Sin desglosar</th>
+                  <th className="text-right px-2">Total</th>
+                  <th className="text-right px-2">% empresa</th>
+                </tr>
+              </thead>
+              <tbody>
+                {D.centros.lista.map((c) => (
+                  <tr key={c.nombre} className="border-b last:border-0">
+                    <td className="py-1.5 font-medium text-ink whitespace-nowrap">
+                      <span className="inline-block w-2 h-2 rounded-sm mr-1.5" style={{ background: CENTRO_COLOR[c.nombre] || C.muted }} />{c.nombre}
+                    </td>
+                    {SUBAREAS.map((s) => (
+                      <td key={s.k} className="text-right px-2">
+                        {CLPc(c[s.k])}
+                        <span className="block text-[10px] text-slate-400">{c.total ? (c[s.k] / c.total * 100).toFixed(0) : 0}%</span>
+                      </td>
+                    ))}
+                    <td className="text-right px-2 text-slate-400">{CLPc(c.resid)}</td>
+                    <td className="text-right px-2 font-semibold">{CLP(c.total)}</td>
+                    <td className="text-right px-2">{D.centros.totalGeneral ? (c.total / D.centros.totalGeneral * 100).toFixed(1) : 0}%</td>
+                  </tr>
+                ))}
+                <tr className="border-t-2 border-slate-300 font-semibold">
+                  <td className="py-1.5">Total empresa</td>
+                  {SUBAREAS.map((s) => (
+                    <td key={s.k} className="text-right px-2">
+                      {CLPc(D.centros.totalesSub[s.k])}
+                      <span className="block text-[10px] text-slate-400 font-normal">{D.centros.totalGeneral ? (D.centros.totalesSub[s.k] / D.centros.totalGeneral * 100).toFixed(0) : 0}%</span>
+                    </td>
+                  ))}
+                  <td className="text-right px-2 text-slate-400">{CLPc(D.centros.totalesSub.resid)}</td>
+                  <td className="text-right px-2">{CLP(D.centros.totalGeneral)}</td>
+                  <td className="text-right px-2">100%</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* Evolución en el tiempo */}
+          <div className="flex items-center justify-between mb-1">
+            <h4 className="font-semibold text-ink text-sm">Evolución de la mezcla</h4>
+            <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-xs">
+              <button onClick={() => setCiVista('centro')} className={`px-2 py-1 ${ciVista === 'centro' ? 'bg-deep text-white' : 'text-slate-500'}`}>Por centro</button>
+              <button onClick={() => setCiVista('subarea')} className={`px-2 py-1 ${ciVista === 'subarea' ? 'bg-deep text-white' : 'text-slate-500'}`}>Por naturaleza</button>
+            </div>
+          </div>
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={D.centros.serie} margin={{ top: 6, right: 8, left: 8, bottom: 0 }}>
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => CLPc(v)} width={54} />
+              <Tooltip formatter={(v, n) => [CLP(v), n]} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              {ciVista === 'centro'
+                ? D.centros.nombres.map((n) => <Bar key={n} dataKey={n} stackId="ci" name={n} fill={CENTRO_COLOR[n] || C.muted} />)
+                : [...SUBAREAS.filter((s) => cols.sub.find((x) => x.k === s.k)?.col).map((s) => (
+                    <Bar key={s.k} dataKey={'s_' + s.k} stackId="ci" name={s.label} fill={s.color} />
+                  )), <Bar key="resid" dataKey="s_resid" stackId="ci" name="Sin desglosar" fill={RESIDUO_COLOR} />]}
+            </BarChart>
+          </ResponsiveContainer>
+          <p className="text-[11px] text-slate-400 mt-1">Se agrupa por día si el período cae dentro de un mismo mes, y por mes si lo cruza. "Sin desglosar" = total de la OT menos la suma de las cuatro naturalezas; si es alto, hay montos en columnas que este análisis no está leyendo.</p>
+        </div>
+      )}
       <div className="grid lg:grid-cols-2 gap-4">
         <div className="card p-4">
           <h3 className="font-semibold text-ink mb-2">Ventas por tipo de servicio</h3>

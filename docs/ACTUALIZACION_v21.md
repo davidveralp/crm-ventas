@@ -789,3 +789,36 @@ Solo frontend (`src/pages/PanelOperativo.jsx`). Sin migración SQL.
 
 ## Nota de interpretación
 Con ticket promedio, un cruce con 1 sola OT cara se pinta igual de intenso que uno con 40 OTs del mismo ticket. Conviene alternar al modo OTs para verificar el respaldo estadístico de un cruce llamativo.
+
+---
+
+# Actualización v49 — Panel operativo: ingresos por Centro de ingreso × naturaleza del ingreso
+
+Solo frontend (`src/pages/PanelOperativo.jsx`). Sin migración SQL.
+
+## Solicitud reformulada
+Análisis de composición de ingresos con **dos dimensiones cruzadas**, no una jerarquía:
+- **Centro de ingreso** (Toyota / Multimarca / DyP): una columna categórica de la hoja, un valor por OT. Es la clasificación *contable oficial*, distinta de cómo el resto del panel infiere las áreas (marca del vehículo para Toyota/Multimarca, técnico principal para DyP). Pueden no coincidir, y esa discrepancia es información útil.
+- **Naturaleza del ingreso** (mano de obra / repuestos / lubricantes e insumos / servicios externos): son *columnas de monto* separadas dentro de la misma OT.
+
+Cada OT aporta su total a un centro, y ese total se descompone en las cuatro naturalezas.
+
+## Qué se entrega
+1. **Peso por centro**: tarjeta por cada centro con % sobre el total de la empresa, monto, OTs, ticket y barra de proporción.
+2. **Matriz centro × naturaleza**: montos y % de composición interna de cada centro, con fila de Total empresa y columna "% empresa".
+3. **Evolución de la mezcla**: barras apiladas con toggle **Por centro | Por naturaleza**. Se agrupa por día si el período cae en un mismo mes, por mes si lo cruza.
+4. **Columna "Sin desglosar"**: residuo = total de la OT − suma de las cuatro naturalezas. Explícito a propósito: si las partes no suman el todo, el panel lo muestra en vez de esconderlo.
+
+## Detección automática de columnas
+El panel lee la hoja por **nombre de encabezado**, no por letra de columna (una referencia tipo "columna BH" no es utilizable). Por eso las columnas se detectan por tokens en el encabezado, sin acentos ni mayúsculas:
+- Centro: encabezado que contenga "centro" + "ingreso".
+- Mano de obra: "mano" + "obra" · Repuestos: "repuesto" · Lubricantes: "lubricante" (o "insumo") · Servicios externos: "externo".
+- Respeta el toggle Bruto/Neto: prefiere la variante que empieza con "Neto" cuando el panel está en Neto.
+
+Si **no** encuentra la columna de centro, en vez de fallar muestra una tarjeta de diagnóstico con la lista completa de encabezados detectados en la hoja. Si falta alguna naturaleza, avisa cuáles y esos montos caen en "Sin desglosar". Un `<details>` "Columnas usadas" permite auditar qué encabezado tomó cada concepto.
+
+## Limitaciones declaradas
+- **Independiente de los filtros de marca y área**: usa solo el filtro de período (y Bruto/Neto). Cruzar centro con marca/área sería doble filtrado sobre la misma realidad — el centro *es* esa clasificación, en versión contable.
+- **Bases mezcladas**: si una naturaleza solo existe en versión Neto, en modo Bruto se usa igual y el panel lo advierte en amarillo en "Columnas usadas".
+- Los valores del centro se homologan por texto (TOYOTA/MULTI/DYP-PINTURA-DESABOLL). Cualquier valor no reconocido aparece tal cual, para que se vea qué hay realmente en la hoja en lugar de ocultarlo en "Otros".
+- El % de composición se calcula sobre el total del período; con períodos muy cortos, un solo trabajo grande puede dominar la mezcla.
