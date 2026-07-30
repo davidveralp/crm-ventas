@@ -886,3 +886,18 @@ Verificado contra la pestaña `Map_Areas` de la planilla (la fuente oficial de l
 
 ## Observación pendiente (no corregida, requiere decisión)
 `matchTec` compara por subcadena, así que `'Gabriel'` también captura a **Gabriel Cayo**, que según el equipo es técnico de mecánica, no de DyP. Lo mismo con `'Wilson'` y `Wilson Araya`. En el reporte revisado aparecían las cuatro variantes como filas separadas (Gabriel 108, Wilson 22, Wilson Araya 1, Gabriel Cayo 1), lo que además indica **nombres inconsistentes en el origen**: el mismo técnico se registra a veces con nombre y a veces con nombre y apellido. Con el universo definido por servicio esto ya no contamina el ingreso del área, pero sí afecta la vista "Por técnico". Conviene normalizar los nombres en la planilla y luego usar nombres completos en `tecnicos_dyp`.
+
+---
+
+# Actualización v52 — DyP: se elimina por completo la definición por técnico
+
+Continuación de la v51. Se retira el toggle "Por servicio | Por técnico" introducido en esa versión: el área es una propiedad del **trabajo realizado**, no de quién lo ejecuta, así que mantener dos definiciones solo abría la puerta a volver a leer el dato equivocado.
+
+## Cambios
+- `dypRows` se define única y exclusivamente por `areaDe(r) === 'DyP'`.
+- Eliminados: el toggle, el estado `dypModo`, el aviso de descuadre entre definiciones, y el cálculo `dypPorTecnico` / `dypSoloTecnico`.
+- Eliminado `tecnicos_dyp` de `DEFAULTS` — ya no se usa en ninguna parte. Si la fila de `empresa_config` (clave `dashboard`) todavía lo trae, queda como campo inerte y no afecta nada; no requiere migración.
+- `matchTec` se conserva porque sigue siendo necesario para `tecnicos_comision` (cálculo de MO comisionable), que sí es un concepto ligado a la persona.
+
+## Lo que se mantiene
+La tabla de técnicos **dentro** de la tarjeta DyP sigue existiendo, pero ahora responde a otra pregunta: ya no define qué OTs son de DyP, sino que muestra quién ejecutó los trabajos que efectivamente son de DyP. Es un desglose del universo, no el criterio que lo construye.

@@ -17,7 +17,7 @@ const DEFAULTS = {
   sheet_id: '1UTgOhJ5fffCfx3RdArmFD-2z3WOCnUNMyfhKu9w59KQ', gid: '0',
   meta_toyota: 15000000, meta_multimarca: 25000000, meta_ticket: 150000,
   max_garantias: 5, refresh_min: 15, comision_pct: 0.05,
-  tecnicos_comision: ['Felipe', 'Ignacio', 'Shelmy'], tecnicos_dyp: ['Wilson', 'Gabriel']
+  tecnicos_comision: ['Felipe', 'Ignacio', 'Shelmy']
 }
 
 /* ---- Mapeos incrustados (área de servicio y homologación de marca) ---- */
@@ -204,7 +204,6 @@ export default function PanelOperativo() {
   const [rankM, setRankM] = useState('v') // orden Top marcas: 'v' ventas | 'ot' frecuencia
   const [matM, setMatM] = useState('tk') // métrica de la matriz: 'tk' ticket promedio | 'ot' OTs
   const [ciVista, setCiVista] = useState('centro') // serie de centros: 'centro' | 'subarea'
-  const [dypModo, setDypModo] = useState('servicio') // universo DyP: 'servicio' | 'tecnico'
   const [updated, setUpdated] = useState('')
   const cfgRef = useRef(cfg)
 
@@ -415,14 +414,9 @@ export default function PanelOperativo() {
     const moTotal = tecnicos.reduce((s, x) => s + x.mo, 0)
 
     // DyP
-    // Universo DyP: por defecto según el ÁREA DEL SERVICIO (clasificación oficial de la hoja),
-    // no según el técnico. Un técnico de DyP que hace una MAN BÁSICA no genera ingreso de DyP.
-    const dypPorArea = rows.filter((r) => areaDe(r) === 'DyP')
-    const dypPorTecnico = rows.filter((r) => matchTec(r['Técnico Principal'], cfg.tecnicos_dyp))
-    const dypRows = dypModo === 'tecnico' ? dypPorTecnico : dypPorArea
-    // Cruce para el aviso de descuadre entre ambas definiciones
-    const dypSoloTecnico = dypPorTecnico.filter((r) => areaDe(r) !== 'DyP')
-    const dypFugaVentas = dypSoloTecnico.reduce((s, r) => s + num(r[f]), 0)
+    // Universo DyP: definido por el ÁREA DEL SERVICIO (clasificación oficial de la hoja).
+    // El área es una propiedad del trabajo realizado, no de quién lo ejecuta.
+    const dypRows = rows.filter((r) => areaDe(r) === 'DyP')
     const dypVentas = dypRows.reduce((s, r) => s + num(r[f]), 0)
     const dypMo = dypRows.reduce((s, r) => s + num(r['Neto Mano de Obra']), 0)
     const dypCV = dypRows.filter((r) => num(r[f]) > 0)
@@ -446,9 +440,9 @@ export default function PanelOperativo() {
       ventasToyota, ventasMM, ventasTotal, metaT, metaM, mesesEq, pace, isCurrent, ticket, garantias, vehiculos, nps,
       gen, apr, aprPct, cumpl, perm, permP, enTaller, mov, vt, vm, porMarca, porServicio,
       marcasStats, cruce, centros,
-      tecnicos, moTotal, dyp: { rows: dypRows, ventas: dypVentas, mo: dypMo, ticket: dypTicket, det: dypDet, servicios: dypServicios, nArea: dypPorArea.length, nTecnico: dypPorTecnico.length, nSoloTecnico: dypSoloTecnico.length, fugaVentas: dypFugaVentas }
+      tecnicos, moTotal, dyp: { rows: dypRows, ventas: dypVentas, mo: dypMo, ticket: dypTicket, det: dypDet, servicios: dypServicios }
     }
-  }, [raw, ym, modo, desde, hasta, area, net, brand, gran, cfg, cols, dypModo])
+  }, [raw, ym, modo, desde, hasta, area, net, brand, gran, cfg, cols])
 
   if (estado === 'cargando' && !raw.length) return <div className="text-slate-400 text-sm py-10 text-center">Conectando con la base de datos…</div>
   if (estado === 'error') return (
@@ -857,23 +851,8 @@ export default function PanelOperativo() {
           </table>
         </div>
         <div className="card p-4">
-          <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
-            <h3 className="font-semibold text-ink">Área DyP (Desabolladura y Pintura)</h3>
-            <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-xs">
-              <button onClick={() => setDypModo('servicio')} className={`px-2 py-1 ${dypModo === 'servicio' ? 'bg-deep text-white' : 'text-slate-500'}`}>Por servicio</button>
-              <button onClick={() => setDypModo('tecnico')} className={`px-2 py-1 ${dypModo === 'tecnico' ? 'bg-deep text-white' : 'text-slate-500'}`}>Por técnico</button>
-            </div>
-          </div>
-          <p className="text-[11px] text-slate-400 mb-2">
-            {dypModo === 'servicio'
-              ? `OTs cuyo servicio pertenece al área DyP (${D.dyp.nArea} en el período). Es el ingreso real del área.`
-              : `OTs cuyo técnico principal es de DyP (${D.dyp.nTecnico} en el período), sin importar el servicio realizado. Sirve para medir carga de trabajo del equipo, no ingreso del área.`}
-          </p>
-          {D.dyp.nSoloTecnico > 0 && (
-            <p className="text-[11px] mb-2 px-2 py-1.5 rounded" style={{ background: '#fdf6e3', color: '#8a6d1f' }}>
-              {D.dyp.nSoloTecnico} OTs las hizo un técnico de DyP pero el servicio no es de DyP ({CLP(D.dyp.fugaVentas)}). Se cuentan en "Por técnico" y no en "Por servicio".
-            </p>
-          )}
+          <h3 className="font-semibold text-ink mb-1">Área DyP (Desabolladura y Pintura)</h3>
+          <p className="text-[11px] text-slate-400 mb-2">OTs cuyo servicio pertenece al área DyP según la clasificación de la hoja. El desglose por técnico muestra quién ejecutó esos trabajos.</p>
           <div className="grid grid-cols-4 gap-2 mb-3 text-center">
             <div><div className="text-xs text-slate-400">OTs</div><div className="font-bold text-ink">{D.dyp.rows.length}</div></div>
             <div><div className="text-xs text-slate-400">Ventas</div><div className="font-bold text-ink text-sm">{CLP(D.dyp.ventas)}</div></div>
