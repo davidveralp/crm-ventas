@@ -862,3 +862,27 @@ Le faltan: **Centro de Ingreso** (BH), **Monto Servicio Externo** (W) y las vers
 
 ## Observación importante sobre DyP
 En las muestras revisadas de la columna BH solo aparecen **Toyota** y **Multimarca**; no se observó ningún valor **DyP**. Si DyP no se registra como centro de ingreso en la planilla, el análisis mostrará solo dos centros y la separación de DyP que se pidió no será posible desde esta columna — habría que empezar a poblarla con ese tercer valor en el origen. Cualquier valor distinto que exista aparecerá en la tabla tal cual, sin agruparse en "Otros".
+
+---
+
+# Actualización v51 — Fix: la tarjeta DyP contaba servicios que no son de DyP
+
+## Causa raíz
+La tarjeta DyP definía su universo **por técnico principal**, no por servicio:
+
+```js
+const dypRows = rows.filter((r) => matchTec(r['Técnico Principal'], cfg.tecnicos_dyp))
+```
+
+Con `tecnicos_dyp = ['Wilson', 'Gabriel']`, cualquier OT atendida por ellos entraba a DyP sin importar el trabajo hecho. Por eso el desglose por servicio mostraba MAN BASICA (50 OTs), MAN X PAUTA (11), CAMBIO DE ACEITE (7), FRENOS (5), VULCANIZACION, MOTOR REPARACION, etc. — trabajos de Taller y Servicio Rápido facturados dentro del área equivocada. En el caso reportado, de 132 OTs solo 16 eran DESABOLLADURA Y PINTURA.
+
+Verificado contra la pestaña `Map_Areas` de la planilla (la fuente oficial de la clasificación): el área DyP la componen DESABOLLADURA Y PINTURA, SINIESTRO ROBO, LIMPIEZA VEHICULO, LIMPIEZA DE MOTOR, LAVADO DE TAPIZ, LAVADO, PULIDO Y ENCERADO y OTROS DYP. Ninguno de los otros servicios listados pertenece al área.
+
+## Corrección
+- **Universo por defecto = área del servicio**, no el técnico. `dypRows` ahora filtra por `areaDe(r) === 'DyP'`.
+- **`areaDe()` prioriza la columna `Área Servicio` (BF) de la hoja**, que es la clasificación oficial calculada desde `Map_Areas`. Solo si viene vacía cae al mapeo incrustado en el código. Antes siempre usaba el mapeo incrustado, que podía quedar desfasado respecto de la planilla. Esto también corrige el filtro de área del panel completo.
+- **Toggle "Por servicio | Por técnico"**: la vista por técnico se conserva porque mide algo distinto y legítimo (carga de trabajo del equipo de DyP). Lo que estaba mal era usarla como si fuera ingreso del área.
+- **Aviso de descuadre**: cuando hay OTs hechas por técnicos de DyP cuyo servicio no es de DyP, la tarjeta indica cuántas son y cuánto facturan. Esa brecha es justamente el error que se estaba reportando como ingreso del área.
+
+## Observación pendiente (no corregida, requiere decisión)
+`matchTec` compara por subcadena, así que `'Gabriel'` también captura a **Gabriel Cayo**, que según el equipo es técnico de mecánica, no de DyP. Lo mismo con `'Wilson'` y `Wilson Araya`. En el reporte revisado aparecían las cuatro variantes como filas separadas (Gabriel 108, Wilson 22, Wilson Araya 1, Gabriel Cayo 1), lo que además indica **nombres inconsistentes en el origen**: el mismo técnico se registra a veces con nombre y a veces con nombre y apellido. Con el universo definido por servicio esto ya no contamina el ingreso del área, pero sí afecta la vista "Por técnico". Conviene normalizar los nombres en la planilla y luego usar nombres completos en `tecnicos_dyp`.
