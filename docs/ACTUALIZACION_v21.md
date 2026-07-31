@@ -953,3 +953,53 @@ El token era `EXTERNO`, que también coincide con **`Desc Servicio Externo` (X)*
 - **`Monto Servicio Externo` viene en 0** en todas las filas muestreadas; por eso esa columna aparece vacía en el panel. No es un fallo de detección: el concepto no se está registrando en la planilla.
 - **DyP concentra el descuento**: $40.336 sobre $583.697 es un 6,9% del centro, frente a 0,03% en Multimarca. Con solo 12 OTs en el período conviene revisar si es un caso puntual o una práctica del área.
 - No existe `Neto Servicio Externo`; en modo Neto se usaría la columna bruta y el panel lo advertiría. Hoy no tiene efecto porque los valores son 0.
+
+---
+
+# Actualización v55 — Exportación del panel operativo a PDF y Excel
+
+Solo frontend (`src/pages/PanelOperativo.jsx` + `src/index.css`). Sin migración SQL ni dependencias nuevas.
+
+Dos botones nuevos en la barra de controles: **📄 PDF** y **📊 Excel**.
+
+## PDF (visual)
+Se implementó con `window.print()` + hoja de estilos `@media print`, el mismo enfoque que ya usan Presupuestos y Cotización Rápida. **No se agregó html2canvas ni jsPDF**: los gráficos de recharts son SVG, y el navegador los imprime en **vectorial**, lo que da mejor calidad que rasterizarlos como imagen y evita ~600 KB de dependencias.
+
+Comportamiento:
+- Se oculta toda la aplicación salvo el panel (`#panel-print`), incluidos menú, cabecera y pestañas.
+- Se ocultan los controles interactivos (`.no-print`): selectores de período, marca, área, Bruto/Neto, y los toggles internos de las tarjetas (orden del Top 10, métrica de la matriz, granularidad del movimiento, vista de la mezcla).
+- Se añade una **cabecera solo visible al imprimir** con empresa, período, base de monto, filtros aplicados y fecha/hora de generación — sin esto el PDF no dice a qué corresponde.
+- `break-inside: avoid` en tarjetas, tablas y gráficos para que no se corten entre páginas.
+- `print-color-adjust: exact` para que se impriman los fondos del heatmap, las barras de proporción y los avisos.
+- A4 apaisado (el panel es ancho; en vertical las tablas de la matriz quedaban comprimidas).
+- Los `<details>` se omiten (auditoría de columnas, diagnóstico) por ser información de depuración.
+
+El usuario elige "Guardar como PDF" en el diálogo del navegador.
+
+## Excel (detalle)
+Usa `xlsx`, que **ya era dependencia** del proyecto (se usa en Datos.jsx). Genera `panel-operativo-didial-<período>.xlsx` con una hoja por análisis:
+
+| Hoja | Contenido |
+|---|---|
+| Resumen | Contexto del reporte (período, filtros, fecha) + los 20 indicadores del panel |
+| Marcas | **Todas** las marcas (no solo el Top 10): OTs, % OTs, ventas, % ventas, ticket |
+| Servicio x Marca | Matriz **desnormalizada**: una fila por cruce con OTs, ventas, OTs con venta y ticket |
+| Tipo de servicio | Ventas por tipo de servicio |
+| DyP servicios | Desglose del área por servicio |
+| DyP tecnicos | Quién ejecutó los trabajos de DyP |
+| Centros de ingreso | Matriz centro × naturaleza, con descuentos, residuo, total, % empresa y ticket |
+| Centros evolucion | Serie temporal de la mezcla |
+| Tecnicos comision | MO neta y comisión estimada |
+| Movimiento | Vehículos y ventas por período |
+| Detalle OTs | **Todas las OTs del período** con las columnas relevantes — la base que sustenta los demás análisis |
+
+Decisiones de formato:
+- Los montos se exportan como **números**, no como texto con "$", para que sean calculables y admitan tablas dinámicas.
+- La matriz servicio × marca va desnormalizada (una fila por cruce) en vez de como tabla cruzada: es el formato que Excel necesita para construir dinámicas.
+- "Marcas" incluye el universo completo, no el Top 10 recortado de la pantalla; el recorte existe por legibilidad visual, no porque el dato sobre.
+- La hoja Detalle OTs solo incluye las columnas que realmente existen en la hoja conectada (se validan contra `cols.keys`), así que no falla si cambia la fuente de datos.
+
+## Limitaciones declaradas
+- El PDF depende del diálogo de impresión del navegador; el resultado varía levemente entre Chrome, Firefox y Safari. Chrome da el mejor resultado.
+- El PDF refleja **lo que está en pantalla**: si el Top 10 está ordenado por frecuencia o la matriz está en modo OTs, así saldrá. El Excel, en cambio, siempre lleva el detalle completo.
+- El Excel exporta lo calculado en el navegador con el período y los filtros activos; no vuelve a consultar la planilla.

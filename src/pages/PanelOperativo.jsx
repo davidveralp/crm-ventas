@@ -6,6 +6,7 @@ import {
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { fmtMiles } from '../lib/helpers'
+import * as XLSX from 'xlsx'
 
 /* ---- Paleta del panel (identidad DIDIAL) ---- */
 const C = { graphite: '#111922', red: '#e0382b', green: '#1f9d57', amber: '#e0a020', blue: '#2f6fb0', muted: '#6b7a8a' }
@@ -450,7 +451,7 @@ export default function PanelOperativo() {
     return {
       ventasToyota, ventasMM, ventasTotal, metaT, metaM, mesesEq, pace, isCurrent, ticket, garantias, vehiculos, nps,
       gen, apr, aprPct, cumpl, perm, permP, enTaller, mov, vt, vm, porMarca, porServicio,
-      marcasStats, cruce, centros,
+      marcasStats, cruce, centros, _rows: rows, _periodo: periodoRows, _rango: { ini: rangoIni, fin: rangoFin },
       tecnicos, moTotal, dyp: { rows: dypRows, ventas: dypVentas, mo: dypMo, ticket: dypTicket, det: dypDet, servicios: dypServicios }
     }
   }, [raw, ym, modo, desde, hasta, area, net, brand, gran, cfg, cols])
@@ -474,6 +475,115 @@ export default function PanelOperativo() {
     { titulo: 'NPS', valor: (D.nps.nps >= 0 ? '+' : '') + D.nps.nps.toFixed(0), estado: D.nps.nps >= 50 ? 'g' : D.nps.nps >= 0 ? 'a' : 'r', sub: `${D.nps.prom} prom · ${D.nps.det} det` },
     { titulo: 'Presup. aprobados', valor: D.aprPct + '%', estado: null, sub: `${D.apr} de ${D.gen} generados` }
   ]
+  /* ---------------- Exportaciones ---------------- */
+  const etiquetaPeriodo = modo === 'rango' && desde && hasta ? `${desde} a ${hasta}` : ymLabel(ym || '')
+  const slugPeriodo = (modo === 'rango' && desde && hasta ? `${desde}_${hasta}` : (ym || '')).replace(/-/g, '')
+
+  function exportarExcel() {
+    const wb = XLSX.utils.book_new()
+    const add = (nombre, datos, anchos) => {
+      const ws = XLSX.utils.json_to_sheet(datos)
+      if (anchos) ws['!cols'] = anchos.map((w) => ({ wch: w }))
+      XLSX.utils.book_append_sheet(wb, ws, nombre.slice(0, 31))
+    }
+
+    // 1) Resumen — KPIs y contexto del reporte
+    add('Resumen', [
+      { Indicador: 'Período', Valor: etiquetaPeriodo },
+      { Indicador: 'Base de monto', Valor: net ? 'Neto' : 'Bruto' },
+      { Indicador: 'Segmento de marca', Valor: brand || 'Todas' },
+      { Indicador: 'Área', Valor: area },
+      { Indicador: 'Generado', Valor: new Date().toLocaleString('es-CL') },
+      { Indicador: '', Valor: '' },
+      { Indicador: 'Ventas del período', Valor: D.ventasTotal },
+      { Indicador: 'Ventas Toyota', Valor: D.ventasToyota },
+      { Indicador: 'Ventas Multimarca', Valor: D.ventasMM },
+      { Indicador: 'Meta Toyota (prorrateada)', Valor: D.metaT },
+      { Indicador: 'Meta Multimarca (prorrateada)', Valor: D.metaM },
+      { Indicador: 'Meses equivalentes del período', Valor: +D.mesesEq.toFixed(2) },
+      { Indicador: '% Cumplimiento de metas', Valor: +D.cumpl.toFixed(1) },
+      { Indicador: 'Vehículos ingresados (OTs)', Valor: D.vehiculos },
+      { Indicador: 'Ticket promedio', Valor: Math.round(D.ticket) },
+      { Indicador: 'Garantías', Valor: D.garantias },
+      { Indicador: 'NPS', Valor: D.nps.valor },
+      { Indicador: 'Presupuestos generados', Valor: D.gen },
+      { Indicador: 'Presupuestos aprobados', Valor: D.apr },
+      { Indicador: '% Aprobación', Valor: D.aprPct },
+      { Indicador: 'Permanencia real (días)', Valor: +D.perm.toFixed(2) },
+      { Indicador: 'Vehículos en taller (foto actual)', Valor: D.enTaller },
+      { Indicador: 'MO comisionable', Valor: D.moTotal }
+    ], [34, 20])
+
+    // 2) Marcas
+    add('Marcas', D.marcasStats.sort((a, b) => b.v - a.v).map((x, i) => ({
+      '#': i + 1, Marca: x.marca, OTs: x.ot,
+      '% OTs': totOT ? +(x.ot / totOT * 100).toFixed(2) : 0,
+      Ventas: Math.round(x.v),
+      '% Ventas': totV ? +(x.v / totV * 100).toFixed(2) : 0,
+      'Ticket promedio': Math.round(x.ticket)
+    })), [5, 22, 8, 9, 14, 10, 16])
+
+    // 3) Matriz servicio × marca (una fila por cruce, para tabla dinámica)
+    const cruces = []
+    Object.entries(D.cruce).forEach(([serv, fila]) => {
+      Object.entries(fila.marcas).forEach(([marca, c]) => {
+        cruces.push({ Servicio: serv, Marca: marca, OTs: c.ot, Ventas: Math.round(c.v), 'OTs con venta': c.cv, 'Ticket promedio': Math.round(c.cv ? c.v / c.cv : 0) })
+      })
+    })
+    add('Servicio x Marca', cruces.sort((a, b) => b.Ventas - a.Ventas), [30, 20, 8, 14, 14, 16])
+
+    // 4) Tipo de servicio
+    add('Tipo de servicio', D.porServicio.map((x) => ({ Servicio: x.name, Ventas: Math.round(x.value) })), [34, 14])
+
+    // 5) DyP
+    add('DyP servicios', D.dyp.servicios.map((x) => ({
+      Servicio: x.s, OTs: x.ot, Ventas: Math.round(x.v), 'MO neta': Math.round(x.mo), 'Ticket promedio': Math.round(x.ticket)
+    })), [34, 8, 14, 14, 16])
+    add('DyP tecnicos', D.dyp.det.map((x) => ({ Técnico: x.t, OTs: x.ot, Ventas: Math.round(x.v), 'MO neta': Math.round(x.mo) })), [24, 8, 14, 14])
+
+    // 6) Centros de ingreso
+    if (D.centros) {
+      add('Centros de ingreso', D.centros.lista.map((c) => {
+        const fila = { Centro: c.nombre, OTs: c.ot }
+        SUBAREAS.forEach((s) => { fila[s.label] = Math.round(c[s.k]) })
+        fila['Descuentos'] = -Math.round(c.desc)
+        fila['Sin desglosar'] = Math.round(c.resid)
+        fila['Total'] = Math.round(c.total)
+        fila['% empresa'] = D.centros.totalGeneral ? +(c.total / D.centros.totalGeneral * 100).toFixed(2) : 0
+        fila['Ticket promedio'] = Math.round(c.ot ? c.total / c.ot : 0)
+        return fila
+      }), [16, 8, 14, 14, 18, 16, 13, 14, 14, 11, 16])
+      add('Centros evolucion', D.centros.serie, [12, 14, 14, 14, 14, 14, 14, 14])
+    }
+
+    // 7) Técnicos con comisión
+    add('Tecnicos comision', D.tecnicos.map((x) => ({ Técnico: x.t, OTs: x.ot, 'MO neta': Math.round(x.mo), 'Comisión estimada': Math.round(x.com) })), [24, 8, 14, 18])
+
+    // 8) Movimiento
+    add('Movimiento', D.mov.map((x) => ({ Período: x.name, Vehículos: x.vehiculos, Ventas: Math.round(x.ventas) })), [12, 12, 14])
+
+    // 9) Detalle de OTs — la base que sustenta todos los análisis
+    const campos = ['N° Orden Trabajo', 'F. Ingreso', 'Marca', 'Modelo', 'Patente', 'Tipo Servicio 1', 'Área Servicio',
+      'Centro de Ingreso', 'Técnico Principal', 'Tipo Documento', 'N° Presupuesto', 'N.P.S', 'Permanencia',
+      'Estado Vehículo', 'Total Reparación', 'Neto Total Reparación', 'Neto Mano de Obra', 'Neto Repuestos',
+      'Neto Lubricantes', 'Neto Descuento', 'Monto Servicio Externo']
+    const disponibles = campos.filter((c) => cols.keys.includes(c))
+    add('Detalle OTs', D._periodo.map((r) => {
+      const o = {}
+      disponibles.forEach((c) => {
+        const v = r[c]
+        o[c] = /Total|Neto|Monto|Permanencia|N.P.S/.test(c) ? num(v) : txt(v)
+      })
+      return o
+    }), disponibles.map(() => 16))
+
+    XLSX.writeFile(wb, `panel-operativo-didial-${slugPeriodo}.xlsx`)
+  }
+
+  function exportarPDF() {
+    window.print()
+  }
+
   const donutArea = [{ name: 'Toyota', value: D.vt, c: C.red }, { name: 'Multimarca', value: D.vm, c: C.graphite }]
   const npsData = [{ name: 'Promotores', value: D.nps.prom, c: C.green }, { name: 'Pasivos', value: D.nps.pas, c: C.amber }, { name: 'Detractores', value: D.nps.det, c: C.red }]
 
@@ -491,9 +601,17 @@ export default function PanelOperativo() {
   matServs.forEach((s) => matMarcas.forEach((m) => { matMax = Math.max(matMax, celda(D.cruce[s]?.marcas[m])) }))
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5" id="panel-print">
+      {/* Cabecera visible solo al imprimir/exportar a PDF */}
+      <div className="hidden print:block mb-2">
+        <h1 className="text-xl font-bold text-ink">Panel operativo · Servicio Automotriz Didial</h1>
+        <p className="text-xs text-slate-500">
+          Período: {etiquetaPeriodo} · Montos: {net ? 'Neto' : 'Bruto'} · Marca: {brand || 'Todas'} · Área: {area} · Generado: {new Date().toLocaleString('es-CL')}
+        </p>
+      </div>
+
       {/* Controles */}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3 no-print">
         {/* Período: mes único o rango de fechas */}
         <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-sm">
           <button onClick={() => setModo('mes')} className={`px-3 py-1.5 ${modo === 'mes' ? 'bg-deep text-white' : 'text-slate-500'}`}>Mes</button>
@@ -529,9 +647,11 @@ export default function PanelOperativo() {
           <button onClick={() => setNet(false)} className={`px-3 py-1.5 ${!net ? 'bg-deep text-white' : 'text-slate-500'}`}>Bruto</button>
           <button onClick={() => setNet(true)} className={`px-3 py-1.5 ${net ? 'bg-deep text-white' : 'text-slate-500'}`}>Neto</button>
         </div>
-        <div className="ml-auto flex items-center gap-3">
+        <div className="ml-auto flex items-center gap-2">
           <span className="text-xs text-slate-400">Actualizado {updated}</span>
           <button onClick={() => refrescar()} className="btn-soft text-sm">↻ Actualizar</button>
+          <button onClick={exportarPDF} className="btn-soft text-sm" title="Abre el diálogo de impresión: elige 'Guardar como PDF'">📄 PDF</button>
+          <button onClick={exportarExcel} className="btn-soft text-sm" title="Descarga un libro con una hoja por análisis">📊 Excel</button>
         </div>
       </div>
 
@@ -560,7 +680,7 @@ export default function PanelOperativo() {
       <div className="card p-4">
         <div className="flex items-center justify-between mb-2">
           <h3 className="font-semibold text-ink">Movimiento (vehículos y ventas)</h3>
-          <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-sm">
+          <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-sm no-print">
             {['dia', 'mes', 'anio'].map((g) => (
               <button key={g} onClick={() => setGran(g)} className={`px-3 py-1 capitalize ${gran === g ? 'bg-deep text-white' : 'text-slate-500'}`}>
                 {g === 'dia' ? 'Día' : g === 'mes' ? 'Mes' : 'Año'}
@@ -602,7 +722,7 @@ export default function PanelOperativo() {
         <div className="card p-4">
           <div className="flex items-center justify-between mb-2">
             <h3 className="font-semibold text-ink">Top 10 marcas</h3>
-            <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-xs">
+            <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-xs no-print">
               <button onClick={() => setRankM('v')} className={`px-2 py-1 ${rankM === 'v' ? 'bg-deep text-white' : 'text-slate-500'}`}>Por ventas</button>
               <button onClick={() => setRankM('ot')} className={`px-2 py-1 ${rankM === 'ot' ? 'bg-deep text-white' : 'text-slate-500'}`}>Por frecuencia</button>
             </div>
@@ -639,7 +759,7 @@ export default function PanelOperativo() {
       <div className="card p-4">
         <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
           <h3 className="font-semibold text-ink">Servicio × Marca (Top 10)</h3>
-          <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-xs">
+          <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-xs no-print">
             <button onClick={() => setMatM('tk')} className={`px-2 py-1 ${matM === 'tk' ? 'bg-deep text-white' : 'text-slate-500'}`}>Ticket promedio</button>
             <button onClick={() => setMatM('ot')} className={`px-2 py-1 ${matM === 'ot' ? 'bg-deep text-white' : 'text-slate-500'}`}>OTs</button>
           </div>
@@ -806,7 +926,7 @@ export default function PanelOperativo() {
           {/* Evolución en el tiempo */}
           <div className="flex items-center justify-between mb-1">
             <h4 className="font-semibold text-ink text-sm">Evolución de la mezcla</h4>
-            <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-xs">
+            <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-xs no-print">
               <button onClick={() => setCiVista('centro')} className={`px-2 py-1 ${ciVista === 'centro' ? 'bg-deep text-white' : 'text-slate-500'}`}>Por centro</button>
               <button onClick={() => setCiVista('subarea')} className={`px-2 py-1 ${ciVista === 'subarea' ? 'bg-deep text-white' : 'text-slate-500'}`}>Por naturaleza</button>
             </div>

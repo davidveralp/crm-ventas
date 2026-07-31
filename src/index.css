@@ -81,3 +81,42 @@ body {
   @apply text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700
          bg-white hover:bg-deep hover:text-white hover:border-deep transition-colors;
 }
+
+/* ================= Impresión / exportación a PDF del panel operativo =================
+   El navegador imprime SVG en vectorial, así que los gráficos de recharts salen nítidos
+   sin necesidad de rasterizarlos con html2canvas. */
+@media print {
+  @page { size: A4 landscape; margin: 10mm; }
+
+  /* Solo el panel es visible: se oculta el resto de la aplicación (menú, cabecera, pestañas) */
+  body * { visibility: hidden; }
+  #panel-print, #panel-print * { visibility: visible; }
+  #panel-print { position: absolute; left: 0; top: 0; width: 100%; }
+
+  /* Controles interactivos: no tienen sentido en papel */
+  .no-print, .no-print * { display: none !important; }
+
+  body { background: #fff !important; }
+
+  /* Evitar que una tarjeta o gráfico quede cortado entre dos páginas */
+  .card, table, .recharts-wrapper {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .card {
+    box-shadow: none !important;
+    border: 1px solid #e2e8f0 !important;
+  }
+
+  /* Forzar impresión de fondos (heatmap, barras de proporción, avisos) */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Las tablas con scroll horizontal deben mostrarse completas */
+  .overflow-x-auto { overflow: visible !important; }
+
+  /* Los <details> cerrados no se imprimen; su contenido no aporta al informe */
+  details { display: none !important; }
+}
