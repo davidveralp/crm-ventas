@@ -1061,3 +1061,45 @@ Hojas nuevas: Sucursales, KPIs con alerta (con meta, zona de alerta, estado y pa
 - **Ticket promedio contra IPC**: el archivo de origen exige comparar contra inflación. El sistema no tiene serie de IPC, así que el indicador se evalúa solo contra la meta interna y la observación recuerda hacer el contraste manualmente.
 - Los análisis de origen, ciudad, tipo de cliente y asesor dependen de campos con baja completitud en la base; cuando vienen vacíos la tabla lo dice explícitamente en vez de mostrar un cero engañoso.
 - El logo usado es `public/logo-didial.png`, que ya existía en el repo y es idéntico al archivo aportado (mismo MD5). No se agregó un duplicado.
+
+---
+
+# Actualización v57 — Corrección de superposiciones en el PDF, promedios por centro y auditoría del "Sin desglosar"
+
+Frontend (`PanelOperativo.jsx`, `index.css`). Sin migración SQL.
+
+## 1. Superposiciones en el informe impreso — corregidas
+
+Se identificaron cuatro causas distintas, todas reales:
+
+**a) Encabezado y pie sin espacio reservado.** Los elementos `position: fixed` viven dentro del margen de página, pero el margen era menor que su altura, así que invadían el área de contenido. Corregido: margen de página de 18/16mm a **24/18mm**, altura acotada (`height` + `overflow: hidden`), fondo blanco opaco y `z-index` para que nunca queden bajo el texto.
+
+**b) Grillas de Tailwind colapsadas.** Las clases `lg:grid-cols-6` dependen del ancho de *ventana*, que en impresión no aplica. Las 12 tarjetas de KPI caían a 2 columnas, generando bloques altísimos que desbordaban la hoja. Se fuerzan las columnas explícitamente dentro de `@media print`.
+
+**c) Gráficos de recharts montados sobre el texto.** `ResponsiveContainer` posiciona el SVG en absoluto dentro de un contenedor cuya altura se calcula en JavaScript; al imprimir esa altura puede quedar en 0 y el gráfico se dibuja encima del párrafo siguiente. Se fuerza `position: relative`, `height: auto` y `min-height: 55mm` en impresión.
+
+**d) Tablas anchas y celdas largas.** Las tablas con `min-w-[720px]` y scroll horizontal se salían del papel. En impresión se anula el ancho mínimo, se libera el `overflow`, se compacta la tipografía a 7,5pt y las celdas `truncate` se recortan con elipsis en vez de invadir la columna vecina.
+
+También se ajustó la barra de proporción del Top 10 (dibujada en absoluto) para que quede detrás del texto y no encima, y la portada bajó de 165mm a 155mm por los nuevos márgenes.
+
+## 2. Centros de ingreso: venta promedio y vehículos promedio
+
+Ambos indicadores son **por mes**, calculados sobre los meses equivalentes del período (con fracción para meses parciales). Se eligió la base mensual porque el panel permite rangos de duración arbitraria: sin normalizar, comparar un rango de 3 meses con uno de 20 días no significa nada.
+
+- En cada tarjeta de centro: venta promedio mensual y vehículos promedio mensual, además del ticket que ya estaba (que es venta por OT, otra pregunta distinta).
+- En la matriz: dos columnas nuevas con la fila de Total empresa incluida.
+- En el Excel: ambas columnas en la hoja "Centros de ingreso".
+
+## 3. A qué corresponde el "Sin desglosar"
+
+Nueva subsección que descompone el residuo. Se calcula por OT (`total − (MO + repuestos + lubricantes + serv. externos − descuentos)`) y se clasifica en dos naturalezas que no deben confundirse:
+
+- **Redondeo de la planilla** — OTs con diferencia de ±$2 o menos. Es inevitable: cada columna neta se redondea por separado y las fracciones se acumulan. No hay nada que corregir.
+- **Diferencias reales** — OTs cuya suma de partes no coincide con el total. Esto **sí es un error de captura** en la planilla y se lista con OT, patente, centro, servicio, documento, total, suma de partes, descuento y diferencia, ordenado por magnitud.
+
+En pantalla se muestran las 15 mayores; el listado completo, con el desglose de las cuatro naturalezas por OT, va en la hoja **"Residuo"** del Excel, que además trae dos filas de resumen arriba.
+
+Si ninguna OT difiere por más de $2, la sección lo dice explícitamente en vez de mostrar una tabla vacía.
+
+## Limitación declarada
+El umbral de $2 para separar redondeo de error es una convención: con cuatro columnas redondeadas por separado, la desviación máxima teórica por OT es de ±2 pesos. Una OT con un error de captura de exactamente $1 o $2 quedaría clasificada como redondeo y no aparecería en la tabla.

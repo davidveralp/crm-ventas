@@ -89,8 +89,9 @@ body {
 .solo-impresion { display: none; }
 
 @media print {
-  /* Margen superior/inferior amplio para alojar encabezado y pie repetidos */
-  @page { size: A4 landscape; margin: 18mm 10mm 16mm 10mm; }
+  /* Margen amplio: el encabezado y el pie viven DENTRO de este margen,
+     por eso debe ser mayor que la altura de cada uno. */
+  @page { size: A4 landscape; margin: 24mm 10mm 18mm 10mm; }
 
   /* Solo el panel es visible: se oculta el resto de la aplicación (menú, cabecera, pestañas) */
   body * { visibility: hidden; }
@@ -131,24 +132,26 @@ body {
 
   /* Encabezado y pie: position fixed hace que el navegador los repita en CADA página */
   .encabezado-hoja {
-    position: fixed; top: -13mm; left: 0; right: 0;
+    position: fixed; top: -18mm; left: 0; right: 0;
+    height: 14mm; box-sizing: border-box; background: #fff; z-index: 50;
     display: flex; align-items: center; justify-content: space-between;
     padding-bottom: 2mm; border-bottom: 1px solid #e2e8f0;
-    font-size: 8pt; color: #6b7a8a;
+    font-size: 8pt; color: #6b7a8a; overflow: hidden;
   }
-  .encabezado-hoja img { height: 9mm; width: auto; }
+  .encabezado-hoja img { height: 8mm; width: auto; }
 
   .pie-hoja {
-    position: fixed; bottom: -12mm; left: 0; right: 0;
+    position: fixed; bottom: -14mm; left: 0; right: 0;
+    height: 10mm; box-sizing: border-box; background: #fff; z-index: 50;
     display: flex; align-items: center; justify-content: space-between;
     padding-top: 1.5mm; border-top: 1px solid #e2e8f0;
-    font-size: 7pt; color: #94a3b8;
+    font-size: 7pt; color: #94a3b8; overflow: hidden;
   }
 
   /* Portada: ocupa una hoja completa y fuerza salto */
   .portada {
     break-after: page; page-break-after: always;
-    height: 165mm; display: flex; flex-direction: column;
+    height: 155mm; display: flex; flex-direction: column;
     align-items: center; justify-content: center; text-align: center;
   }
   .portada-logo { width: 90mm; height: auto; margin-bottom: 8mm; }
@@ -172,4 +175,70 @@ body {
 
   /* Las observaciones no deben separarse de la sección que las explica */
   .observaciones { break-inside: avoid; page-break-inside: avoid; }
+}
+
+/* ====== Correcciones de maquetación en impresión (superposiciones) ====== */
+@media print {
+  /* Base tipográfica más compacta: en A4 el layout de pantalla desborda */
+  #panel-print { font-size: 9pt; line-height: 1.35; }
+  #panel-print h1 { font-size: 15pt; }
+  #panel-print h3 { font-size: 11pt; }
+  #panel-print h4 { font-size: 9.5pt; }
+
+  /* Las grillas de Tailwind usan breakpoints de ancho de VENTANA, que en
+     impresión no aplican: sin esto, 6 tarjetas caen en 2 columnas y desbordan. */
+  #panel-print .grid { display: grid !important; gap: 3mm !important; }
+  #panel-print .grid.lg\:grid-cols-6 { grid-template-columns: repeat(6, minmax(0, 1fr)) !important; }
+  #panel-print .grid.lg\:grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
+  #panel-print .grid.lg\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+  #panel-print .grid.lg\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  #panel-print .grid.sm\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+  #panel-print .grid.sm\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+
+  /* Recharts posiciona el SVG en absoluto dentro de un contenedor de alto
+     calculado en JS. Al imprimir, ese alto puede quedar en 0 y el gráfico se
+     monta encima del texto siguiente. Se fija el flujo normal. */
+  .recharts-responsive-container {
+    position: relative !important;
+    height: auto !important;
+    min-height: 55mm;
+    break-inside: avoid; page-break-inside: avoid;
+  }
+  .recharts-wrapper {
+    position: relative !important;
+    max-width: 100% !important;
+    break-inside: avoid; page-break-inside: avoid;
+  }
+  .recharts-surface { overflow: visible; }
+
+  /* Tarjetas: sin sombra, con separación real y sin quedar a caballo de dos hojas */
+  #panel-print .card {
+    margin-bottom: 4mm;
+    padding: 3mm !important;
+    break-inside: avoid; page-break-inside: avoid;
+  }
+  /* Una tarjeta dentro de otra (los KPI) no necesita margen extra */
+  #panel-print .card .card { margin-bottom: 0; }
+
+  /* Tablas compactas y sin cortes internos */
+  #panel-print table { font-size: 7.5pt; width: 100%; table-layout: auto; }
+  #panel-print th, #panel-print td { padding: 0.8mm 1.2mm !important; }
+  #panel-print thead { display: table-header-group; }
+  #panel-print tr { break-inside: avoid; page-break-inside: avoid; }
+
+  /* Celdas con texto largo: recortar en vez de desbordar sobre la columna vecina */
+  #panel-print td.truncate { max-width: 40mm !important; overflow: hidden; text-overflow: ellipsis; }
+
+  /* La barra de proporción del Top 10 se dibuja en absoluto detrás del texto:
+     al imprimir debe quedar detrás, nunca encima */
+  #panel-print td .absolute { z-index: 0; }
+  #panel-print td .relative { position: relative; z-index: 1; }
+
+  /* Evitar que el contenido quede bajo el encabezado en la primera página */
+  #panel-print > *:first-child { margin-top: 0; }
+
+  /* Sin scroll horizontal: en papel se debe ver la tabla completa */
+  #panel-print .overflow-x-auto { overflow: visible !important; }
+  #panel-print .min-w-\[720px\], #panel-print .min-w-\[640px\],
+  #panel-print .min-w-\[560px\], #panel-print .min-w-full { min-width: 0 !important; }
 }

@@ -546,6 +546,8 @@ export default function PanelOperativo() {
     if (cols.centro) {
       const cmap = {}
       const serieMap = {}
+      const residuoDetalle = []
+      let redondeoAcum = 0, redondeoOT = 0
       const multiMes = ymKey(rangoIni) !== ymKey(rangoFin)
       periodoRows.forEach((r) => {
         const c = normCentro(r[cols.centro])
@@ -556,7 +558,21 @@ export default function PanelOperativo() {
         cols.sub.forEach((s) => { if (!s.col) return; const v = num(r[s.col]); cmap[c][s.k] += v; suma += v })
         const dsc = cols.desc.col ? num(r[cols.desc.col]) : 0
         cmap[c].desc += dsc
-        cmap[c].resid += (tot - (suma - dsc))
+        const residOT = tot - (suma - dsc)
+        cmap[c].resid += residOT
+        // Auditoría del residuo: se guarda cada OT que no cuadra por más de $2
+        if (Math.abs(residOT) > 2) {
+          residuoDetalle.push({
+            ot: txt(r['N° Orden Trabajo']), patente: txt(r['Patente']), centro: c,
+            fecha: txt(r['F. Ingreso']), servicio: normServ(r['Tipo Servicio 1']),
+            total: tot,
+            partes: cols.sub.reduce((acc, s) => { acc[s.k] = s.col ? num(r[s.col]) : 0; return acc }, {}),
+            suma, desc: dsc, resid: residOT,
+            doc: txt(r['Tipo Documento']), tipoIngreso: txt(r['Tipo de Ingreso'])
+          })
+        } else if (residOT !== 0) {
+          redondeoAcum += residOT; redondeoOT++
+        }
         // serie temporal
         const d = parseGvizDate(r['F. Ingreso']); if (!d) return
         const k = multiMes ? ymKey(d) : dmKey(d)
@@ -566,7 +582,12 @@ export default function PanelOperativo() {
         serieMap[k]._s.desc = (serieMap[k]._s.desc || 0) - dsc
         serieMap[k]._s.resid = (serieMap[k]._s.resid || 0) + (tot - (suma - dsc))
       })
-      const lista = Object.entries(cmap).map(([nombre, x]) => ({ nombre, ...x })).sort((a, b) => b.total - a.total)
+      const lista = Object.entries(cmap).map(([nombre, x]) => ({
+        nombre, ...x,
+        ticket: x.ot ? x.total / x.ot : 0,
+        ventaMes: mesesEq ? x.total / mesesEq : 0,
+        vehMes: mesesEq ? x.ot / mesesEq : 0
+      })).sort((a, b) => b.total - a.total)
       const totalGeneral = lista.reduce((s, x) => s + x.total, 0)
       const totalesSub = {}
       SUBAREAS.forEach((s) => { totalesSub[s.k] = lista.reduce((a, x) => a + x[s.k], 0) })
@@ -577,7 +598,18 @@ export default function PanelOperativo() {
         const name = multiMes ? MES[+mm - 1] + ' ' + String(yy).slice(2) : (dd ? +dd + '' : k)
         return { name, ...v._c, ...Object.fromEntries(Object.entries(v._s).map(([kk, vv]) => ['s_' + kk, vv])) }
       })
-      centros = { lista, totalGeneral, totalesSub, serie, nombres: lista.map((x) => x.nombre) }
+      residuoDetalle.sort((a, b) => Math.abs(b.resid) - Math.abs(a.resid))
+      const residMaterial = residuoDetalle.reduce((s, x) => s + x.resid, 0)
+      centros = {
+        lista, totalGeneral, totalesSub, serie, nombres: lista.map((x) => x.nombre),
+        residuo: {
+          detalle: residuoDetalle,
+          materialTotal: residMaterial,
+          materialOT: residuoDetalle.length,
+          redondeoTotal: redondeoAcum,
+          redondeoOT
+        }
+      }
     }
 
     const mmap = {}
@@ -738,11 +770,26 @@ export default function PanelOperativo() {
         fila['Descuentos'] = -Math.round(c.desc)
         fila['Sin desglosar'] = Math.round(c.resid)
         fila['Total'] = Math.round(c.total)
+        fila['Venta promedio mensual'] = Math.round(c.ventaMes)
+        fila['Vehículos promedio mensual'] = +c.vehMes.toFixed(1)
         fila['% empresa'] = D.centros.totalGeneral ? +(c.total / D.centros.totalGeneral * 100).toFixed(2) : 0
-        fila['Ticket promedio'] = Math.round(c.ot ? c.total / c.ot : 0)
+        fila['Ticket promedio'] = Math.round(c.ticket)
         return fila
-      }), [16, 8, 14, 14, 18, 16, 13, 14, 14, 11, 16])
+      }), [16, 8, 14, 14, 18, 16, 13, 14, 14, 20, 20, 11, 16])
       add('Centros evolucion', D.centros.serie, [12, 14, 14, 14, 14, 14, 14, 14])
+      // Auditoría del "Sin desglosar"
+      add('Residuo', [
+        { 'N° OT': 'RESUMEN', Patente: '', Centro: '', Servicio: 'Redondeo de planilla (±$2 por OT)', 'Total OT': '', 'Suma partes': '', Descuento: '', Diferencia: Math.round(D.centros.residuo.redondeoTotal), 'OTs afectadas': D.centros.residuo.redondeoOT },
+        { 'N° OT': 'RESUMEN', Patente: '', Centro: '', Servicio: 'Diferencias reales (error de captura)', 'Total OT': '', 'Suma partes': '', Descuento: '', Diferencia: Math.round(D.centros.residuo.materialTotal), 'OTs afectadas': D.centros.residuo.materialOT },
+        ...D.centros.residuo.detalle.map((x) => ({
+          'N° OT': x.ot, Patente: x.patente, Centro: x.centro, Servicio: x.servicio,
+          'Total OT': Math.round(x.total), 'Suma partes': Math.round(x.suma),
+          Descuento: Math.round(x.desc), Diferencia: Math.round(x.resid), 'OTs afectadas': '',
+          'Mano de obra': Math.round(x.partes.mo || 0), Repuestos: Math.round(x.partes.rep || 0),
+          Lubricantes: Math.round(x.partes.lub || 0), 'Serv. externos': Math.round(x.partes.ext || 0),
+          Documento: x.doc, 'Tipo de ingreso': x.tipoIngreso, Fecha: x.fecha
+        }))
+      ], [14, 12, 14, 30, 14, 14, 12, 12, 13, 14, 13, 13, 14, 16, 16, 14])
     }
 
     // 7) Sucursales y metas
@@ -1440,7 +1487,17 @@ export default function PanelOperativo() {
                     <span className="ml-auto text-lg font-semibold" style={{ color: CENTRO_COLOR[c.nombre] || C.muted }}>{pct.toFixed(1)}%</span>
                   </div>
                   <div className="text-xl font-semibold text-ink mt-1">{CLP(c.total)}</div>
-                  <div className="text-xs text-slate-400">{c.ot} OTs · ticket {CLP(c.ot ? c.total / c.ot : 0)}</div>
+                  <div className="text-xs text-slate-400">{c.ot} OTs · ticket {CLP(c.ticket)}</div>
+                  <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-100">
+                    <div>
+                      <div className="text-[10px] text-slate-400">Venta promedio</div>
+                      <div className="text-sm font-semibold text-ink">{CLPc(c.ventaMes)}<span className="text-[10px] font-normal text-slate-400"> /mes</span></div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-slate-400">Vehículos promedio</div>
+                      <div className="text-sm font-semibold text-ink">{c.vehMes.toFixed(1)}<span className="text-[10px] font-normal text-slate-400"> /mes</span></div>
+                    </div>
+                  </div>
                   <div className="h-1.5 rounded-full bg-slate-100 mt-2 overflow-hidden">
                     <div className="h-full rounded-full" style={{ width: pct + '%', background: CENTRO_COLOR[c.nombre] || C.muted }} />
                   </div>
@@ -1459,6 +1516,8 @@ export default function PanelOperativo() {
                   <th className="text-right px-2">Descuentos</th>
                   <th className="text-right px-2">Sin desglosar</th>
                   <th className="text-right px-2">Total</th>
+                  <th className="text-right px-2">Venta prom./mes</th>
+                  <th className="text-right px-2">Veh. prom./mes</th>
                   <th className="text-right px-2">% empresa</th>
                 </tr>
               </thead>
@@ -1480,6 +1539,8 @@ export default function PanelOperativo() {
                     </td>
                     <td className="text-right px-2 text-slate-400">{CLPc(c.resid)}</td>
                     <td className="text-right px-2 font-semibold">{CLP(c.total)}</td>
+                    <td className="text-right px-2">{CLPc(c.ventaMes)}</td>
+                    <td className="text-right px-2">{c.vehMes.toFixed(1)}</td>
                     <td className="text-right px-2">{D.centros.totalGeneral ? (c.total / D.centros.totalGeneral * 100).toFixed(1) : 0}%</td>
                   </tr>
                 ))}
@@ -1497,6 +1558,8 @@ export default function PanelOperativo() {
                   </td>
                   <td className="text-right px-2 text-slate-400">{CLPc(D.centros.totalesSub.resid)}</td>
                   <td className="text-right px-2">{CLP(D.centros.totalGeneral)}</td>
+                  <td className="text-right px-2">{CLPc(D.mesesEq ? D.centros.totalGeneral / D.mesesEq : 0)}</td>
+                  <td className="text-right px-2">{(D.mesesEq ? D.centros.lista.reduce((s, c) => s + c.ot, 0) / D.mesesEq : 0).toFixed(1)}</td>
                   <td className="text-right px-2">100%</td>
                 </tr>
               </tbody>
@@ -1526,6 +1589,74 @@ export default function PanelOperativo() {
                   <Bar key="resid" dataKey="s_resid" stackId="ci" name="Sin desglosar" fill={RESIDUO_COLOR} />]}
             </BarChart>
           </ResponsiveContainer>
+          {/* Auditoría del residuo: a qué corresponde realmente el "Sin desglosar" */}
+          <div className="mt-4 pt-3 border-t border-slate-200">
+            <h4 className="font-semibold text-ink text-sm mb-1">A qué corresponde el "Sin desglosar"</h4>
+            <p className="text-[11px] text-slate-400 mb-2">
+              Residuo por OT = total − (mano de obra + repuestos + lubricantes + servicios externos − descuentos).
+              Se separa el redondeo de la planilla de las OTs que realmente no cuadran.
+            </p>
+            <div className="grid sm:grid-cols-3 gap-3 mb-3">
+              <div className="rounded-lg border border-slate-200 p-3">
+                <div className="text-[11px] text-slate-400">Redondeo de la planilla</div>
+                <div className="text-lg font-semibold text-ink">{CLP(D.centros.residuo.redondeoTotal)}</div>
+                <div className="text-[11px] text-slate-400">{D.centros.residuo.redondeoOT} OTs con diferencia de ±$2 o menos</div>
+              </div>
+              <div className="rounded-lg border p-3" style={{ borderColor: D.centros.residuo.materialOT ? C.amber : '#e2e8f0' }}>
+                <div className="text-[11px] text-slate-400">Diferencias reales</div>
+                <div className="text-lg font-semibold" style={{ color: D.centros.residuo.materialOT ? C.amber : C.ink }}>{CLP(D.centros.residuo.materialTotal)}</div>
+                <div className="text-[11px] text-slate-400">{D.centros.residuo.materialOT} OTs que no cuadran</div>
+              </div>
+              <div className="rounded-lg border border-slate-200 p-3">
+                <div className="text-[11px] text-slate-400">Total sin desglosar</div>
+                <div className="text-lg font-semibold text-ink">{CLP(D.centros.totalesSub.resid)}</div>
+                <div className="text-[11px] text-slate-400">
+                  {D.centros.totalGeneral ? (Math.abs(D.centros.totalesSub.resid) / D.centros.totalGeneral * 100).toFixed(3) : 0}% de la venta del período
+                </div>
+              </div>
+            </div>
+
+            {D.centros.residuo.materialOT > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs min-w-[720px]">
+                  <thead>
+                    <tr className="text-slate-400 border-b">
+                      <th className="text-left py-1">OT</th><th className="text-left">Patente</th><th className="text-left">Centro</th>
+                      <th className="text-left">Servicio</th><th className="text-left">Documento</th>
+                      <th className="text-right">Total OT</th><th className="text-right">Suma partes</th>
+                      <th className="text-right">Descuento</th><th className="text-right">Diferencia</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {D.centros.residuo.detalle.slice(0, 15).map((x, i) => (
+                      <tr key={x.ot + i} className="border-b last:border-0">
+                        <td className="py-1">{x.ot}</td><td>{x.patente}</td><td>{x.centro}</td>
+                        <td className="truncate max-w-[150px]">{x.servicio || '—'}</td>
+                        <td className="truncate max-w-[110px]">{x.doc || '—'}</td>
+                        <td className="text-right">{CLPc(x.total)}</td>
+                        <td className="text-right">{CLPc(x.suma)}</td>
+                        <td className="text-right" style={{ color: x.desc ? C.red : C.muted }}>{x.desc ? '−' + CLPc(x.desc) : '—'}</td>
+                        <td className="text-right font-semibold" style={{ color: x.resid > 0 ? C.amber : C.red }}>
+                          {x.resid > 0 ? '+' : ''}{CLPc(Math.abs(x.resid)) === '—' ? '$0' : (x.resid < 0 ? '−' : '') + CLPc(Math.abs(x.resid))}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {D.centros.residuo.detalle.length > 15 && (
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Se muestran las 15 de mayor diferencia. Las {D.centros.residuo.detalle.length} completas están en la hoja "Residuo" del Excel.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-[11px] text-slate-500">
+                Ninguna OT del período presenta una diferencia superior a $2. El "Sin desglosar" es únicamente redondeo:
+                cada columna neta se redondea por separado en la planilla, y esas fracciones de peso se acumulan.
+              </p>
+            )}
+          </div>
+
           <Observaciones
             items={[{ clave: 'mixCentro', valor: D.centros.lista.length && D.centros.totalGeneral ? D.centros.lista[0].total / D.centros.totalGeneral * 100 : 0 },
                     { clave: 'moSobreVenta', valor: D.moPct }, { clave: 'repSobreVenta', valor: D.repPct }]}
@@ -1535,10 +1666,13 @@ export default function PanelOperativo() {
                 : null,
               !cols.sub.find((x) => x.k === 'ext')?.col || D.centros.totalesSub.ext === 0
                 ? 'No hay monto registrado en servicios externos. Si el taller terceriza trabajos, ese costo está cayendo en otra categoría y distorsiona el margen por área.'
-                : null
+                : null,
+              D.centros.residuo.materialOT > 0
+                ? `${D.centros.residuo.materialOT} OTs no cuadran por ${CLP(Math.abs(D.centros.residuo.materialTotal))}: la suma de sus partes no coincide con el total. Revisar esas órdenes en la planilla, es un error de captura, no de redondeo.`
+                : 'El residuo corresponde solo a redondeo de la planilla: ninguna OT difiere por más de $2.'
             ].filter(Boolean)}
           />
-          <p className="text-[11px] text-slate-400 mt-1">Se agrupa por día si el período cae dentro de un mismo mes, y por mes si lo cruza. "Sin desglosar" = total de la OT − (mano de obra + repuestos + lubricantes + servicios externos − descuentos). Debería ser cercano a cero; lo que queda son diferencias de redondeo de la planilla (cada columna neta se redondea por separado, ±1 peso por OT). Si aparece un monto relevante, hay conceptos en columnas que este análisis no está leyendo.</p>
+          <p className="text-[11px] text-slate-400 mt-1">Se agrupa por día si el período cae dentro de un mismo mes, y por mes si lo cruza. Los promedios mensuales usan los meses equivalentes del período ({D.mesesEq.toFixed(2)}), por lo que son comparables entre rangos de distinta duración.</p>
         </div>
       )}
       <div className="grid lg:grid-cols-2 gap-4">
