@@ -50,7 +50,7 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar }) 
     if (patenteLimpia(q).length < 5) { setVeh(null); return }
     const { data } = await supabase.from('vehiculos')
       .select('id,patente,marca,modelo,tipo_vehiculo,cliente_id,clientes(nombre,apellidos,telefono)')
-      .ilike('patente', `%${formatPatente(q)}%`).limit(1)
+      .ilike('patente_norm', `%${patenteLimpia(q)}%`).limit(1)
     setVeh(data?.[0] || null)
   }
 

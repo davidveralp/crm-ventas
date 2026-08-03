@@ -60,13 +60,14 @@ export default function Clientes() {
     if (q.length < 3) { setIdsExtra(null); return }
     const timer = setTimeout(async () => {
       const limpia = q.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
+      // v53: una sola consulta contra patente_norm (columna sin espacios,
+      // indexada). Antes hacían falta dos porque la patente podía estar
+      // guardada con o sin espacios; ahora el formato es único en la base.
       const [veh, srv] = await Promise.all([
-        supabase.from('vehiculos').select('cliente_id, patente').ilike('patente', `%${limpia.length >= 4 ? limpia.replace(/(..)(?=.)/g, '$1 ').trim() : q}%`).limit(50),
+        supabase.from('vehiculos').select('cliente_id, patente').ilike('patente_norm', `%${limpia}%`).limit(50),
         supabase.from('servicios').select('cliente_id, ot_numero').ilike('ot_numero', `%${q}%`).limit(50)
       ])
-      // patente también sin espacios
-      const { data: veh2 } = await supabase.from('vehiculos').select('cliente_id, patente').ilike('patente', `%${q}%`).limit(50)
-      const ids = new Set([...(veh.data || []), ...(veh2 || []), ...(srv.data || [])]
+      const ids = new Set([...(veh.data || []), ...(srv.data || [])]
         .map((r) => r.cliente_id).filter(Boolean))
       setIdsExtra(ids)
       // v21.1: la OT existe en el historial pero sin cliente vinculado

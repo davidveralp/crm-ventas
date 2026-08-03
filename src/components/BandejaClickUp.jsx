@@ -71,7 +71,7 @@ function RevisarTarea({ perfil, p, onListo }) {
     if (patenteLimpia(q).length < 3) { setRes([]); return }
     const { data } = await supabase.from('vehiculos')
       .select('id,patente,marca,modelo,cliente_id,clientes(nombre,apellidos)')
-      .ilike('patente', `%${formatPatente(q)}%`).limit(6)
+      .ilike('patente_norm', `%${patenteLimpia(q)}%`).limit(6)
     setRes(data || [])
   }
 

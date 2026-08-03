@@ -153,7 +153,7 @@ export default function NuevaOT() {
     if (limpia.length < 5) { setVeh(null); return }
     const { data } = await supabase.from('vehiculos')
       .select('id,marca,modelo,tipo_vehiculo,cliente_id,clientes(nombre,apellidos)')
-      .ilike('patente', `%${formatPatente(patente)}%`).limit(1)
+      .ilike('patente_norm', `%${patenteLimpia(patente)}%`).limit(1)
     const v = data?.[0] || null
     setVeh(v)
     if (v?.tipo_vehiculo) set('tipo_vehiculo', v.tipo_vehiculo)   // v27: precarga el tipo

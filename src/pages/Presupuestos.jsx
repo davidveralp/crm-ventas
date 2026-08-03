@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { Pill, StatCard, EmptyState } from '../components/UI'
 import { Modal } from '../components/UI'
-import { fmtCLP, fmtFecha, ESTADOS_PRESUPUESTO, ESTADOS_PRESUP_TALLER, SECCIONES_PRESUP, seccionDe } from '../lib/helpers'
+import { fmtCLP, fmtFecha, patenteLimpia, ESTADOS_PRESUPUESTO, ESTADOS_PRESUP_TALLER, SECCIONES_PRESUP, seccionDe } from '../lib/helpers'
 import { useAuth } from '../context/AuthContext'
 import { notificar } from '../lib/notificar'
 import PresupuestoTallerCard from '../components/PresupuestoTallerCard'
@@ -79,7 +79,7 @@ function PresupuestosInterno() {
     if (q.trim().length < 2) { setNuevoRes([]); return }
     const { data } = await supabase.from('vehiculos')
       .select('id,patente,marca,modelo,tipo_vehiculo,cliente_id,clientes(nombre,apellidos)')
-      .or(`patente.ilike.%${q.trim()}%,marca.ilike.%${q.trim()}%,modelo.ilike.%${q.trim()}%`).limit(8)
+      .or(`patente_norm.ilike.%${patenteLimpia(q)}%,marca.ilike.%${q.trim()}%,modelo.ilike.%${q.trim()}%`).limit(8)
     setNuevoRes(data || [])
   }
   async function crearNuevoPresup() {

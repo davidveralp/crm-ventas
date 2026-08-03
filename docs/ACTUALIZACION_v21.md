@@ -1103,3 +1103,40 @@ Si ninguna OT difiere por más de $2, la sección lo dice explícitamente en vez
 
 ## Limitación declarada
 El umbral de $2 para separar redondeo de error es una convención: con cuatro columnas redondeadas por separado, la desviación máxima teórica por OT es de ±2 pesos. Una OT con un error de captura de exactamente $1 o $2 quedaría clasificada como redondeo y no aparecería en la tabla.
+
+---
+
+# Actualización v58 — Incorporación de 6 archivos v53 (búsqueda por `patente_norm`) + migración 49
+
+## Archivos incorporados al repositorio
+
+| Archivo | Ubicación |
+|---|---|
+| `Presupuestos.jsx` | `src/pages/` |
+| `Clientes.jsx` | `src/pages/` |
+| `NuevaOT.jsx` | `src/pages/` |
+| `FacturasRepuestos.jsx` | `src/components/` |
+| `InspeccionIngreso.jsx` | `src/components/` |
+| `BandejaClickUp.jsx` | `src/components/` |
+
+Los seis ya existían; se reemplazaron por las versiones aportadas. Build verde.
+
+## Qué cambia en ellos
+Un único refactor coherente: la búsqueda de vehículos pasa de la columna `patente` a **`patente_norm`**.
+
+- **Clientes.jsx** era el caso más costoso: hacía **dos consultas** a `vehiculos` (una con la patente reformateada con espacios y otra con el texto crudo) porque la patente podía estar guardada de ambas formas. Ahora es una sola consulta.
+- **Presupuestos.jsx** cambia el `.or()` para buscar por `patente_norm` con el valor ya limpio.
+- **NuevaOT.jsx**, **BandejaClickUp.jsx**, **FacturasRepuestos.jsx** e **InspeccionIngreso.jsx** cambian `formatPatente(...)` por `patenteLimpia(...)` en el `ilike`.
+
+Verificado: los cuatro archivos que usan `patenteLimpia` ya la importan correctamente (en NuevaOT viene dentro del import multilínea), y la función ya existía en `src/lib/helpers.js`.
+
+## ⚠️ Migración 49 — obligatoria, no venía incluida
+**La columna `patente_norm` no existe en la base.** Sin ella los seis módulos fallan con
+`column vehiculos.patente_norm does not exist` y la búsqueda de vehículos deja de funcionar por completo.
+
+`database/49_patente_norm.sql`:
+1. Crea `patente_norm` como **columna generada** (`generated always as ... stored`) a partir de `patente`. Al ser generada no se puede desincronizar ni requiere backfill ni triggers.
+2. Instala `pg_trgm` y crea un índice GIN sobre ella, necesario porque los `ilike '%...%'` empiezan con comodín y sin índice de trigramas harían scan completo.
+3. Incluye dos consultas de verificación, una de ellas para **detectar vehículos duplicados** que el formato inconsistente venía ocultando (misma patente escrita de dos maneras). Esos duplicados no se borran automáticamente: cada ficha puede tener OTs, presupuestos e inspecciones asociadas.
+
+Verificado que la expresión SQL `upper(regexp_replace(patente, '[^A-Za-z0-9]', '', 'g'))` produce exactamente el mismo resultado que `patenteLimpia()` del frontend en todos los formatos probados (con espacios, guiones, minúsculas y espacios al inicio o final).

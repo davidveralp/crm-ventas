@@ -255,7 +255,7 @@ function AsignarRepuesto({ asignar, perfil, margenDefault, onListo }) {
     setBuscando(true)
     const { data } = await supabase.from('vehiculos')
       .select('id,marca,modelo,cliente_id,clientes(nombre,apellidos)')
-      .ilike('patente', `%${formatPatente(patente)}%`).limit(1)
+      .ilike('patente_norm', `%${patenteLimpia(patente)}%`).limit(1)
     setVehInfo(data?.[0] || false); setBuscando(false)
   }
 
