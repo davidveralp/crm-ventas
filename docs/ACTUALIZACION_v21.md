@@ -1003,3 +1003,61 @@ Decisiones de formato:
 - El PDF depende del diálogo de impresión del navegador; el resultado varía levemente entre Chrome, Firefox y Safari. Chrome da el mejor resultado.
 - El PDF refleja **lo que está en pantalla**: si el Top 10 está ordenado por frecuencia o la matriz está en modo OTs, así saldrá. El Excel, en cambio, siempre lleva el detalle completo.
 - El Excel exporta lo calculado en el navegador con el período y los filtros activos; no vuelve a consultar la planilla.
+
+---
+
+# Actualización v56 — Informe comercial exportable, portadas con logo, KPIs con alerta y análisis de mercado
+
+Frontend (`PanelOperativo.jsx`, `Informes.jsx`, `index.css`) + módulo nuevo `src/lib/kpiBenchmarks.js`. Sin migración SQL ni dependencias nuevas.
+
+## 1. Metas por sucursal — columna `Sucursal` (AH)
+Hallazgo: `Sucursal` (AH) contiene **"Toyota" y "Multimarca"**, no ubicaciones geográficas. Es la asignación operativa, distinta de la marca del vehículo y de `Centro de Ingreso` (BH).
+
+- Gauges, metas, filtro de segmento y tabla de sucursales pasan a usar `normSucursal()` sobre AH. Si AH viene vacía se cae a la marca para no perder la OT.
+- Nueva tabla **Desempeño por sucursal**: OTs, ventas, meta prorrateada, % cumplimiento, ticket, garantías y estado.
+- Se expone el **contador de discrepancia**: OTs cuya marca de vehículo no coincide con su sucursal asignada. No se corrige en silencio; se informa, porque afecta comisiones.
+- Las ventas de sucursales distintas de Toyota/Multimarca se contabilizan aparte (`ventasOtras`) y se advierte que no tienen meta definida.
+
+## 2. Métricas nuevas solicitadas
+- **Q de presupuestos del período**: conteo de generados, con aprobados y % como subtítulo.
+- **Q de garantías**: el tope de 3 se aplica **por sucursal**, no al total, y se prorratea por los meses del período. Estado por sucursal en la tabla.
+- **Permanencia**: KPI de *cantidad de vehículos sobre 5 días*, más el conteo entre 2 y 5 días. El promedio se evalúa con los umbrales indicados (sobre 5 malo, desde 2 alerta). Se agrega tabla de detalle con OT, patente, marca, sucursal, servicio, días y venta.
+
+## 3. KPIs con alerta contra referencia de industria
+Nuevo módulo `src/lib/kpiBenchmarks.js` con 15 indicadores, cada uno con meta, zona de alerta, función de evaluación y nota de gestión. Los umbrales provienen del archivo **DIDIAL_KPI_Comercial_Operativo.xlsx** aportado por David (copiado a `docs/` para trazabilidad).
+
+**La advertencia del archivo viaja con el dato** y se imprime en pantalla y en el PDF: los rangos son órdenes de magnitud de gestión, no percentiles calculados sobre una muestra de talleres chilenos comparables.
+
+Indicadores evaluados: cumplimiento de metas, ticket promedio, permanencia, vehículos detenidos, MO sobre venta, repuestos sobre venta, cobertura de kilometraje, cobertura de contacto, OTs sin tipo de servicio, frecuencia de visita, vehículos de una sola visita, peso del cliente empresa, concentración top 5, mix por centro y garantías por sucursal.
+
+**Conversión de presupuestos se marca deliberadamente como "No medible"**: sin registro de rechazos, un 100% aparente no significa nada. La recomendación es habilitar el campo, no maquillar el indicador.
+
+Verificación: los umbrales reproducen exactamente los estados declarados en el archivo de origen para los valores reales de DIDIAL (MO 45,5% → En meta; cobertura km 35,1% → Fuera de meta; una sola visita 65,9% → Fuera de meta; frecuencia 1,40 → Vigilar).
+
+## 4. Observaciones y recomendaciones al pie
+Componente `<Observaciones>` al pie de cada sección analítica. Solo lista los indicadores que **no** están en meta, cada uno con su acción concreta; si todos cumplen, lo dice en una línea. Con `break-inside: avoid` para que nunca se separen de la sección que explican.
+
+## 5. Análisis de mercado nuevos
+- **Retención y recurrencia** — calculado sobre **toda la historia** de la base, no sobre el período: preguntar si un cliente volvió exige mirar más allá del rango. Incluye vehículos de una sola visita, frecuencia, distribución de visitas, retención por cohorte (patentes estrenadas en el período que volvieron después) y concentración top 5.
+- **Parque vehicular** — antigüedad y kilometraje por tramos, con lectura de qué tipo de demanda implica el perfil de edad.
+- **Origen y geografía** — cómo conoció DIDIAL, ciudad y tipo de cliente.
+- **Rendimiento por asesor** — OTs, venta, ticket y participación.
+
+## 6. Portada con logo y encabezado en cada página
+- **Portada a página completa** con logo, título, período, filtros aplicados, cifras de contexto, los cinco indicadores rectores y la advertencia sobre el origen de los rangos. Usa `break-after: page`.
+- **Encabezado con logo y pie de página repetidos en todas las hojas** mediante `position: fixed` dentro de `@media print`, técnica que el navegador replica en cada página. Márgenes de página ampliados a 18mm/16mm para alojarlos.
+- Aplica a los dos informes.
+
+## 7. Informe comercial exportable
+La vista Comercial (fuente Supabase: cartera, campañas, gestiones) recibe el mismo tratamiento: botones PDF y Excel, portada propia, encabezado/pie con logo, y un bloque de **4 indicadores comerciales con alerta** (conversión de campaña, tiempo de cierre, días entre contactos, gestiones abiertas) con sus observaciones.
+
+Excel comercial: Resumen, KPIs con alerta, Embudo estados, Segmentos, Servicios solicitados, Embudo campañas, Vendedores.
+
+## Ampliación del Excel operativo
+Hojas nuevas: Sucursales, KPIs con alerta (con meta, zona de alerta, estado y para qué sirve de cada indicador), Mercado retención, Mercado parque, Mercado clientes, Mayores clientes, Asesores y Permanencia (listado **completo**, no los 20 de pantalla).
+
+## Limitaciones declaradas
+- **La retención por cohorte es estructuralmente pesimista en períodos recientes**: un cliente que estrenó el mes pasado casi no ha tenido oportunidad de volver. Solo es concluyente a 12 meses de distancia. Se advierte en la propia sección.
+- **Ticket promedio contra IPC**: el archivo de origen exige comparar contra inflación. El sistema no tiene serie de IPC, así que el indicador se evalúa solo contra la meta interna y la observación recuerda hacer el contraste manualmente.
+- Los análisis de origen, ciudad, tipo de cliente y asesor dependen de campos con baja completitud en la base; cuando vienen vacíos la tabla lo dice explícitamente en vez de mostrar un cero engañoso.
+- El logo usado es `public/logo-didial.png`, que ya existía en el repo y es idéntico al archivo aportado (mismo MD5). No se agregó un duplicado.

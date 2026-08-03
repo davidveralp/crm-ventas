@@ -3,6 +3,7 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from 
 import { supabase, fetchAllRows } from '../lib/supabase'
 import { StatCard } from '../components/UI'
 import { SEGMENTOS, segLabel, fmtCLP, TIPOS_SERVICIO } from '../lib/helpers'
+import * as XLSX from 'xlsx'
 import PanelOperativo from './PanelOperativo'
 import MapaClientes from './MapaClientes'
 
@@ -196,14 +197,147 @@ export default function Informes() {
 
   if (!r) return <div className="text-slate-400 text-sm">Cargando informes…</div>
 
+  const hoyStr = new Date().toLocaleString('es-CL')
+  const slug = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+
+  /* Referencias de gestión comercial. Fuente: estudio de industria de postventa
+     julio 2026 (La Serena–Coquimbo). Órdenes de magnitud, no umbrales contractuales. */
+  const refComercial = [
+    { ind: 'Conversión de campaña', valor: r.conversionGlobal, unidad: '%', meta: 'Sobre 15%', alerta: 'Bajo 5%',
+      estado: r.conversionGlobal >= 15 ? 'En meta' : r.conversionGlobal >= 5 ? 'Vigilar' : 'Fuera de meta',
+      rec: 'Revisar calidad de la audiencia y el guion de contacto antes de aumentar el volumen de llamadas.' },
+    { ind: 'Tiempo de cierre de gestión', valor: r.gestion.diasCierre, unidad: 'días', meta: 'Bajo 7 días', alerta: 'Sobre 15 días',
+      estado: r.gestion.diasCierre <= 7 ? 'En meta' : r.gestion.diasCierre <= 15 ? 'Vigilar' : 'Fuera de meta',
+      rec: 'Una gestión que se alarga pierde intención de compra. Definir cierre forzado por antigüedad.' },
+    { ind: 'Días entre contactos', valor: r.gestion.diasEntreContactos, unidad: 'días', meta: '3 a 7 días', alerta: 'Sobre 14 días',
+      estado: r.gestion.diasEntreContactos >= 3 && r.gestion.diasEntreContactos <= 7 ? 'En meta' : r.gestion.diasEntreContactos <= 14 ? 'Vigilar' : 'Fuera de meta',
+      rec: 'Cadencia irregular de seguimiento. Programar el próximo contacto al cerrar cada actividad.' },
+    { ind: 'Gestiones abiertas', valor: r.gestion.abiertas, unidad: 'unidades', meta: 'Todas con próximo paso', alerta: 'Sin actividad 30 días',
+      estado: 'Vigilar',
+      rec: 'Depurar gestiones sin actividad reciente: inflan el pipeline y ocultan el embudo real.' }
+  ]
+
+  function exportarComercialPDF() { window.print() }
+
+  function exportarComercialExcel() {
+    const wb = XLSX.utils.book_new()
+    const add = (nombre, datos, anchos) => {
+      const ws = XLSX.utils.json_to_sheet(datos)
+      if (anchos) ws['!cols'] = anchos.map((w) => ({ wch: w }))
+      XLSX.utils.book_append_sheet(wb, ws, nombre.slice(0, 31))
+    }
+
+    add('Resumen', [
+      { Indicador: 'Generado', Valor: hoyStr },
+      { Indicador: 'Clientes en cartera', Valor: r.totalClientes },
+      { Indicador: 'Conversión global (%)', Valor: r.conversionGlobal },
+      { Indicador: 'Presupuestos en juego', Valor: Math.round(r.enJuego) },
+      { Indicador: 'Presupuestos aprobados', Valor: Math.round(r.ganado) },
+      { Indicador: 'Facturación asociada', Valor: Math.round(r.facturacion || 0) },
+      { Indicador: 'Gestiones abiertas', Valor: r.gestion.abiertas },
+      { Indicador: 'Gestiones cerradas', Valor: r.gestion.cerradas },
+      { Indicador: 'Días promedio de cierre', Valor: r.gestion.diasCierre },
+      { Indicador: 'Días promedio entre contactos', Valor: r.gestion.diasEntreContactos }
+    ], [32, 18])
+
+    add('KPIs con alerta', refComercial.map((x) => ({
+      Indicador: x.ind, Valor: x.valor, Unidad: x.unidad, Meta: x.meta,
+      'Zona de alerta': x.alerta, Estado: x.estado, 'Recomendación': x.rec
+    })), [28, 10, 10, 22, 20, 14, 62])
+
+    add('Embudo estados', r.embudo.map((x) => ({ Estado: x.name, Clientes: x.value })), [26, 12])
+    add('Segmentos', r.segs.map((x) => ({ Segmento: x.name, Clientes: x.value })), [26, 12])
+    add('Servicios solicitados', r.servicios.map((x) => ({ Servicio: x.name, Solicitudes: x.value })), [30, 12])
+    add('Embudo campanas', r.funnel.map((c) => ({
+      Campaña: c.nombre, Incluidos: c.incluidos, Contactados: c.contactados, 'No contactados': c.noContactados,
+      Devolución: c.devolucion, Agendados: c.agendados, Asistieron: c.asistieron, 'No asistieron': c.noAsistieron,
+      Aceptados: c.aceptados, Rechazados: c.rechazados, 'Conversión %': c.conversion
+    })), [30, 10, 12, 14, 12, 11, 11, 13, 11, 11, 13])
+    add('Vendedores', r.vendedores.map((v) => ({
+      Vendedor: v.nombre, Llamadas: v.llamadas, 'Contactabilidad %': v.contactabilidad,
+      Agendamientos: v.agendamientos, Asistencias: v.asistencias, 'Conversión %': v.conversion
+    })), [24, 11, 17, 14, 12, 13])
+
+    XLSX.writeFile(wb, `informe-comercial-didial-${slug}.xlsx`)
+  }
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-end justify-between flex-wrap gap-3">
+    <div className="space-y-6" id="panel-print">
+      {/* Solo impresión: encabezado y pie repetidos */}
+      <div className="solo-impresion encabezado-hoja">
+        <img src="/logo-didial.png" alt="DIDIAL" />
+        <span>Informe comercial · {hoyStr}</span>
+      </div>
+      <div className="solo-impresion pie-hoja">
+        <span>Servicio Automotriz Didial Ltda. · Gestión comercial</span>
+        <span>Rangos de referencia de gestión, no umbrales contractuales</span>
+      </div>
+
+      {/* Portada (solo impresión) */}
+      <div className="solo-impresion portada">
+        <img src="/logo-didial.png" alt="DIDIAL Servicio Automotriz" className="portada-logo" />
+        <h1>Informe Comercial</h1>
+        <p className="portada-sub">Servicio Automotriz Didial Ltda. · La Serena</p>
+        <table className="portada-datos">
+          <tbody>
+            <tr><td>Clientes en cartera</td><td>{r.totalClientes}</td></tr>
+            <tr><td>Conversión global</td><td>{r.conversionGlobal}%</td></tr>
+            <tr><td>Presupuestos en juego</td><td>{fmtCLP(r.enJuego)}</td></tr>
+            <tr><td>Presupuestos aprobados</td><td>{fmtCLP(r.ganado)}</td></tr>
+            <tr><td>Gestiones abiertas</td><td>{r.gestion.abiertas}</td></tr>
+            <tr><td>Generado</td><td>{hoyStr}</td></tr>
+          </tbody>
+        </table>
+        <p className="portada-nota">
+          Informe de gestión comercial construido sobre los datos del CRM (cartera, campañas y gestiones).
+          No incluye la venta de taller, que se reporta en el Panel Operativo a partir de la base de órdenes de trabajo.
+        </p>
+      </div>
+
+      <div className="flex items-end justify-between flex-wrap gap-3 no-print">
         <div>
           <h1 className="text-xl font-bold text-ink">Informes</h1>
           <p className="text-sm text-slate-500">Resumen de gestión comercial · administración</p>
         </div>
-        <Tabs />
+        <div className="flex items-center gap-2">
+          <button onClick={exportarComercialPDF} className="btn-soft text-sm" title="Abre el diálogo de impresión: elige 'Guardar como PDF'">📄 PDF</button>
+          <button onClick={exportarComercialExcel} className="btn-soft text-sm" title="Descarga el detalle comercial">📊 Excel</button>
+          <Tabs />
+        </div>
+      </div>
+
+      {/* Indicadores comerciales con alerta */}
+      <div className="card p-5">
+        <h3 className="font-semibold text-ink mb-1">Indicadores comerciales con alerta</h3>
+        <p className="text-[11px] text-slate-400 mb-3">
+          Evaluados contra rangos de gestión de postventa (estudio de industria julio 2026, La Serena–Coquimbo).
+          Son órdenes de magnitud de gestión, no percentiles calculados sobre una muestra de talleres chilenos comparables.
+        </p>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {refComercial.map((x) => {
+            const col = x.estado === 'En meta' ? '#1f9d57' : x.estado === 'Vigilar' ? '#e0a020' : '#e0382b'
+            const bg = x.estado === 'En meta' ? '#e8f6ee' : x.estado === 'Vigilar' ? '#fdf6e3' : '#fdecea'
+            return (
+              <div key={x.ind} className="card p-3 border-l-4" style={{ borderLeftColor: col }}>
+                <div className="flex items-start justify-between gap-1">
+                  <span className="text-xs text-slate-500">{x.ind}</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-medium whitespace-nowrap" style={{ background: bg, color: col }}>{x.estado}</span>
+                </div>
+                <div className="text-2xl font-semibold text-ink mt-0.5">{x.valor}{x.unidad === '%' ? '%' : x.unidad === 'días' ? ' d' : ''}</div>
+                <div className="text-[10px] text-slate-400 mt-0.5">Meta: {x.meta}</div>
+              </div>
+            )
+          })}
+        </div>
+        <div className="mt-3 pt-2 border-t border-slate-100 text-[11px] observaciones">
+          <strong className="text-slate-500">Observaciones y recomendaciones</strong>
+          <ul className="mt-1 space-y-1">
+            {refComercial.filter((x) => x.estado !== 'En meta').map((x) => (
+              <li key={x.ind} className="text-slate-600"><strong>{x.ind}:</strong> {x.rec}</li>
+            ))}
+            {refComercial.every((x) => x.estado === 'En meta') && <li className="text-slate-400">Todos los indicadores comerciales están dentro de meta.</li>}
+          </ul>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { fmtMiles } from '../lib/helpers'
 import * as XLSX from 'xlsx'
+import { evaluar as evalKPI, recomendacion, FUENTE_BENCHMARKS, ESTADO } from '../lib/kpiBenchmarks'
 
 /* ---- Paleta del panel (identidad DIDIAL) ---- */
 const C = { graphite: '#111922', red: '#e0382b', green: '#1f9d57', amber: '#e0a020', blue: '#2f6fb0', muted: '#6b7a8a' }
@@ -51,6 +52,19 @@ const num = (v) => { if (v === null || v === undefined || v === '') return 0; co
 const normServ = (s) => txt(s).toUpperCase().replace(/\s+/g, ' ').trim()
 const normMarca = (m) => { const u = txt(m).toUpperCase().replace(/\s+/g, ' ').trim(); return MARCA_MAP[u] || u }
 const esToyota = (r) => normMarca(r['Marca']) === 'TOYOTA'
+/* Sucursal (col. AH): asignación operativa oficial. Es la que manda para las metas.
+   Si la columna viene vacía se cae a la marca del vehículo para no perder la OT. */
+const normSucursal = (r) => {
+  const s = txt(r['Sucursal'])
+  if (s && s !== '0') {
+    const u = s.toUpperCase()
+    if (u.includes('TOYOTA')) return 'Toyota'
+    if (u.includes('MULTI')) return 'Multimarca'
+    if (u.includes('DYP') || u.includes('PINTURA')) return 'DyP'
+    return s
+  }
+  return esToyota(r) ? 'Toyota' : 'Multimarca'
+}
 /* Área: prioriza la columna "Área Servicio" de la hoja (clasificación oficial vía Map_Areas);
    si no viene, se cae al mapeo incrustado por tipo de servicio. */
 const areaDe = (r) => {
@@ -185,6 +199,57 @@ function Gauge({ label, val, meta, pace, isCurrent }) {
   )
 }
 
+/* Insignia de estado del indicador contra el benchmark de industria */
+function Insignia({ r }) {
+  return <span className="text-[10px] px-1.5 py-0.5 rounded font-medium whitespace-nowrap" style={{ background: r.bg, color: r.color }}>{r.label}</span>
+}
+
+/* Observaciones y recomendaciones al pie de una sección.
+   `items` = [{clave, valor, ctx}] — solo se listan los indicadores que NO están en meta. */
+function Observaciones({ items = [], extra = [] }) {
+  const recs = items.map(({ clave, valor, ctx }) => {
+    const rec = recomendacion(clave, valor, ctx)
+    return rec ? { clave, ...rec } : null
+  }).filter(Boolean)
+  if (!recs.length && !extra.length) {
+    return (
+      <div className="mt-3 pt-2 border-t border-slate-100 text-[11px] text-slate-400 observaciones">
+        <strong className="text-slate-500">Observaciones:</strong> los indicadores de esta sección están dentro de meta.
+      </div>
+    )
+  }
+  return (
+    <div className="mt-3 pt-2 border-t border-slate-100 text-[11px] observaciones">
+      <strong className="text-slate-500">Observaciones y recomendaciones</strong>
+      <ul className="mt-1 space-y-1">
+        {recs.map((r) => (
+          <li key={r.clave} className="flex gap-1.5 items-start">
+            <Insignia r={r.estado} />
+            <span className="text-slate-600"><strong>{r.estado.indicador}:</strong> {r.texto}</span>
+          </li>
+        ))}
+        {extra.map((t, i) => <li key={'x' + i} className="text-slate-600">• {t}</li>)}
+      </ul>
+    </div>
+  )
+}
+
+/* KPI con evaluación contra benchmark */
+const KPIb = ({ titulo, valor, sub, clave, raw, ctx }) => {
+  const r = evalKPI(clave, raw, ctx)
+  return (
+    <div className="card p-3 border-l-4" style={{ borderLeftColor: r.color }}>
+      <div className="flex items-start justify-between gap-1">
+        <span className="text-xs text-slate-500">{titulo}</span>
+        <Insignia r={r} />
+      </div>
+      <div className="text-2xl font-semibold text-ink mt-0.5">{valor}</div>
+      <div className="text-[11px] text-slate-400">{sub}</div>
+      <div className="text-[10px] text-slate-400 mt-0.5">Meta: {r.meta}</div>
+    </div>
+  )
+}
+
 const KPI = ({ titulo, valor, color, sub }) => (
   <div className="card p-4 border-t-4" style={{ borderTopColor: color || '#cbd5e1' }}>
     <div className="text-xs text-slate-500">{titulo}</div>
@@ -294,12 +359,15 @@ export default function PanelOperativo() {
     const finDia = new Date(rangoFin.getFullYear(), rangoFin.getMonth(), rangoFin.getDate(), 23, 59, 59)
     const periodoRows = raw.filter((r) => { const d = parseGvizDate(r['F. Ingreso']); return d && d >= rangoIni && d <= finDia })
     const areaRows = area === 'Todas' ? periodoRows : periodoRows.filter((r) => areaDe(r) === area)
-    const rows = brand ? areaRows.filter((r) => esToyota(r) === (brand === 'Toyota')) : areaRows
+    const rows = brand ? areaRows.filter((r) => normSucursal(r) === brand) : areaRows
 
-    // Gauges: total del período por marca (sin filtro de área/donut)
-    const ventasToyota = periodoRows.filter(esToyota).reduce((s, r) => s + num(r[f]), 0)
-    const ventasMM = periodoRows.filter((r) => !esToyota(r)).reduce((s, r) => s + num(r[f]), 0)
-    const ventasTotal = ventasToyota + ventasMM
+    // Gauges y metas: por SUCURSAL (col. AH), la asignación operativa oficial
+    const ventasToyota = periodoRows.filter((r) => normSucursal(r) === 'Toyota').reduce((s, r) => s + num(r[f]), 0)
+    const ventasMM = periodoRows.filter((r) => normSucursal(r) === 'Multimarca').reduce((s, r) => s + num(r[f]), 0)
+    const ventasOtras = periodoRows.filter((r) => !['Toyota', 'Multimarca'].includes(normSucursal(r))).reduce((s, r) => s + num(r[f]), 0)
+    const ventasTotal = ventasToyota + ventasMM + ventasOtras
+    // Discrepancia entre sucursal asignada y marca del vehículo (dato de control)
+    const discrepancia = periodoRows.filter((r) => normSucursal(r) === 'Toyota' ? !esToyota(r) : (normSucursal(r) === 'Multimarca' && esToyota(r))).length
 
     // Metas prorrateadas por meses equivalentes del rango
     const mesesEq = mesesEquivalentes(rangoIni, rangoFin)
@@ -318,6 +386,11 @@ export default function PanelOperativo() {
     const conVenta = rows.filter((r) => num(r[f]) > 0)
     const ticket = conVenta.length ? conVenta.reduce((s, r) => s + num(r[f]), 0) / conVenta.length : 0
     const garantias = rows.filter((r) => txt(r['Tipo de Ingreso']).toLowerCase() === 'garantia').length
+    // Garantías por sucursal: el tope de 3 aplica a CADA sucursal, no al total
+    const garantiasPorSuc = {}
+    rows.filter((r) => txt(r['Tipo de Ingreso']).toLowerCase() === 'garantia')
+      .forEach((r) => { const s = normSucursal(r); garantiasPorSuc[s] = (garantiasPorSuc[s] || 0) + 1 })
+    const topeGarantias = Math.round(3 * Math.max(mesesEq, 1))
     const vehiculos = rows.filter((r) => txt(r['N° Orden Trabajo']) !== '').length
     const nps = npsCalc(rows)
     const gen = rows.filter((r) => txt(r['N° Presupuesto']) !== '').length
@@ -326,6 +399,34 @@ export default function PanelOperativo() {
     const cumpl = (metaT + metaM) ? ventasTotal / (metaT + metaM) * 100 : 0
     const perm = avg(rows, 'Permanencia'), permP = avg(rows, 'Días Recomendados Reparación')
     const enTaller = raw.filter((r) => txt(r['Estado Vehículo']).toLowerCase() === 'en taller').length
+
+    // Permanencia: conteo de vehículos por tramo (>5 días crítico, 2–5 alerta)
+    const permVals = rows.map((r) => num(r['Permanencia'])).filter((v) => v > 0)
+    const permSobre5 = permVals.filter((v) => v > 5).length
+    const permEntre2y5 = permVals.filter((v) => v >= 2 && v <= 5).length
+    const permDetalle = rows
+      .filter((r) => num(r['Permanencia']) > 5)
+      .map((r) => ({
+        ot: txt(r['N° Orden Trabajo']), patente: txt(r['Patente']), marca: normMarca(r['Marca']),
+        sucursal: normSucursal(r), servicio: normServ(r['Tipo Servicio 1']),
+        dias: num(r['Permanencia']), venta: num(r[f]), estado: txt(r['Estado Vehículo'])
+      }))
+      .sort((a, b) => b.dias - a.dias)
+
+    // Calidad del dato (habilita el resto del tablero)
+    const nOT = rows.length || 1
+    const covKm = rows.filter((r) => num(r['Kilometraje']) > 0).length / nOT * 100
+    const covContacto = rows.filter((r) => txt(r['Teléfono']) !== '' || txt(r['E-Mail']) !== '').length / nOT * 100
+    const sinTipoServ = rows.filter((r) => { const s = normServ(r['Tipo Servicio 1']); return !s || s === '0' }).length / nOT * 100
+
+    // Mix de ingreso (mano de obra vs repuestos+lubricantes)
+    const sumCol = (col) => col ? rows.reduce((s, r) => s + num(r[col]), 0) : 0
+    const colMO = cols.sub.find((s) => s.k === 'mo')?.col
+    const colRep = cols.sub.find((s) => s.k === 'rep')?.col
+    const colLub = cols.sub.find((s) => s.k === 'lub')?.col
+    const ventaRows = rows.reduce((s, r) => s + num(r[f]), 0) || 1
+    const moPct = sumCol(colMO) / ventaRows * 100
+    const repPct = (sumCol(colRep) + sumCol(colLub)) / ventaRows * 100
 
     // Movimiento
     let mov = []
@@ -351,6 +452,92 @@ export default function PanelOperativo() {
 
     const porMarca = topAgg(rows, 'Marca', f, 8, (m) => normMarca(m))
     const porServicio = topAgg(rows, 'Tipo Servicio 1', f, 8)
+
+    // ================= ANÁLISIS DE MERCADO =================
+    // Retención y recurrencia se calculan sobre TODA la historia, no sobre el período:
+    // preguntar "¿volvió el cliente?" exige mirar más allá del rango seleccionado.
+    const patHist = {}
+    raw.forEach((r) => {
+      const p = txt(r['Patente']).toUpperCase().replace(/[^A-Z0-9]/g, '')
+      if (!p) return
+      const d = parseGvizDate(r['F. Ingreso'])
+      if (!patHist[p]) patHist[p] = { n: 0, fechas: [], venta: 0 }
+      patHist[p].n++; patHist[p].venta += num(r[f]); if (d) patHist[p].fechas.push(d)
+    })
+    const patentes = Object.values(patHist)
+    const totalPatentes = patentes.length
+    const unaVisita = patentes.filter((p) => p.n === 1).length
+    const unaVisitaPct = totalPatentes ? unaVisita / totalPatentes * 100 : 0
+    // Patentes únicas del período y frecuencia
+    const patPeriodo = new Set()
+    rows.forEach((r) => { const p = txt(r['Patente']).toUpperCase().replace(/[^A-Z0-9]/g, ''); if (p) patPeriodo.add(p) })
+    const frecuencia = patPeriodo.size ? rows.length / patPeriodo.size : 0
+    // Distribución de visitas por vehículo
+    const distVisitas = [1, 2, 3, 4].map((n) => ({
+      name: n === 4 ? '4 o más' : n + (n === 1 ? ' visita' : ' visitas'),
+      value: patentes.filter((p) => n === 4 ? p.n >= 4 : p.n === n).length
+    }))
+    // Cohorte: patentes cuya PRIMERA visita cae en el período y que volvieron después
+    const cohorte = []
+    Object.entries(patHist).forEach(([p, x]) => {
+      if (!x.fechas.length) return
+      const primera = new Date(Math.min(...x.fechas))
+      if (primera >= rangoIni && primera <= finDia) cohorte.push({ p, volvio: x.fechas.some((d) => d > finDia) })
+    })
+    const retencion = cohorte.length ? cohorte.filter((c) => c.volvio).length / cohorte.length * 100 : 0
+
+    // Parque vehicular: antigüedad y kilometraje
+    const anioActual = new Date().getFullYear()
+    const edades = rows.map((r) => num(r['Año'])).filter((a) => a > 1950 && a <= anioActual + 1).map((a) => anioActual - a)
+    const edadProm = edades.length ? edades.reduce((s, x) => s + x, 0) / edades.length : 0
+    const tramosEdad = [['0-3 años', 0, 3], ['4-7 años', 4, 7], ['8-12 años', 8, 12], ['13+ años', 13, 99]]
+      .map(([name, a, b]) => ({ name, value: edades.filter((e) => e >= a && e <= b).length }))
+    const kms = rows.map((r) => num(r['Kilometraje'])).filter((k) => k > 0 && k < 1000000)
+    const kmProm = kms.length ? kms.reduce((s, x) => s + x, 0) / kms.length : 0
+    const tramosKm = [['Bajo 50k', 0, 50000], ['50k-100k', 50000, 100000], ['100k-150k', 100000, 150000], ['150k-200k', 150000, 200000], ['200k+', 200000, 1e9]]
+      .map(([name, a, b]) => ({ name, value: kms.filter((k) => k >= a && k < b).length }))
+
+    // Origen del cliente y geografía
+    const agrupa = (campo, norm) => {
+      const m = {}
+      rows.forEach((r) => { const v = (norm ? norm(r[campo]) : txt(r[campo])); if (!v || v === '0') return; if (!m[v]) m[v] = { ot: 0, venta: 0 }; m[v].ot++; m[v].venta += num(r[f]) })
+      return Object.entries(m).map(([name, x]) => ({ name, ot: x.ot, venta: x.venta })).sort((a, b) => b.venta - a.venta)
+    }
+    const porOrigen = agrupa('Enc. Cómo conoció DIDIAL')
+    const porCiudad = agrupa('Ciudad', (v) => txt(v).toUpperCase())
+    const porTipoCliente = agrupa('Tipo Cliente', (v) => txt(v).toUpperCase())
+    const ventaEmpresa = porTipoCliente.filter((x) => /EMPRESA|FLOTA|CONVENIO/.test(x.name)).reduce((s, x) => s + x.venta, 0)
+    const empresaPct = ventaRows ? ventaEmpresa / ventaRows * 100 : 0
+
+    // Concentración de clientes (top 5 propietarios)
+    const porPropietario = agrupa('Propietario', (v) => txt(v).toUpperCase())
+    const top5Venta = porPropietario.slice(0, 5).reduce((s, x) => s + x.venta, 0)
+    const concentracion = ventaRows ? top5Venta / ventaRows * 100 : 0
+
+    // Rendimiento por asesor
+    const porAsesor = agrupa('Asesor de Servicio').map((x) => ({ ...x, ticket: x.ot ? x.venta / x.ot : 0 }))
+
+    // Desempeño por sucursal (metas)
+    const sucursales = {}
+    periodoRows.forEach((r) => {
+      const s = normSucursal(r)
+      if (!sucursales[s]) sucursales[s] = { ot: 0, venta: 0, garantias: 0, conVenta: 0 }
+      sucursales[s].ot++; const v = num(r[f]); sucursales[s].venta += v; if (v > 0) sucursales[s].conVenta++
+      if (txt(r['Tipo de Ingreso']).toLowerCase() === 'garantia') sucursales[s].garantias++
+    })
+    const metaPorSuc = { Toyota: metaT, Multimarca: metaM }
+    const sucursalLista = Object.entries(sucursales).map(([nombre, x]) => ({
+      nombre, ...x,
+      ticket: x.conVenta ? x.venta / x.conVenta : 0,
+      meta: metaPorSuc[nombre] || 0,
+      cumpl: metaPorSuc[nombre] ? x.venta / metaPorSuc[nombre] * 100 : null
+    })).sort((a, b) => b.venta - a.venta)
+
+    const mercado = {
+      totalPatentes, unaVisita, unaVisitaPct, frecuencia, patPeriodo: patPeriodo.size, distVisitas,
+      cohorte: cohorte.length, retencion, edadProm, tramosEdad, kmProm, tramosKm,
+      porOrigen, porCiudad, porTipoCliente, empresaPct, porPropietario, concentracion, porAsesor
+    }
 
     // ---- Centros de ingreso (clasificación contable de la hoja) ----
     // Usa SOLO el filtro de período: el centro es una clasificación alternativa a marca/área,
@@ -449,7 +636,9 @@ export default function PanelOperativo() {
       .sort((a, b) => b.v - a.v)
 
     return {
-      ventasToyota, ventasMM, ventasTotal, metaT, metaM, mesesEq, pace, isCurrent, ticket, garantias, vehiculos, nps,
+      ventasToyota, ventasMM, ventasOtras, ventasTotal, metaT, metaM, mesesEq, pace, isCurrent, ticket, garantias, vehiculos, nps,
+      garantiasPorSuc, topeGarantias, discrepancia, sucursalLista,
+      permSobre5, permEntre2y5, permDetalle, covKm, covContacto, sinTipoServ, moPct, repPct, mercado,
       gen, apr, aprPct, cumpl, perm, permP, enTaller, mov, vt, vm, porMarca, porServicio,
       marcasStats, cruce, centros, _rows: rows, _periodo: periodoRows, _rango: { ini: rangoIni, fin: rangoFin },
       tecnicos, moTotal, dyp: { rows: dypRows, ventas: dypVentas, mo: dypMo, ticket: dypTicket, det: dypDet, servicios: dypServicios }
@@ -556,7 +745,72 @@ export default function PanelOperativo() {
       add('Centros evolucion', D.centros.serie, [12, 14, 14, 14, 14, 14, 14, 14])
     }
 
-    // 7) Técnicos con comisión
+    // 7) Sucursales y metas
+    add('Sucursales', D.sucursalLista.map((s) => ({
+      Sucursal: s.nombre, OTs: s.ot, Ventas: Math.round(s.venta),
+      Meta: Math.round(s.meta), '% Cumplimiento': s.cumpl == null ? '' : +s.cumpl.toFixed(1),
+      'Ticket promedio': Math.round(s.ticket), Garantías: s.garantias, 'Tope garantías': D.topeGarantias
+    })), [16, 8, 14, 14, 14, 16, 11, 13])
+
+    // 8) Indicadores con alerta contra referencia de industria
+    const evalRow = (clave, valor, ctx, unidad) => {
+      const r = evalKPI(clave, valor, ctx)
+      return { Indicador: r.indicador, Valor: typeof valor === 'number' ? +valor.toFixed(2) : valor, Unidad: unidad, Meta: r.meta, 'Zona de alerta': r.alerta, Estado: r.label, 'Para qué sirve': r.nota }
+    }
+    add('KPIs con alerta', [
+      evalRow('cumplimientoMeta', D.cumpl, null, '%'),
+      evalRow('ticket', D.ticket, { metaTicket: cfg.meta_ticket }, '$'),
+      evalRow('permanencia', D.perm, null, 'días'),
+      evalRow('detenidos', D.permSobre5, { totalOT: D.vehiculos }, 'unidades'),
+      evalRow('moSobreVenta', D.moPct, null, '%'),
+      evalRow('repSobreVenta', D.repPct, null, '%'),
+      evalRow('covKm', D.covKm, null, '%'),
+      evalRow('covContacto', D.covContacto, null, '%'),
+      evalRow('sinTipoServicio', D.sinTipoServ, null, '%'),
+      evalRow('frecuencia', D.mercado.frecuencia, null, 'veces'),
+      evalRow('unaVisita', D.mercado.unaVisitaPct, null, '%'),
+      evalRow('clienteEmpresa', D.mercado.empresaPct, null, '%'),
+      evalRow('concentracion', D.mercado.concentracion, null, '%'),
+      evalRow('conversion', D.aprPct, null, '%'),
+      ...D.sucursalLista.map((s) => ({ ...evalRow('garantias', s.garantias, { tope: D.topeGarantias }, 'unidades'), Indicador: `Garantías · ${s.nombre}` })),
+      { Indicador: '', Valor: '', Unidad: '', Meta: '', 'Zona de alerta': '', Estado: '', 'Para qué sirve': FUENTE_BENCHMARKS }
+    ], [34, 12, 10, 24, 22, 14, 60])
+
+    // 9) Mercado
+    add('Mercado retencion', [
+      { Indicador: 'Patentes únicas en toda la base', Valor: D.mercado.totalPatentes },
+      { Indicador: 'Patentes únicas del período', Valor: D.mercado.patPeriodo },
+      { Indicador: 'Vehículos de una sola visita', Valor: D.mercado.unaVisita },
+      { Indicador: '% de una sola visita', Valor: +D.mercado.unaVisitaPct.toFixed(2) },
+      { Indicador: 'Frecuencia de visita', Valor: +D.mercado.frecuencia.toFixed(2) },
+      { Indicador: 'Patentes estrenadas en el período (cohorte)', Valor: D.mercado.cohorte },
+      { Indicador: '% de la cohorte que volvió', Valor: +D.mercado.retencion.toFixed(2) },
+      { Indicador: 'Concentración top 5 clientes (%)', Valor: +D.mercado.concentracion.toFixed(2) },
+      { Indicador: 'Antigüedad promedio del parque (años)', Valor: +D.mercado.edadProm.toFixed(1) },
+      { Indicador: 'Kilometraje promedio', Valor: Math.round(D.mercado.kmProm) }
+    ], [42, 16])
+    add('Mercado parque', [
+      ...D.mercado.tramosEdad.map((x) => ({ Dimensión: 'Antigüedad', Tramo: x.name, Vehículos: x.value })),
+      ...D.mercado.tramosKm.map((x) => ({ Dimensión: 'Kilometraje', Tramo: x.name, Vehículos: x.value }))
+    ], [14, 16, 12])
+    add('Mercado clientes', [
+      ...D.mercado.porTipoCliente.map((x) => ({ Dimensión: 'Tipo de cliente', Valor: x.name, OTs: x.ot, Venta: Math.round(x.venta) })),
+      ...D.mercado.porCiudad.map((x) => ({ Dimensión: 'Ciudad', Valor: x.name, OTs: x.ot, Venta: Math.round(x.venta) })),
+      ...D.mercado.porOrigen.map((x) => ({ Dimensión: 'Cómo conoció DIDIAL', Valor: x.name, OTs: x.ot, Venta: Math.round(x.venta) }))
+    ], [22, 30, 8, 14])
+    add('Mayores clientes', D.mercado.porPropietario.slice(0, 30).map((x, i) => ({
+      '#': i + 1, Cliente: x.name, OTs: x.ot, Venta: Math.round(x.venta),
+      '% del período': D.ventasTotal ? +(x.venta / D.ventasTotal * 100).toFixed(2) : 0
+    })), [5, 34, 8, 14, 13])
+    add('Asesores', D.mercado.porAsesor.map((x) => ({ Asesor: x.name, OTs: x.ot, Venta: Math.round(x.venta), 'Ticket promedio': Math.round(x.ticket) })), [24, 8, 14, 16])
+
+    // 10) Permanencia — listado completo, no solo los 20 de pantalla
+    add('Permanencia', D.permDetalle.map((x) => ({
+      'N° OT': x.ot, Patente: x.patente, Marca: x.marca, Sucursal: x.sucursal,
+      Servicio: x.servicio, 'Días': +x.dias.toFixed(1), Venta: Math.round(x.venta), 'Estado vehículo': x.estado
+    })), [12, 12, 16, 14, 30, 8, 14, 16])
+
+    // 11) Técnicos con comisión
     add('Tecnicos comision', D.tecnicos.map((x) => ({ Técnico: x.t, OTs: x.ot, 'MO neta': Math.round(x.mo), 'Comisión estimada': Math.round(x.com) })), [24, 8, 14, 18])
 
     // 8) Movimiento
@@ -602,11 +856,56 @@ export default function PanelOperativo() {
 
   return (
     <div className="space-y-5" id="panel-print">
+      {/* ===== Solo impresión: encabezado y pie que se repiten en cada página ===== */}
+      <div className="solo-impresion encabezado-hoja">
+        <img src="/logo-didial.png" alt="DIDIAL" />
+        <span>Panel operativo · {etiquetaPeriodo}</span>
+      </div>
+      <div className="solo-impresion pie-hoja">
+        <span>Servicio Automotriz Didial Ltda. · Generado el {new Date().toLocaleDateString('es-CL')}</span>
+        <span>Rangos de referencia de gestión, no umbrales contractuales</span>
+      </div>
+
+      {/* ===== Portada (solo impresión) ===== */}
+      <div className="solo-impresion portada">
+        <img src="/logo-didial.png" alt="DIDIAL Servicio Automotriz" className="portada-logo" />
+        <h1>Informe de Panel Operativo</h1>
+        <p className="portada-sub">Servicio Automotriz Didial Ltda. · La Serena</p>
+        <table className="portada-datos">
+          <tbody>
+            <tr><td>Período analizado</td><td>{etiquetaPeriodo}</td></tr>
+            <tr><td>Base de los montos</td><td>{net ? 'Neto (sin IVA)' : 'Bruto (con IVA)'}</td></tr>
+            <tr><td>Sucursal</td><td>{brand || 'Todas'}</td></tr>
+            <tr><td>Área de servicio</td><td>{area}</td></tr>
+            <tr><td>Órdenes de trabajo</td><td>{D.vehiculos.toLocaleString('es-CL')}</td></tr>
+            <tr><td>Venta del período</td><td>{CLP(D.ventasTotal)}</td></tr>
+            <tr><td>Generado</td><td>{new Date().toLocaleString('es-CL')}</td></tr>
+          </tbody>
+        </table>
+        <div className="portada-rectores">
+          <h2>Indicadores rectores</h2>
+          <table>
+            <tbody>
+              <tr><td>Cumplimiento de metas</td><td>{D.cumpl.toFixed(0)}%</td></tr>
+              <tr><td>Ticket promedio</td><td>{CLP(D.ticket)}</td></tr>
+              <tr><td>Vehículos de una sola visita</td><td>{D.mercado.unaVisitaPct.toFixed(1)}%</td></tr>
+              <tr><td>Frecuencia de visita</td><td>{D.mercado.frecuencia.toFixed(2)}</td></tr>
+              <tr><td>Vehículos sobre 5 días de permanencia</td><td>{D.permSobre5}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p className="portada-nota">
+          Los rangos de referencia provienen de literatura de gestión de postventa y del estudio de industria
+          de julio 2026 (La Serena–Coquimbo). Son órdenes de magnitud de gestión, no percentiles calculados
+          sobre una muestra de talleres chilenos comparables.
+        </p>
+      </div>
+
       {/* Cabecera visible solo al imprimir/exportar a PDF */}
       <div className="hidden print:block mb-2">
         <h1 className="text-xl font-bold text-ink">Panel operativo · Servicio Automotriz Didial</h1>
         <p className="text-xs text-slate-500">
-          Período: {etiquetaPeriodo} · Montos: {net ? 'Neto' : 'Bruto'} · Marca: {brand || 'Todas'} · Área: {area} · Generado: {new Date().toLocaleString('es-CL')}
+          Período: {etiquetaPeriodo} · Montos: {net ? 'Neto' : 'Bruto'} · Sucursal: {brand || 'Todas'} · Área: {area} · Generado: {new Date().toLocaleString('es-CL')}
         </p>
       </div>
 
@@ -675,6 +974,277 @@ export default function PanelOperativo() {
         <KPI titulo="Ventas del período" valor={CLP(D.ventasTotal)} color={C.green} sub={net ? 'Neto' : 'Bruto'} />
         <KPI titulo="MO comisionable" valor={CLP(D.moTotal)} color={C.green} sub={'Comisión ' + CLP(D.moTotal * cfg.comision_pct)} />
       </div>
+
+      {/* ---- Indicadores con alerta contra referencia de industria ---- */}
+      <div className="card p-4">
+        <h3 className="font-semibold text-ink mb-1">Indicadores con alerta</h3>
+        <p className="text-[11px] text-slate-400 mb-3">Evaluados contra rangos de gestión de postventa. {FUENTE_BENCHMARKS}</p>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <KPIb titulo="Presupuestos del período" valor={D.gen} sub={`${D.apr} con documento · ${D.aprPct}%`} clave="conversion" raw={D.aprPct} />
+          <KPIb titulo="Vehículos sobre 5 días" valor={D.permSobre5} sub={`${D.permEntre2y5} entre 2 y 5 días · ${D.vehiculos} OTs`} clave="detenidos" raw={D.permSobre5} ctx={{ totalOT: D.vehiculos }} />
+          <KPIb titulo="Permanencia promedio" valor={D.perm.toFixed(1) + ' días'} sub="Malo sobre 5 · alerta desde 2" clave="permanencia" raw={D.perm} />
+          <KPIb titulo="Ticket promedio" valor={CLP(D.ticket)} sub={'Meta mín. ' + CLP(cfg.meta_ticket)} clave="ticket" raw={D.ticket} ctx={{ metaTicket: cfg.meta_ticket }} />
+          <KPIb titulo="Mano de obra sobre venta" valor={D.moPct.toFixed(1) + '%'} sub="Rango sano 40–48%" clave="moSobreVenta" raw={D.moPct} />
+          <KPIb titulo="Repuestos sobre venta" valor={D.repPct.toFixed(1) + '%'} sub="Rango sano 50–58%" clave="repSobreVenta" raw={D.repPct} />
+          <KPIb titulo="Cobertura de kilometraje" valor={D.covKm.toFixed(1) + '%'} sub="Habilita el aviso de mantención" clave="covKm" raw={D.covKm} />
+          <KPIb titulo="Cobertura de contacto" valor={D.covContacto.toFixed(1) + '%'} sub="Teléfono o correo registrado" clave="covContacto" raw={D.covContacto} />
+          <KPIb titulo="OTs sin tipo de servicio" valor={D.sinTipoServ.toFixed(1) + '%'} sub="No se pueden analizar" clave="sinTipoServicio" raw={D.sinTipoServ} />
+          <KPIb titulo="Cumplimiento de metas" valor={D.cumpl.toFixed(0) + '%'} sub={'Meta prorrateada ' + CLP(D.metaT + D.metaM)} clave="cumplimientoMeta" raw={D.cumpl} />
+          <KPIb titulo="Frecuencia de visita" valor={D.mercado.frecuencia.toFixed(2)} sub={`${D.mercado.patPeriodo} patentes únicas`} clave="frecuencia" raw={D.mercado.frecuencia} />
+          <KPIb titulo="Peso cliente empresa" valor={D.mercado.empresaPct.toFixed(1) + '%'} sub="Nivela la agenda" clave="clienteEmpresa" raw={D.mercado.empresaPct} />
+        </div>
+        <Observaciones items={[
+          { clave: 'conversion', valor: D.aprPct },
+          { clave: 'detenidos', valor: D.permSobre5, ctx: { totalOT: D.vehiculos } },
+          { clave: 'permanencia', valor: D.perm },
+          { clave: 'ticket', valor: D.ticket, ctx: { metaTicket: cfg.meta_ticket } },
+          { clave: 'moSobreVenta', valor: D.moPct },
+          { clave: 'repSobreVenta', valor: D.repPct },
+          { clave: 'covKm', valor: D.covKm },
+          { clave: 'covContacto', valor: D.covContacto },
+          { clave: 'sinTipoServicio', valor: D.sinTipoServ },
+          { clave: 'cumplimientoMeta', valor: D.cumpl },
+          { clave: 'frecuencia', valor: D.mercado.frecuencia },
+          { clave: 'clienteEmpresa', valor: D.mercado.empresaPct }
+        ]} />
+      </div>
+
+      {/* ---- Metas y garantías por sucursal ---- */}
+      <div className="card p-4">
+        <h3 className="font-semibold text-ink mb-1">Desempeño por sucursal</h3>
+        <p className="text-[11px] text-slate-400 mb-3">
+          Sucursal según la columna <code>Sucursal</code> (AH) de la hoja, que es la asignación operativa oficial.
+          {D.discrepancia > 0 && <> {D.discrepancia} OTs tienen una marca de vehículo que no coincide con su sucursal asignada.</>}
+        </p>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-slate-400 text-xs border-b">
+              <th className="text-left py-1">Sucursal</th><th className="text-right">OTs</th><th className="text-right">Ventas</th>
+              <th className="text-right">Meta</th><th className="text-right">Cumpl.</th><th className="text-right">Ticket</th>
+              <th className="text-right">Garantías</th><th className="text-center px-2">Estado garantías</th>
+            </tr>
+          </thead>
+          <tbody>
+            {D.sucursalLista.map((s) => {
+              const g = evalKPI('garantias', s.garantias, { tope: D.topeGarantias })
+              return (
+                <tr key={s.nombre} className="border-b last:border-0">
+                  <td className="py-1.5 font-medium text-ink">{s.nombre}</td>
+                  <td className="text-right">{s.ot}</td>
+                  <td className="text-right">{CLP(s.venta)}</td>
+                  <td className="text-right text-slate-400">{s.meta ? CLP(s.meta) : '—'}</td>
+                  <td className="text-right font-medium" style={{ color: s.cumpl == null ? C.muted : s.cumpl >= 100 ? C.green : s.cumpl >= 80 ? C.amber : C.red }}>
+                    {s.cumpl == null ? '—' : s.cumpl.toFixed(0) + '%'}
+                  </td>
+                  <td className="text-right">{CLP(s.ticket)}</td>
+                  <td className="text-right">{s.garantias} <span className="text-slate-400 text-xs">/ {D.topeGarantias}</span></td>
+                  <td className="text-center px-2"><Insignia r={g} /></td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+        <Observaciones
+          items={D.sucursalLista.map((s) => ({ clave: 'garantias', valor: s.garantias, ctx: { tope: D.topeGarantias } })).slice(0, 1)}
+          extra={[
+            `El tope de garantías es de 3 por sucursal al mes; para este período equivale a ${D.topeGarantias}.`,
+            ...D.sucursalLista.filter((s) => s.garantias > D.topeGarantias).map((s) => `${s.nombre} supera el tope con ${s.garantias} garantías: analizar causa raíz de cada una.`),
+            ...(D.discrepancia > 0 ? [`${D.discrepancia} OTs tienen marca y sucursal discordantes. Revisar la asignación en el origen antes de usar estas cifras para comisiones.`] : []),
+            ...(D.ventasOtras > 0 ? [`Hay ${CLP(D.ventasOtras)} en sucursales distintas de Toyota y Multimarca, sin meta definida.`] : [])
+          ]}
+        />
+      </div>
+
+      {/* ---- Análisis de mercado ---- */}
+      <div className="card p-4">
+        <h3 className="font-semibold text-ink mb-1">Retención y recurrencia</h3>
+        <p className="text-[11px] text-slate-400 mb-3">
+          Calculado sobre <strong>toda la historia</strong> de la base ({D.mercado.totalPatentes.toLocaleString('es-CL')} patentes), no solo el período:
+          preguntar si un cliente volvió exige mirar más allá del rango seleccionado.
+        </p>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+          <KPIb titulo="Vehículos de una sola visita" valor={D.mercado.unaVisitaPct.toFixed(1) + '%'} sub={`${D.mercado.unaVisita.toLocaleString('es-CL')} de ${D.mercado.totalPatentes.toLocaleString('es-CL')} patentes`} clave="unaVisita" raw={D.mercado.unaVisitaPct} />
+          <KPIb titulo="Frecuencia de visita" valor={D.mercado.frecuencia.toFixed(2)} sub="OTs por patente en el período" clave="frecuencia" raw={D.mercado.frecuencia} />
+          <KPI titulo="Retención de la cohorte" valor={D.mercado.cohorte ? D.mercado.retencion.toFixed(1) + '%' : '—'} color={D.mercado.retencion >= 60 ? C.green : D.mercado.retencion >= 40 ? C.amber : C.red}
+               sub={D.mercado.cohorte ? `${D.mercado.cohorte} patentes estrenadas en el período` : 'Sin estrenos en el período'} />
+          <KPIb titulo="Concentración top 5" valor={D.mercado.concentracion.toFixed(1) + '%'} sub="Venta de los 5 mayores clientes" clave="concentracion" raw={D.mercado.concentracion} />
+        </div>
+        <div className="grid lg:grid-cols-2 gap-4">
+          <div>
+            <h4 className="text-sm font-semibold text-ink mb-1">Distribución de visitas por vehículo</h4>
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={D.mercado.distVisitas}>
+                <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                <YAxis tick={{ fontSize: 10 }} width={40} />
+                <Tooltip formatter={(v) => v + ' vehículos'} />
+                <Bar dataKey="value" fill={C.blue} radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <div>
+            <h4 className="text-sm font-semibold text-ink mb-1">Mayores clientes del período</h4>
+            <table className="w-full text-xs">
+              <thead><tr className="text-slate-400 border-b"><th className="text-left py-1">Cliente</th><th className="text-right">OTs</th><th className="text-right">Venta</th><th className="text-right">%</th></tr></thead>
+              <tbody>
+                {D.mercado.porPropietario.slice(0, 6).map((x) => (
+                  <tr key={x.name} className="border-b last:border-0">
+                    <td className="py-1 truncate max-w-[160px]">{x.name}</td>
+                    <td className="text-right">{x.ot}</td>
+                    <td className="text-right">{CLPc(x.venta)}</td>
+                    <td className="text-right text-slate-400">{D.ventasTotal ? (x.venta / D.ventasTotal * 100).toFixed(1) : 0}%</td>
+                  </tr>
+                ))}
+                {!D.mercado.porPropietario.length && <tr><td colSpan={4} className="text-slate-400 py-2">Sin propietarios registrados.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <Observaciones items={[
+          { clave: 'unaVisita', valor: D.mercado.unaVisitaPct },
+          { clave: 'frecuencia', valor: D.mercado.frecuencia },
+          { clave: 'concentracion', valor: D.mercado.concentracion }
+        ]} extra={[
+          D.mercado.retencion < 60 && D.mercado.cohorte
+            ? `La retención de la cohorte del período es ${D.mercado.retencion.toFixed(1)}%, bajo la meta de 60%. Es el indicador que más determina el valor de largo plazo del negocio.`
+            : null,
+          'La retención se mide por cohorte y solo es concluyente a 12 meses de distancia; períodos recientes la subestiman por definición.'
+        ].filter(Boolean)} />
+      </div>
+
+      {/* Parque vehicular */}
+      <div className="card p-4">
+        <h3 className="font-semibold text-ink mb-1">Parque vehicular atendido</h3>
+        <p className="text-[11px] text-slate-400 mb-3">Antigüedad y kilometraje de los vehículos del período. Define qué servicios tienen demanda estructural.</p>
+        <div className="grid lg:grid-cols-2 gap-4">
+          <div>
+            <h4 className="text-sm font-semibold text-ink mb-1">Antigüedad · promedio {D.mercado.edadProm.toFixed(1)} años</h4>
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={D.mercado.tramosEdad}>
+                <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                <YAxis tick={{ fontSize: 10 }} width={40} />
+                <Tooltip formatter={(v) => v + ' vehículos'} />
+                <Bar dataKey="value" fill={C.graphite} radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <div>
+            <h4 className="text-sm font-semibold text-ink mb-1">Kilometraje · promedio {fmtMiles(Math.round(D.mercado.kmProm))} km</h4>
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={D.mercado.tramosKm}>
+                <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                <YAxis tick={{ fontSize: 10 }} width={40} />
+                <Tooltip formatter={(v) => v + ' vehículos'} />
+                <Bar dataKey="value" fill={C.amber} radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+        <Observaciones items={[{ clave: 'covKm', valor: D.covKm }]} extra={[
+          D.mercado.edadProm >= 8
+            ? `El parque promedia ${D.mercado.edadProm.toFixed(1)} años: perfil de mantención correctiva y reemplazo de componentes de desgaste, no de mantención programada de garantía.`
+            : `El parque promedia ${D.mercado.edadProm.toFixed(1)} años: perfil joven, con espacio para mantención programada por pauta.`,
+          'La antigüedad se calcula solo sobre las OTs con año de vehículo informado; si la cobertura es baja, la muestra puede no ser representativa.'
+        ]} />
+      </div>
+
+      {/* Origen y geografía */}
+      <div className="card p-4">
+        <h3 className="font-semibold text-ink mb-1">Origen del cliente y cobertura geográfica</h3>
+        <div className="grid lg:grid-cols-3 gap-4">
+          <div>
+            <h4 className="text-sm font-semibold text-ink mb-1">Cómo conoció DIDIAL</h4>
+            <table className="w-full text-xs">
+              <thead><tr className="text-slate-400 border-b"><th className="text-left py-1">Canal</th><th className="text-right">OTs</th><th className="text-right">Venta</th></tr></thead>
+              <tbody>
+                {D.mercado.porOrigen.slice(0, 6).map((x) => (
+                  <tr key={x.name} className="border-b last:border-0"><td className="py-1">{x.name}</td><td className="text-right">{x.ot}</td><td className="text-right">{CLPc(x.venta)}</td></tr>
+                ))}
+                {!D.mercado.porOrigen.length && <tr><td colSpan={3} className="text-slate-400 py-2">Campo sin datos en el período.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+          <div>
+            <h4 className="text-sm font-semibold text-ink mb-1">Por ciudad</h4>
+            <table className="w-full text-xs">
+              <thead><tr className="text-slate-400 border-b"><th className="text-left py-1">Ciudad</th><th className="text-right">OTs</th><th className="text-right">Venta</th></tr></thead>
+              <tbody>
+                {D.mercado.porCiudad.slice(0, 6).map((x) => (
+                  <tr key={x.name} className="border-b last:border-0"><td className="py-1">{x.name}</td><td className="text-right">{x.ot}</td><td className="text-right">{CLPc(x.venta)}</td></tr>
+                ))}
+                {!D.mercado.porCiudad.length && <tr><td colSpan={3} className="text-slate-400 py-2">Campo sin datos en el período.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+          <div>
+            <h4 className="text-sm font-semibold text-ink mb-1">Por tipo de cliente</h4>
+            <table className="w-full text-xs">
+              <thead><tr className="text-slate-400 border-b"><th className="text-left py-1">Tipo</th><th className="text-right">OTs</th><th className="text-right">Venta</th></tr></thead>
+              <tbody>
+                {D.mercado.porTipoCliente.slice(0, 6).map((x) => (
+                  <tr key={x.name} className="border-b last:border-0"><td className="py-1">{x.name}</td><td className="text-right">{x.ot}</td><td className="text-right">{CLPc(x.venta)}</td></tr>
+                ))}
+                {!D.mercado.porTipoCliente.length && <tr><td colSpan={3} className="text-slate-400 py-2">Campo sin datos en el período.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <Observaciones items={[{ clave: 'clienteEmpresa', valor: D.mercado.empresaPct }]} extra={[
+          !D.mercado.porOrigen.length
+            ? 'El campo "Cómo conoció DIDIAL" no tiene datos en el período: sin él no se puede atribuir la captación a ningún canal ni calcular retorno de inversión comercial.'
+            : `El canal de mayor venta es ${D.mercado.porOrigen[0].name}. Concentrar esfuerzo comercial donde ya hay tracción, no donde se supone que debería haberla.`
+        ]} />
+      </div>
+
+      {/* Asesores */}
+      <div className="card p-4">
+        <h3 className="font-semibold text-ink mb-1">Rendimiento por asesor de servicio</h3>
+        <p className="text-[11px] text-slate-400 mb-2">Ordenado por venta del período. El ticket promedio es el indicador comparable entre asesores; el volumen depende de la asignación.</p>
+        <table className="w-full text-sm">
+          <thead><tr className="text-slate-400 text-xs border-b"><th className="text-left py-1">Asesor</th><th className="text-right">OTs</th><th className="text-right">Venta</th><th className="text-right">Ticket promedio</th><th className="text-right">% venta</th></tr></thead>
+          <tbody>
+            {D.mercado.porAsesor.length ? D.mercado.porAsesor.map((x) => (
+              <tr key={x.name} className="border-b last:border-0">
+                <td className="py-1.5">{x.name}</td><td className="text-right">{x.ot}</td>
+                <td className="text-right">{CLP(x.venta)}</td>
+                <td className="text-right" style={{ color: x.ticket >= cfg.meta_ticket ? C.green : C.muted }}>{CLP(x.ticket)}</td>
+                <td className="text-right text-slate-400">{D.ventasTotal ? (x.venta / D.ventasTotal * 100).toFixed(1) : 0}%</td>
+              </tr>
+            )) : <tr><td colSpan={5} className="text-slate-400 py-3">El campo "Asesor de Servicio" no tiene datos en el período.</td></tr>}
+          </tbody>
+        </table>
+        <Observaciones extra={[
+          !D.mercado.porAsesor.length
+            ? 'Sin asesor registrado no se puede evaluar desempeño individual ni asignar cartera. Es el campo con menor completitud de la base.'
+            : 'El volumen de OTs depende de cómo se reparte la recepción; compare ticket promedio, no cantidad.'
+        ]} />
+      </div>
+
+      {/* Vehículos detenidos */}
+      {D.permDetalle.length > 0 && (
+        <div className="card p-4">
+          <h3 className="font-semibold text-ink mb-1">Vehículos sobre 5 días de permanencia</h3>
+          <p className="text-[11px] text-slate-400 mb-2">{D.permDetalle.length} vehículos del período. Cada día extra ocupa una bahía y retrasa la facturación.</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs min-w-[560px]">
+              <thead><tr className="text-slate-400 border-b"><th className="text-left py-1">OT</th><th className="text-left">Patente</th><th className="text-left">Marca</th><th className="text-left">Sucursal</th><th className="text-left">Servicio</th><th className="text-right">Días</th><th className="text-right">Venta</th></tr></thead>
+              <tbody>
+                {D.permDetalle.slice(0, 20).map((x, i) => (
+                  <tr key={x.ot + i} className="border-b last:border-0">
+                    <td className="py-1">{x.ot}</td><td>{x.patente}</td><td>{x.marca}</td><td>{x.sucursal}</td>
+                    <td className="truncate max-w-[160px]">{x.servicio}</td>
+                    <td className="text-right font-medium" style={{ color: C.red }}>{x.dias.toFixed(0)}</td>
+                    <td className="text-right">{CLPc(x.venta)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {D.permDetalle.length > 20 && <p className="text-[11px] text-slate-400 mt-1">Se muestran los 20 de mayor permanencia. El listado completo está en la hoja "Permanencia" del Excel.</p>}
+          <Observaciones items={[{ clave: 'detenidos', valor: D.permSobre5, ctx: { totalOT: D.vehiculos } }]} extra={[
+            'Las tres causas típicas son espera de repuestos, demora en la aprobación del presupuesto y programación. Identificar cuál aplica a cada caso antes de fijar un plan.'
+          ]} />
+        </div>
+      )}
 
       {/* Movimiento */}
       <div className="card p-4">
@@ -751,6 +1321,12 @@ export default function PanelOperativo() {
               )) : <tr><td colSpan={6} className="text-slate-400 py-3">Sin OTs con marca en este período.</td></tr>}
             </tbody>
           </table>
+          <Observaciones extra={[
+            totV && top10.reduce((s2, x) => s2 + x.v, 0) / totV > 0.8
+              ? 'El Top 10 concentra más del 80% de la venta: la cartera depende de pocas marcas. Evaluar si el stock de repuestos y la capacitación técnica están alineados a esa concentración.'
+              : 'La venta está repartida entre muchas marcas: exige stock y capacitación más amplios, con menor profundidad por marca.',
+            'El ticket promedio por marca es comparable entre sí; la cantidad de OTs depende del parque circulante de la zona, no de la gestión comercial.'
+          ]} />
           <p className="text-[11px] text-slate-400 mt-2">Ticket promedio sobre OTs con venta &gt; 0. Verde = sobre la meta mínima ({CLP(cfg.meta_ticket)}). Top 10 concentra {totV ? Math.round(top10.reduce((s, x) => s + x.v, 0) / totV * 100) : 0}% de las ventas.</p>
         </div>
       </div>
@@ -803,6 +1379,10 @@ export default function PanelOperativo() {
             </tbody>
           </table>
         </div>
+        <Observaciones extra={[
+          'Un cruce intenso con pocas OTs no es una tendencia: verifique el respaldo cambiando la métrica a OTs antes de tomar una decisión comercial.',
+          'Los servicios con ticket alto y pocas OTs son candidatos naturales de campaña; los de ticket bajo y muchas OTs sostienen la ocupación pero no el margen.'
+        ]} />
       </div>
 
       {/* ---- Ingresos por centro de ingreso × naturaleza del ingreso ---- */}
@@ -946,6 +1526,18 @@ export default function PanelOperativo() {
                   <Bar key="resid" dataKey="s_resid" stackId="ci" name="Sin desglosar" fill={RESIDUO_COLOR} />]}
             </BarChart>
           </ResponsiveContainer>
+          <Observaciones
+            items={[{ clave: 'mixCentro', valor: D.centros.lista.length && D.centros.totalGeneral ? D.centros.lista[0].total / D.centros.totalGeneral * 100 : 0 },
+                    { clave: 'moSobreVenta', valor: D.moPct }, { clave: 'repSobreVenta', valor: D.repPct }]}
+            extra={[
+              D.centros.totalesSub.desc > 0
+                ? `Se otorgaron ${CLP(D.centros.totalesSub.desc)} en descuentos (${(D.centros.totalesSub.desc / D.centros.totalGeneral * 100).toFixed(1)}% de la venta). Revisar si responden a política comercial o a decisiones caso a caso.`
+                : null,
+              !cols.sub.find((x) => x.k === 'ext')?.col || D.centros.totalesSub.ext === 0
+                ? 'No hay monto registrado en servicios externos. Si el taller terceriza trabajos, ese costo está cayendo en otra categoría y distorsiona el margen por área.'
+                : null
+            ].filter(Boolean)}
+          />
           <p className="text-[11px] text-slate-400 mt-1">Se agrupa por día si el período cae dentro de un mismo mes, y por mes si lo cruza. "Sin desglosar" = total de la OT − (mano de obra + repuestos + lubricantes + servicios externos − descuentos). Debería ser cercano a cero; lo que queda son diferencias de redondeo de la planilla (cada columna neta se redondea por separado, ±1 peso por OT). Si aparece un monto relevante, hay conceptos en columnas que este análisis no está leyendo.</p>
         </div>
       )}
@@ -1024,6 +1616,12 @@ export default function PanelOperativo() {
               )) : <tr><td colSpan={5} className="text-slate-400 py-3">Sin servicios DyP en este período.</td></tr>}
             </tbody>
           </table>
+          <Observaciones extra={[
+            'DyP se mide por el área del servicio, no por el técnico que lo ejecuta: un técnico de DyP haciendo una mantención no genera ingreso del área.',
+            D.dyp.rows.length < 20
+              ? 'La muestra del período es pequeña: el ticket por servicio puede moverse mucho con una sola OT.'
+              : 'El ticket de desabolladura y pintura debería ser sustancialmente mayor al de lavado o pulido; si no lo es, revisar la tarificación del área.'
+          ]} />
         </div>
       </div>
     </div>

@@ -85,8 +85,12 @@ body {
 /* ================= Impresión / exportación a PDF del panel operativo =================
    El navegador imprime SVG en vectorial, así que los gráficos de recharts salen nítidos
    sin necesidad de rasterizarlos con html2canvas. */
+/* Elementos que solo existen al imprimir */
+.solo-impresion { display: none; }
+
 @media print {
-  @page { size: A4 landscape; margin: 10mm; }
+  /* Margen superior/inferior amplio para alojar encabezado y pie repetidos */
+  @page { size: A4 landscape; margin: 18mm 10mm 16mm 10mm; }
 
   /* Solo el panel es visible: se oculta el resto de la aplicación (menú, cabecera, pestañas) */
   body * { visibility: hidden; }
@@ -119,4 +123,53 @@ body {
 
   /* Los <details> cerrados no se imprimen; su contenido no aporta al informe */
   details { display: none !important; }
+}
+
+/* ============ Portada, encabezado y pie de los informes impresos ============ */
+@media print {
+  .solo-impresion { display: block; }
+
+  /* Encabezado y pie: position fixed hace que el navegador los repita en CADA página */
+  .encabezado-hoja {
+    position: fixed; top: -13mm; left: 0; right: 0;
+    display: flex; align-items: center; justify-content: space-between;
+    padding-bottom: 2mm; border-bottom: 1px solid #e2e8f0;
+    font-size: 8pt; color: #6b7a8a;
+  }
+  .encabezado-hoja img { height: 9mm; width: auto; }
+
+  .pie-hoja {
+    position: fixed; bottom: -12mm; left: 0; right: 0;
+    display: flex; align-items: center; justify-content: space-between;
+    padding-top: 1.5mm; border-top: 1px solid #e2e8f0;
+    font-size: 7pt; color: #94a3b8;
+  }
+
+  /* Portada: ocupa una hoja completa y fuerza salto */
+  .portada {
+    break-after: page; page-break-after: always;
+    height: 165mm; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+  }
+  .portada-logo { width: 90mm; height: auto; margin-bottom: 8mm; }
+  .portada h1 { font-size: 22pt; font-weight: 700; color: #111922; margin: 0; }
+  .portada-sub { font-size: 11pt; color: #6b7a8a; margin: 2mm 0 8mm; }
+  .portada-datos, .portada-rectores table { border-collapse: collapse; font-size: 9.5pt; }
+  .portada-datos td, .portada-rectores td {
+    padding: 1.6mm 6mm; border-bottom: 1px solid #e2e8f0; text-align: left;
+  }
+  .portada-datos td:first-child, .portada-rectores td:first-child { color: #6b7a8a; }
+  .portada-datos td:last-child, .portada-rectores td:last-child { font-weight: 600; color: #111922; text-align: right; }
+  .portada-rectores { margin-top: 7mm; }
+  .portada-rectores h2 {
+    font-size: 10pt; font-weight: 600; color: #111922;
+    text-transform: uppercase; letter-spacing: 0.6pt; margin-bottom: 2mm;
+  }
+  .portada-nota {
+    margin-top: 9mm; max-width: 150mm; font-size: 7.5pt;
+    color: #94a3b8; line-height: 1.5;
+  }
+
+  /* Las observaciones no deben separarse de la sección que las explica */
+  .observaciones { break-inside: avoid; page-break-inside: avoid; }
 }
