@@ -1140,3 +1140,51 @@ Verificado: los cuatro archivos que usan `patenteLimpia` ya la importan correcta
 3. Incluye dos consultas de verificación, una de ellas para **detectar vehículos duplicados** que el formato inconsistente venía ocultando (misma patente escrita de dos maneras). Esos duplicados no se borran automáticamente: cada ficha puede tener OTs, presupuestos e inspecciones asociadas.
 
 Verificado que la expresión SQL `upper(regexp_replace(patente, '[^A-Za-z0-9]', '', 'g'))` produce exactamente el mismo resultado que `patenteLimpia()` del frontend en todos los formatos probados (con espacios, guiones, minúsculas y espacios al inicio o final).
+
+---
+
+# Nota de diagnóstico — Facturación histórica subestimada (caso INIA) + migración 50
+
+## Qué se verificó
+
+`ClienteDetalle.jsx` muestra `clientes.facturacion_total`, que se calcula (ControlOT.jsx y migración 23) como:
+
+```sql
+sum(servicios.monto) where servicios.cliente_id = <ficha>
+```
+
+Una OT queda fuera del total cuando **(a)** su `cliente_id` es NULL, o **(b)** apunta a otra ficha del mismo cliente real.
+
+Consultando la planilla vía Zapier se comprobó el caso (b):
+
+- `Propietario = "INIA"` exacto: **11 OTs, $4.288.050** — consistente con los $4.102.050 que muestra el CRM.
+- Existe al menos una variante de escritura del mismo cliente: **`"INS. INV. AGROPECUARIA"`** (OT 12374, $33.500), con el **mismo correo** `WILSON.ROJAS@INIA.CL`.
+
+La causa raíz es que la identidad del cliente en la base de OT es el **texto libre** de la columna Propietario (L), sin RUT. La misma base muestra el fenómeno en otros registros: `UNVERSIONES GASTRONIMICAS SPA`, `RAFEL VALDERRAMA`, y la misma patente escrita `GR WW76` y `GR WW 76`.
+
+**No se pudo cuantificar el total real de INIA desde aquí**: la búsqueda de la planilla es por coincidencia exacta, así que enumerar todas las variantes de escritura exigiría recorrer las ~4.450 filas. La migración 50 resuelve esto del lado correcto — la base del CRM, que es donde se muestra el número equivocado — y encuentra todos los casos, no solo INIA.
+
+## `database/50_clientes_duplicados.sql`
+
+**No fusiona nada automáticamente.** Fusionar por parecido de nombre sin revisión humana puede unir a dos personas distintas y es irreversible.
+
+1. **Columnas normalizadas** en `clientes` (generadas, no se desincronizan): `nombre_norm` (sin acentos ni puntuación), `telefono_norm`, `email_norm`, con índices.
+2. **Diagnóstico A** — OTs huérfanas (`cliente_id is null`): dinero que hoy no está sumado en la ficha de nadie, con su detalle para vincularlas desde Control de OT.
+3. **Diagnóstico B** — fichas que comparten teléfono o correo. Es el criterio **fuerte**: el nombre puede escribirse de mil maneras, el contacto no.
+4. **Diagnóstico C** — fichas con nombres parecidos (similitud de trigramas > 0,55). Criterio **débil**, encuentra "INIA" / "INS. INV. AGROPECUARIA" pero también da falsos positivos (hermanos, empresa y filial). Revisar una a una.
+5. **Función `fusionar_clientes(principal, secundarios[])`** — repunta `servicios`, `vehiculos`, `presupuestos`, `presupuestos_taller`, `trabajos_taller`, `gestiones`, `actividades`, `inspecciones_ingreso` y `tareas_campana` (borrando antes las que colisionarían por la restricción campaña+cliente), completa los campos vacíos de la ficha principal con datos de las secundarias, las elimina y recalcula totales. Devuelve un resumen por tabla.
+6. **Recálculo general** de `facturacion_total`, `num_ot`, `ultima_visita` y `ticket_promedio`, más una consulta de verificación que debe devolver 0 filas.
+
+### Detalle de la normalización telefónica
+Se usan los **últimos 8 dígitos**, no 9. En la base conviven `+569 92764347`, `992764347`, `56992764347` y `92764347` — este último sin el 9 inicial. Con 9 dígitos el cuarto formato no agrupa con los otros tres; con 8 sí. Contrapartida: dos números que difieran solo en el primer dígito se verían iguales, razón adicional para que este criterio alimente un diagnóstico y no una fusión automática.
+
+## Orden de ejecución recomendado
+1. Ejecutar bloques 1 a 4 y **leer** los resultados.
+2. Vincular las OTs huérfanas desde el módulo Control de OT.
+3. Fusionar los duplicados confirmados, uno por uno, con `fusionar_clientes`.
+4. Recién entonces ejecutar el bloque 6 (recálculo general).
+
+Ejecutar el recálculo antes de fusionar consolidaría totales que todavía están repartidos entre fichas.
+
+## Recomendación de fondo
+Mientras el Propietario siga siendo texto libre sin RUT, los duplicados se seguirán generando. La corrección estructural es capturar el RUT en la recepción y usarlo como llave del cliente — el CRM ya valida RUT con módulo 11.
