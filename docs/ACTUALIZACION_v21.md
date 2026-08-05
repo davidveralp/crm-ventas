@@ -1261,3 +1261,78 @@ El script `crm_actualizar_ot.gs` ya existente sincroniza CRM → planilla al edi
 
 ## Recomendación de fondo (sigue vigente)
 Mientras el Propietario sea texto libre sin RUT, los duplicados se seguirán generando. Capturar el RUT en la recepción y usarlo como llave es la corrección estructural; el CRM ya valida RUT con módulo 11.
+
+---
+
+# Normalización de marcas y modelos de vehículos — `integraciones/normalizar_vehiculos.gs`
+
+## Problemas detectados en la base (verificados sobre datos reales, columnas F/G/H)
+
+| # | Problema | Ejemplos reales |
+|---|---|---|
+| 1 | Mayúsculas mezcladas | `Toyota`/`TOYOTA`, `hilux`/`HILUX`, `Kia`/`KIA` |
+| 2 | Espacios sobrantes | `explorer `, `HILUX `, `F PACE `, `I 10 ` |
+| 3 | Erratas y acentos en marca | `MERCEDEZ BENZ`, `CITROËN` |
+| 4 | **Cilindrada dentro del modelo** | `HILUX 2.4` — y la columna H ya existe con ese dato |
+| 5 | **Tracción dentro del modelo** | `NP 300 4X4`, `RANGER 4X2`, `XTRAIL 4X4` |
+| 6 | Transmisión dentro del modelo | `I 10 MT`, `SANTA FE AT`, `New XV AT` |
+| 7 | Versión/equipamiento en el modelo | `TUCSON GL`, `TERRITORY TITANIUM`, `grand cherokee laredo` |
+| 8 | Espaciado inconsistente | `D MAX`/`DMAX`, `I 10`/`I10`, `4 runner`/`4RUNNER` |
+
+## Estrategia: dos capas
+
+**Capa automática (determinista, sin revisión).** Los puntos 1 a 6 son reglas exactas. Cilindrada, tracción y transmisión se **extraen del modelo y pasan a columnas propias**, que es exactamente lo pedido. Verificado que no rompe modelos que son números: `M4`, `F150`, `T60`, `BT 50`, `560 OTTO`, `VAN 700`, `Mazda 5` quedan intactos.
+
+**Capa revisada (pestaña `Map_Vehiculos`).** Los puntos 7 y 8 exigen criterio: `GRAND NOMADE` es modelo completo pero `GRAND CHEROKEE LAREDO` lleva versión; `D MAX` y `DMAX` son lo mismo pero eso solo se sabe conociendo el catálogo del fabricante.
+
+## Columnas que crea
+
+| Columna | Contenido |
+|---|---|
+| `Marca Original`, `Modelo Original` | Respaldo para revertir |
+| `Tracción` | 4X4 / 4X2 / AWD / 4WD / 2WD |
+| `Transmisión` | AT / MT / CVT / DSG / AMT |
+| `Versión` | GL, TITANIUM, LAREDO, SPORT, US4… |
+| `Cilindrada` (H) | Solo se **rellena si está vacía**; nunca se pisa un valor existente |
+
+## Pestañas de control
+- **`Map_Marcas`** — cada marca cruda con su canónica y un aviso `REVISAR` cuando no está en el catálogo. Ampliable: lo que agregues ahí se respeta.
+- **`Map_Vehiculos`** — combinaciones marca+modelo agrupadas, con modelo canónico y versión sugeridos, y casilla Aplicar por fila. En amarillo las que cambiarían.
+
+El catálogo incluye ~55 marcas del mercado chileno con sus alias y erratas frecuentes (`MERCEDEZ`→Mercedes Benz, `VW`→Volkswagen, `GREATWALL`→Great Wall, `SSANG YONG`→SsangYong).
+
+## Calibración del umbral de agrupación (0,85)
+
+Verificado contra la base real:
+
+| Similitud | Caso | Debe |
+|---|---|---|
+| 0,889 | MARCH / MARCHA | unir (errata) |
+| 0,857 | TIIDA / TIDA | unir (errata) |
+| **0,85** | **umbral** | |
+| 0,625 | VITARA / GRAND VITARA | separar |
+| 0,600 | NP 300 / NP 200 · ACCENT / ASCENT | separar |
+| 0,500 | 206 / 207 | separar |
+| 0,364 | SOLUTO / SORENTO | separar |
+| 0,000 | C35 / C45 · T60 / T70 · F150 / F250 | separar |
+
+Se bajó de 0,86 a 0,85 porque con 0,86 quedaba fuera `TIIDA`/`TIDA`. **El riesgo más caro —unir modelos que solo se distinguen por un número— está cubierto**: `NP 300`/`NP 200`, `F150`/`F250`, `C35`/`C45`, `T60`/`T70` y `206`/`207` se separan todos con amplio margen.
+
+Además del parecido, dos reglas exactas agrupan: misma cadena sin espacios (`D MAX`=`DMAX`) y prefijo compartido (`TUCSON` ⊂ `TUCSON GL`).
+
+## Advertencia sobre la regla de prefijo
+Une `RANGER` con `RANGER RAPTOR` y `MIRAGE` con `MIRAGE G4`. En algunos casos eso es correcto (la segunda palabra es versión) pero en otros son modelos comercialmente distintos. Por eso la fila queda **marcada en amarillo y sin confirmar**: hay que desmarcarla si no corresponde.
+
+## Verificación de la agrupación con datos reales
+- Toyota: `HILUX`+`HILUX 2.4` · `4 RUNNER`+`4RUNNER` · `YARIS`+`YARIS SPORT`; separados `URBAN CRUISER`, `FORTUNNER`, `PRIUS`.
+- Chevrolet: `D MAX`+`DMAX`; separados `SAIL`, `TRACKER`, `OPTRA`, `GROOVE`, `ONIX`, `CORSA`, `AVEO`, `COLORADO`.
+- Hyundai: `TUCSON`+`TUCSON GL` · `SANTA FE`+`SANTA FE AT` · `I 10`+`I10`+`I 10 MT` · `STARIA`+`STARIA US4`.
+- Nissan: `NP 300`+`NP 300 4X4` · `XTRAIL`+`XTRAIL 4X4`; separados `KICKS`, `TIIDA`, `MARCH`.
+
+## Orden recomendado
+1. `Analizar marcas y modelos` — no modifica nada.
+2. Revisar `Map_Marcas`: completar las marcadas `REVISAR`. Volver a analizar.
+3. Revisar `Map_Vehiculos`: ajustar modelo canónico y versión, marcar Aplicar.
+4. `Aplicar normalización`.
+
+La extracción de cilindrada, tracción y transmisión se aplica a **todas** las filas en el paso 4, sin necesidad de confirmar fila por fila: son reglas deterministas.
