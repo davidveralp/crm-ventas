@@ -25,14 +25,20 @@
  */
 
 const CRM_UPD_TOKEN = 'CAMBIA_ESTE_TOKEN';
-const CRM_UPD_HOJA  = 'OT';   // nombre EXACTO de la pestaña con las OT
+const CRM_UPD_HOJA  = 'Hoja 1';   // nombre EXACTO de la pestaña con las OT
+// Encabezado que identifica a la pestaña de OT. Se usa como respaldo si el
+// nombre de arriba no existe (la pestaña se renombró, se duplicó la planilla,
+// etc.). Antes esta constante decía 'OT' y la pestaña real es 'Hoja 1': el
+// Web App lanzaba "No encuentro la pestaña OT" y la sincronización
+// CRM -> planilla no ocurría nunca, en silencio.
+const CRM_UPD_ENCABEZADO_CLAVE = 'N° Orden Trabajo';
 
 // Columnas a actualizar (candidatos de encabezado; si no existen se omiten).
 const CRM_UPD_COLS = {
   // datos de contacto del cliente
   propietario: ['Propietario', 'Nombre Propietario', 'Cliente'],
   telefono:    ['Teléfono', 'Telefono', 'Fono'],
-  email:       ['Email', 'Correo', 'E-mail'],
+  email:       ['E-Mail', 'Email', 'Correo', 'E-mail'],
   ciudad:      ['Ciudad'],
   direccion:   ['Dirección', 'Direccion'],
   rut:         ['RUT', 'Rut'],
@@ -67,11 +73,66 @@ function _crmUpdSalida(msg) {
 }
 
 function _crmUpdContexto() {
-  const sh = SpreadsheetApp.getActive().getSheetByName(CRM_UPD_HOJA);
-  if (!sh) throw new Error('No encuentro la pestaña ' + CRM_UPD_HOJA);
+  const ss = SpreadsheetApp.getActive();
+  let sh = ss.getSheetByName(CRM_UPD_HOJA);
+
+  // Respaldo: buscar la pestaña que tenga el encabezado clave en su fila 1.
+  if (!sh) {
+    const hojas = ss.getSheets();
+    for (let i = 0; i < hojas.length; i++) {
+      const ultima = hojas[i].getLastColumn();
+      if (ultima < 1) continue;
+      const fila1 = hojas[i].getRange(1, 1, 1, ultima).getValues()[0]
+        .map(function (h) { return String(h).trim(); });
+      if (fila1.indexOf(CRM_UPD_ENCABEZADO_CLAVE) >= 0) { sh = hojas[i]; break; }
+    }
+  }
+  if (!sh) {
+    throw new Error('No encuentro la pestaña "' + CRM_UPD_HOJA + '" ni ninguna con la columna "' +
+                    CRM_UPD_ENCABEZADO_CLAVE + '". Revisa CRM_UPD_HOJA.');
+  }
+
   const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(h => String(h).trim());
-  const col = (cands) => { const hit = cands.find(c => head.indexOf(c) >= 0); return hit ? head.indexOf(hit) : -1; };
+
+  // Comparación tolerante: sin acentos, sin mayúsculas y sin espacios dobles.
+  // Antes era `head.indexOf(c)`, sensible a mayúsculas, así que el candidato
+  // 'E-mail' NO calzaba con el encabezado real 'E-Mail' y esa columna jamás
+  // se sincronizaba. Mismo riesgo con 'Teléfono' vs 'Telefono'.
+  const _norm = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                        .toUpperCase().replace(/\s+/g, ' ').trim();
+  const headNorm = head.map(_norm);
+  const col = (cands) => {
+    for (let i = 0; i < cands.length; i++) {
+      const j = head.indexOf(cands[i]);            // coincidencia exacta primero
+      if (j >= 0) return j;
+    }
+    for (let k = 0; k < cands.length; k++) {
+      const j = headNorm.indexOf(_norm(cands[k])); // luego tolerante
+      if (j >= 0) return j;
+    }
+    return -1;
+  };
   return { sh, head, col };
+}
+
+/**
+ * Diagnóstico manual: ejecutar desde el editor de Apps Script para comprobar
+ * que el Web App encuentra la hoja y las columnas antes de depender de él.
+ */
+function crmUpdDiagnostico() {
+  const ctx = _crmUpdContexto();
+  const faltan = [];
+  Object.keys(CRM_UPD_COLS).forEach(function (k) {
+    if (ctx.col(CRM_UPD_COLS[k]) < 0) faltan.push(k);
+  });
+  const msg =
+    'Pestaña encontrada: ' + ctx.sh.getName() + '\n' +
+    'Filas: ' + ctx.sh.getLastRow() + ' · Columnas: ' + ctx.head.length + '\n' +
+    (faltan.length ? 'Columnas NO encontradas: ' + faltan.join(', ')
+                   : 'Todas las columnas configuradas existen.');
+  Logger.log(msg);
+  try { SpreadsheetApp.getUi().alert(msg); } catch (e) { /* sin interfaz, solo log */ }
+  return msg;
 }
 const _pat = (v) => v ? String(v).replace(/[^A-Za-z0-9]/g, '').toUpperCase() : '';
 

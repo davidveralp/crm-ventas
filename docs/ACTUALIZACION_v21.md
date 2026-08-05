@@ -1336,3 +1336,46 @@ Une `RANGER` con `RANGER RAPTOR` y `MIRAGE` con `MIRAGE G4`. En algunos casos es
 4. `Aplicar normalización`.
 
 La extracción de cilindrada, tracción y transmisión se aplica a **todas** las filas en el paso 4, sin necesidad de confirmar fila por fila: son reglas deterministas.
+
+---
+
+# Corrección · `crm_actualizar_ot.gs` — dos defectos silenciosos que anulaban la sincronización CRM → planilla
+
+Detectados al revisar las integraciones para el trabajo de consistencia. **Ambos fallaban en silencio**: nadie recibía un error visible, simplemente la planilla nunca se actualizaba al editar un cliente en el CRM.
+
+## Defecto 1 · Nombre de pestaña equivocado
+```js
+const CRM_UPD_HOJA = 'OT';   // ← la pestaña real se llama 'Hoja 1'
+```
+El Web App lanzaba `No encuentro la pestaña OT` en cada llamada. Evidencia de que era un error y no un diseño distinto: `sincronizar_servicios.gs`, que opera sobre **la misma planilla**, usa `const HOJA_OT = 'Hoja 1'`.
+
+**Corregido a `'Hoja 1'`**, y además se agregó autodetección: si el nombre configurado no existe, busca la pestaña que contenga el encabezado `N° Orden Trabajo`. Así un renombrado futuro no vuelve a romperlo.
+
+## Defecto 2 · Búsqueda de encabezados sensible a mayúsculas
+```js
+const col = (cands) => { const hit = cands.find(c => head.indexOf(c) >= 0); ... }
+```
+`head.indexOf()` es sensible a mayúsculas. El candidato para correo era `'E-mail'` y el encabezado real es **`'E-Mail'`** (M mayúscula), así que esa columna **nunca** se habría sincronizado ni con el nombre de hoja correcto. El mismo riesgo existía con `Teléfono` / `Telefono`.
+
+**Corregido**: la búsqueda intenta primero coincidencia exacta y luego una tolerante (sin acentos, sin mayúsculas, espacios colapsados). Se agregó `'E-Mail'` a la lista de candidatos.
+
+### Verificación contra los encabezados reales de la planilla
+
+| Campo | Resultado |
+|---|---|
+| propietario | col 11 · `Propietario` |
+| telefono | col 12 · `Teléfono` |
+| email | col 13 · `E-Mail` ← antes fallaba |
+| ciudad | col 14 · `Ciudad` |
+| tipo_cliente | col 10 · `Tipo Cliente` |
+| marca / modelo / año / patente | col 5 / 6 / 8 / 4 |
+| direccion / rut | no existen en la planilla (se omiten, comportamiento previsto) |
+
+## Función nueva `crmUpdDiagnostico()`
+Se ejecuta a mano desde el editor de Apps Script y reporta qué pestaña encontró, cuántas filas y columnas tiene, y qué campos configurados no existen. Permite verificar el Web App **antes** de depender de él, en vez de descubrir el problema por ausencia de datos.
+
+## Hallazgo estructural
+**La planilla no tiene columna RUT.** Es exactamente la llave que evitaría los duplicados de cliente diagnosticados en las migraciones 50 y 51. Mientras la identidad del cliente sea el texto libre de `Propietario`, el problema se seguirá generando por más que se consoliden los nombres existentes. Agregar `RUT` a la recepción y a esta planilla es la corrección de fondo; el CRM ya valida RUT con módulo 11.
+
+## ⚠️ Requiere redespliegue
+Es un Web App: editar el código no basta. Hay que hacer **Implementar → Gestionar implementaciones → editar → Nueva versión**, o la implementación activa seguirá corriendo el código viejo.
