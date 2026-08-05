@@ -1450,3 +1450,75 @@ Las migraciones 50 y 51 **rescatan** duplicados existentes usando teléfono, cor
 
 ## Limitación declarada
 La cobertura de RUT en la cartera actual es probablemente baja: el campo era opcional y la planilla ni siquiera tenía la columna. El RUT solo funciona como llave a medida que se vaya capturando. Conviene hacerlo obligatorio en la recepción para clientes empresa desde ya, y para particulares de forma progresiva.
+
+---
+
+# `integraciones/limpiar_fechas_entrega.gs` — limpieza de la columna Fecha de Entrega
+
+## Nota de origen
+Esta función **no existía**. El criterio se acordó en una sesión anterior, pero la corrección de `Fecha Entrega` (junto con la de `Sucursal`) quedó pendiente por problemas con el conector y nunca llegó a materializarse en código. Se busca en los Apps Script, en las migraciones y en el frontend: solo aparece `fecha_entrega` como campo de Nueva OT y de la tabla `servicios`, sin lógica de limpieza. Se escribe ahora.
+
+## Criterio implementado
+Fecha de entrega **vacía** o **falsa** → se reemplaza por la fecha de ingreso.
+
+Lo que cuenta como falsa, reportado por separado para no mezclar causas distintas:
+
+| Caso | Detección |
+|---|---|
+| Año 1900 o anterior | El artefacto clásico de las hojas de cálculo |
+| Número de serie bruto (`0`, `1`) | Se convierte con época 30/12/1899, que es de donde sale el "año 1900" |
+| Año anterior a 2020 | Antes del primer registro real de la base |
+| Anterior a la fecha de ingreso | Un vehículo no se entrega antes de entrar |
+| Más de 2 años en el futuro | Error de tipeo en el año |
+| Texto no reconocible | No parsea como fecha |
+
+Acepta `dd/mm/aaaa`, `aaaa-mm-dd`, años de dos dígitos, objetos Date nativos y números de serie.
+
+## Lo que deliberadamente NO toca
+- **Filas sin fecha de ingreso**: sin referencia no hay con qué reemplazar. Se cuentan y se informan, pero se dejan intactas. Poner una fecha inventada sería peor que dejar el vacío.
+- **Fechas válidas con permanencia larga**: si la entrega es posterior al ingreso y está en rango, se respeta aunque sean 40 días. No es tarea de este script juzgar si eso es razonable — para eso está el indicador de permanencia del panel.
+
+## Flujo
+1. **Diagnosticar** — no modifica nada. Muestra cuántas filas caen en cada caso, con un ejemplo concreto de cada uno y cuántas quedarían sin corregir por falta de fecha de ingreso. Conviene correrlo primero.
+2. **Limpiar** — aplica, guardando el valor original en `Fecha Entrega Original` (solo la primera vez, para que dos pasadas no pierdan el dato real). Las celdas que estaban vacías se respaldan como `(vacía)` para poder restaurarlas como vacías.
+3. **Revertir** — restaura los originales.
+
+## Verificación
+Probada la clasificación contra diez casos con fecha de ingreso 15/07/2026: vacía, `30/12/1899`, `0`, `1`, `45000`, `15/07/2026`, `10/07/2026`, `2019-05-01`, `2030-01-01` y texto libre. La conversión de número de serie se contrastó de forma independiente: `45000` → `2023-03-15`.
+
+## Pendiente relacionado
+La corrección de **`Sucursal`** sigue abierta desde la misma sesión. Hoy `normSucursal()` del Panel Operativo cae a la marca del vehículo cuando la columna AH viene vacía, y se informa el contador de discrepancia entre marca y sucursal asignada. Falta decidir el criterio de relleno en el origen.
+
+---
+
+# Corrección · Migración 54 — atributos del vehículo en la tabla correcta
+
+## Error reportado
+```
+Error al guardar la OT: Could not find the 'traccion' column
+of 'ordenes_trabajo' in the schema cache
+```
+Al guardar cualquier OT nueva. **Bloqueaba por completo el registro de OTs.**
+
+## Causa — error propio en la migración 52
+La migración 52 agregó `version`, `traccion` y `transmision` a `vehiculos` y a `servicios`. Pero Nueva OT inserta la orden en **`ordenes_trabajo`**:
+
+```js
+const { error: e1 } = await supabase.from('ordenes_trabajo').insert(fila)
+```
+
+`servicios` recibe **después** un upsert con un subconjunto comercial —ot_numero, fecha, patente, tipo_servicio, monto, km, documento— que no incluye estos atributos. Es decir, las columnas se agregaron en una tabla que nunca las recibe.
+
+Eso explica la secuencia exacta del fallo: la creación del vehículo sí funcionaba, porque `vehiculos` sí tenía las columnas; el error aparecía recién al insertar la orden.
+
+## `database/54_fix_atributos_ordenes_trabajo.sql`
+1. Agrega `version`, `traccion` y `transmision` a **`ordenes_trabajo`**.
+2. Restricciones `CHECK` `NOT VALID` sobre tracción y transmisión, igual que en `vehiculos`.
+3. `notify pgrst, 'reload schema'` — el mensaje "in the schema cache" indica que PostgREST mantiene una copia del esquema; esto la obliga a recargar sin reiniciar el proyecto, por si el error persiste tras el ALTER.
+4. Consulta de verificación sobre ambas tablas.
+5. Bloque comentado para eliminar las columnas sobrantes de `servicios`. Son inofensivas (quedan siempre en NULL); se pueden dejar o limpiar, es indistinto.
+
+La migración 52 quedó anotada en su punto 2 señalando el error, para que no confunda a futuro.
+
+## Nota
+No requiere cambios en el frontend: el código ya enviaba los tres campos correctamente. Faltaba únicamente el esquema.

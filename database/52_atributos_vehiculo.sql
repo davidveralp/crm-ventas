@@ -28,9 +28,12 @@ comment on column public.vehiculos.cilindrada  is 'Cilindrada en litros, como te
 comment on column public.vehiculos.traccion    is '4X2, 4X4, AWD, 4WD';
 comment on column public.vehiculos.transmision is 'MT, AT, CVT, DSG, AMT';
 
--- 2) Mismas columnas en la OT (foto del vehículo al momento del ingreso).
---    Se guardan en ambos lados a propósito: el maestro refleja el estado actual
---    del vehículo y la OT conserva lo que se registró ese día.
+-- 2) ⚠️ ERROR: la tabla correcta es `ordenes_trabajo`, no `servicios`.
+--    Nueva OT inserta la orden en `ordenes_trabajo`; `servicios` solo recibe
+--    después un upsert con un subconjunto comercial que NO incluye estos campos.
+--    Ver `54_fix_atributos_ordenes_trabajo.sql`, que agrega las columnas donde
+--    corresponde. Este bloque queda porque es inofensivo (las columnas quedan
+--    en NULL), pero no sirve para nada.
 alter table public.servicios
   add column if not exists version      text,
   add column if not exists traccion     text,
