@@ -398,6 +398,16 @@ export const fmtCrono = (seg) => {
 // ====================================================================
 export const TIPOS_VEHICULO = ['AUTO', 'SUV', 'PICK UP', 'VAN/FURGON/CAMION']
 
+/* Atributos del vehículo que ANTES se escribían dentro del nombre del modelo
+   ("NP 300 4X4", "SANTA FE AT", "TUCSON GL"). Se capturan por separado para
+   que el modelo quede limpio y los análisis por marca/modelo no se fragmenten. */
+export const TRACCIONES = ['4X2', '4X4', 'AWD', '4WD']
+export const TRANSMISIONES = ['MT', 'AT', 'CVT', 'DSG', 'AMT']
+export const TRANSMISION_LABEL = {
+  MT: 'MT · Manual', AT: 'AT · Automática', CVT: 'CVT · Variable continua',
+  DSG: 'DSG · Doble embrague', AMT: 'AMT · Automatizada'
+}
+
 // Secciones del presupuesto (formato oficial DIDIAL). Los tipos antiguos
 // (lubricante/filtro/consumible) se agrupan bajo "Lubricantes y Otros Insumos".
 export const SECCIONES_PRESUP = {

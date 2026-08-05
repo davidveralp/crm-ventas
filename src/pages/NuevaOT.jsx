@@ -6,7 +6,8 @@ import {
   formatPatente, patenteLimpia, fmtMiles, otTotal, fmtFonoOT, formatRut,
   OT_TIPO_INGRESO, OT_ES_GARANTIA, OT_TIPO_CLIENTE, OT_ESTADO_VEHICULO,
   OT_TIPO_DOCUMENTO, OT_SVC_GRUPOS, otBU, OT_MARCAS, OT_CIUDADES,
-  OT_TECNICOS, OT_CONOCIO, OT_ENCUESTA, enviarASheet, TIPOS_VEHICULO, sucursalDeAsesor
+  OT_TECNICOS, OT_CONOCIO, OT_ENCUESTA, enviarASheet, TIPOS_VEHICULO, sucursalDeAsesor,
+  TRACCIONES, TRANSMISIONES, TRANSMISION_LABEL
 } from '../lib/helpers'
 import InspeccionIngreso from '../components/InspeccionIngreso'
 
@@ -15,7 +16,8 @@ const hoy = () => new Date().toISOString().slice(0, 10)
 const VACIA = {
   ot_numero: '', fecha: hoy(), tipo_ingreso: 'Normal', sucursal: 'Toyota', tipo_vehiculo: '',
   tecnico_principal: '', tecPrincipalOtro: '',
-  patente: '', marca: '', marcaOtra: '', modelo: '', cilindrada: '', anio: '', km: '',
+  patente: '', marca: '', marcaOtra: '', modelo: '', version: '', cilindrada: '',
+  traccion: '', transmision: '', anio: '', km: '',
   tipo_cliente: 'Particular', propietario: '', apellidos: '', contacto_nombre: '', rut: '', telefono: '', email: '', sin_correo: false,
   ciudad: '', ciudadOtra: '', direccion: '', direccion_ref: '',
   repuestos: '', lubricantes: '', mo: '', servicioExterno: '', descSE: '', descuento: '',
@@ -131,6 +133,9 @@ export default function NuevaOT() {
       if (g('marca')) { const m = matchLista(g('marca'), OT_MARCAS); if (m) n.marca = m; else { n.marca = '__otra__'; n.marcaOtra = g('marca') } }
       if (g('modelo')) n.modelo = g('modelo')
       if (g('cilindrada')) n.cilindrada = g('cilindrada')
+      if (g('version')) n.version = g('version')
+      if (g('traccion')) n.traccion = g('traccion')
+      if (g('transmision')) n.transmision = g('transmision')
       if (g('anio')) n.anio = g('anio')
       if (g('km')) n.km = g('km')
       if (g('nombre')) n.propietario = g('nombre')
@@ -152,11 +157,16 @@ export default function NuevaOT() {
     const limpia = patenteLimpia(patente)
     if (limpia.length < 5) { setVeh(null); return }
     const { data } = await supabase.from('vehiculos')
-      .select('id,marca,modelo,tipo_vehiculo,cliente_id,clientes(nombre,apellidos)')
+      .select('id,marca,modelo,version,cilindrada,traccion,transmision,anio,tipo_vehiculo,cliente_id,clientes(nombre,apellidos)')
       .ilike('patente_norm', `%${patenteLimpia(patente)}%`).limit(1)
     const v = data?.[0] || null
     setVeh(v)
     if (v?.tipo_vehiculo) set('tipo_vehiculo', v.tipo_vehiculo)   // v27: precarga el tipo
+    // Precarga los atributos ya conocidos del vehículo, para no volver a pedirlos
+    if (v?.version) set('version', v.version)
+    if (v?.cilindrada) set('cilindrada', v.cilindrada)
+    if (v?.traccion) set('traccion', v.traccion)
+    if (v?.transmision) set('transmision', v.transmision)
     // Presupuestos del taller pendientes de decisión para este vehículo
     if (v?.id) {
       const { data: tt } = await supabase.from('trabajos_taller').select('id').eq('vehiculo_id', v.id)
@@ -288,6 +298,8 @@ export default function NuevaOT() {
       const { data: nuevoVeh, error: eVeh } = await supabase.from('vehiculos').insert({
         empresa_id: perfil.empresa_id, cliente_id: nuevoCli.id, patente: patFmt,
         marca: marcaFinal()?.trim() || null, modelo: f.modelo?.trim() || null,
+        version: f.version?.trim() || null, cilindrada: f.cilindrada?.trim() || null,
+        traccion: f.traccion || null, transmision: f.transmision || null,
         anio: parseInt(f.anio, 10) || null, tipo_vehiculo: f.tipo_vehiculo || null,
         km_ultimo: kmNum, km_actual_estimado: kmNum
       }).select('id,cliente_id').single()
@@ -301,7 +313,9 @@ export default function NuevaOT() {
       vehiculo_id: vehActivo?.id || null, cliente_id: vehActivo?.cliente_id || null,
       ot_numero: f.ot_numero.trim() || null, fecha: f.fecha || null,
       patente: patFmt, marca: marcaFinal(), modelo: f.modelo.trim(),
-      cilindrada: f.cilindrada.trim(), anio: f.anio.trim(), km: kmNum,
+      cilindrada: f.cilindrada.trim(), version: f.version.trim() || null,
+      traccion: f.traccion || null, transmision: f.transmision || null,
+      anio: f.anio.trim(), km: kmNum,
       tipo_cliente: f.tipo_cliente, propietario: [f.propietario.trim(), esEmpresa ? '' : f.apellidos.trim()].filter(Boolean).join(' '),
       rut: f.rut.trim() ? formatRut(f.rut) : null, contacto_nombre: f.contacto_nombre.trim() || null,
       anulacion_solicitada: !!f.solicitar_anular, motivo_anulacion: f.solicitar_anular ? f.motivo_anulacion.trim() : null,
@@ -335,6 +349,16 @@ export default function NuevaOT() {
       vehiculo_id: vehActivo?.id || null, cliente_id: vehActivo?.cliente_id || null
     }, { onConflict: 'empresa_id,ot_numero' })
     if (vehActivo?.id && kmNum) await supabase.from('vehiculos').update({ km_ultimo: kmNum }).eq('id', vehActivo.id)
+    // Completa atributos del vehículo que estén vacíos en su ficha. Solo rellena:
+    // nunca pisa un dato ya cargado, porque el formulario pudo venir en blanco.
+    if (vehActivo?.id) {
+      const faltantes = {}
+      if (f.version?.trim() && !vehActivo.version) faltantes.version = f.version.trim()
+      if (f.cilindrada?.trim() && !vehActivo.cilindrada) faltantes.cilindrada = f.cilindrada.trim()
+      if (f.traccion && !vehActivo.traccion) faltantes.traccion = f.traccion
+      if (f.transmision && !vehActivo.transmision) faltantes.transmision = f.transmision
+      if (Object.keys(faltantes).length) await supabase.from('vehiculos').update(faltantes).eq('id', vehActivo.id)
+    }
 
     // Presupuestos de taller: marca aprobado (completo) o parcial según selección
     for (const p of presups) {
@@ -387,7 +411,8 @@ export default function NuevaOT() {
         asesor: perfil?.nombre || '', asesorEmail: perfil?.email || '', sucursal: f.sucursal,
         tipoIngreso: f.tipo_ingreso, tecnicoPrincipal: tecPrincipalFinal(),
         tecnicosSecundarios: tecSecFinal(),
-        patente: patFmt, marca: marcaFinal(), modelo: f.modelo, cilindrada: f.cilindrada,
+        patente: patFmt, marca: marcaFinal(), modelo: f.modelo, version: f.version,
+        cilindrada: f.cilindrada, traccion: f.traccion, transmision: f.transmision,
         anio: f.anio, km: f.km, tipoCliente: f.tipo_cliente, propietario: [f.propietario.trim(), esEmpresa ? '' : f.apellidos.trim()].filter(Boolean).join(' '),
         rut: f.rut, contactoNombre: f.contacto_nombre,
         telefono: f.telefono, email: f.email, ciudad: ciudadFinal(),
@@ -516,8 +541,25 @@ export default function NuevaOT() {
             <input className="input mt-2" value={f.marcaOtra} onChange={(e) => set('marcaOtra', e.target.value)} placeholder="Nombre de la marca…" autoFocus />
           )}
         </Campo>
-        <Campo label="Modelo"><input className="input" value={f.modelo} onChange={(e) => set('modelo', e.target.value)} placeholder="Ej: Hilux, Yaris…" /></Campo>
+        <Campo label="Modelo" hint="Solo el modelo: sin cilindrada, tracción ni versión">
+          <input className="input" value={f.modelo} onChange={(e) => set('modelo', e.target.value)} placeholder="Ej: Hilux, Yaris…" />
+        </Campo>
+        <Campo label="Versión" hint="Equipamiento o acabado, si aplica">
+          <input className="input" value={f.version} onChange={(e) => set('version', e.target.value)} placeholder="Ej: GL, Sport, Titanium…" />
+        </Campo>
         <Campo label="Cilindrada"><input className="input" value={f.cilindrada} onChange={(e) => set('cilindrada', e.target.value)} placeholder="Ej: 2.0, 2.4…" /></Campo>
+        <Campo label="Tracción">
+          <select className="input" value={f.traccion} onChange={(e) => set('traccion', e.target.value)}>
+            <option value="">Seleccionar…</option>
+            {TRACCIONES.map((t) => <option key={t}>{t}</option>)}
+          </select>
+        </Campo>
+        <Campo label="Transmisión">
+          <select className="input" value={f.transmision} onChange={(e) => set('transmision', e.target.value)}>
+            <option value="">Seleccionar…</option>
+            {TRANSMISIONES.map((t) => <option key={t} value={t}>{TRANSMISION_LABEL[t] || t}</option>)}
+          </select>
+        </Campo>
         <Campo label="Kilometraje"><input className="input" type="number" value={f.km} onChange={(e) => set('km', e.target.value)} placeholder="Ej: 87500" /></Campo>
         <Campo label="Tipo de Vehículo" hint="Asocia el vehículo a la lista de precios (MO por tipo)">
           <select className="input" value={f.tipo_vehiculo} onChange={(e) => set('tipo_vehiculo', e.target.value)}>

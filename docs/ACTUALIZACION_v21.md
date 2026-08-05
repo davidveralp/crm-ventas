@@ -1379,3 +1379,38 @@ Se ejecuta a mano desde el editor de Apps Script y reporta qué pestaña encontr
 
 ## ⚠️ Requiere redespliegue
 Es un Web App: editar el código no basta. Hay que hacer **Implementar → Gestionar implementaciones → editar → Nueva versión**, o la implementación activa seguirá corriendo el código viejo.
+
+---
+
+# Actualización v63 — Captura de Versión, Tracción y Transmisión en Nueva OT
+
+Frontend (`NuevaOT.jsx`, `helpers.js`) + **migración 52 obligatoria**.
+
+## Por qué
+Estos atributos se venían escribiendo dentro del nombre del modelo (`NP 300 4X4`, `SANTA FE AT`, `TUCSON GL`, `HILUX 2.4`), lo que fragmentaba los análisis: `HILUX`, `HILUX 2.4`, `hilux` y `HILUX ` contaban como cuatro modelos distintos en el Top 10 y en la matriz Servicio × Marca. El script `normalizar_vehiculos.gs` limpia lo histórico; esto evita que el problema se regenere.
+
+## Campos nuevos en el formulario
+- **Versión** — texto libre (GL, Sport, Titanium, Laredo).
+- **Tracción** — selector: 4X2, 4X4, AWD, 4WD.
+- **Transmisión** — selector con etiqueta explicativa: MT · Manual, AT · Automática, CVT · Variable continua, DSG · Doble embrague, AMT · Automatizada.
+
+Al campo Modelo se le agregó la ayuda *"Solo el modelo: sin cilindrada, tracción ni versión"*, para que la captura correcta sea evidente en el momento de escribir.
+
+## Comportamiento
+1. **Al buscar por patente**, si el vehículo ya existe se **precargan** sus atributos conocidos; no se vuelven a pedir.
+2. **Al crear un vehículo nuevo**, los cuatro atributos quedan en su ficha.
+3. **Si el vehículo ya existía**, se completan **solo los atributos vacíos** de su ficha. Nunca se pisa un dato ya cargado: el formulario pudo haber venido en blanco y sobrescribir con vacío sería una pérdida silenciosa.
+4. Se envían también en el payload a la planilla, para que el registro quede consistente en ambos lados.
+
+Se corrigió además el `select` de `buscarVehiculo()`, que traía solo `id, marca, modelo, tipo_vehiculo`: sin los campos nuevos la precarga y el relleno no habrían funcionado.
+
+## Migración 52 — obligatoria
+`database/52_atributos_vehiculo.sql`. **Sin ella el guardado falla** con `column vehiculos.traccion does not exist` y no se puede registrar ninguna OT.
+
+- Agrega `version`, `cilindrada`, `traccion`, `transmision` a `vehiculos`, y `version`, `traccion`, `transmision` a `servicios`.
+- Los datos se guardan en **ambas** tablas a propósito: el maestro refleja el estado actual del vehículo, y la OT conserva lo que se registró ese día.
+- Restricciones `CHECK` sobre tracción y transmisión, declaradas **`NOT VALID`**: validan lo nuevo sin bloquear filas históricas que pudieran tener otro contenido.
+- Índices parciales para los análisis por atributo (ticket de 4x4 frente a 4x2, por ejemplo).
+
+## Pendiente relacionado
+El Web App de registro que recibe el payload **no está en el repositorio**. Para que Versión, Tracción y Transmisión lleguen a las columnas de la planilla hay que agregarlas allí también; si no, viajan en el JSON pero no se escriben. El resto del flujo (Supabase, precarga, análisis) funciona igual.
