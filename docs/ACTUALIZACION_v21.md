@@ -1414,3 +1414,39 @@ Se corrigió además el `select` de `buscarVehiculo()`, que traía solo `id, mar
 
 ## Pendiente relacionado
 El Web App de registro que recibe el payload **no está en el repositorio**. Para que Versión, Tracción y Transmisión lleguen a las columnas de la planilla hay que agregarlas allí también; si no, viajan en el JSON pero no se escriben. El resto del flujo (Supabase, precarga, análisis) funciona igual.
+
+---
+
+# Columnas RUT y Dirección en la planilla + migración 53 (RUT como llave del cliente)
+
+## Columnas creadas en `Hoja 1`
+Se agregaron al final, sin tocar nada existente:
+
+| Columna | Encabezado |
+|---|---|
+| BI | `Dirección` |
+| BJ | `RUT` |
+
+`CRM_Sync` (BG) y `Centro de Ingreso` (BH) quedaron intactas. Como todos los scripts localizan las columnas por nombre de encabezado y no por posición, el orden en que quedaron no tiene efecto.
+
+Con esto, los candidatos `rut: ['RUT','Rut']` y `direccion: ['Dirección','Direccion']` de `crm_actualizar_ot.gs` —que hasta ahora resolvían a "no encontrada" y se omitían— pasan a funcionar. Nueva OT ya enviaba ambos campos en el payload.
+
+## `database/53_rut_llave_cliente.sql`
+
+Las migraciones 50 y 51 **rescatan** duplicados existentes usando teléfono, correo y parecido de nombre. Son criterios de limpieza del pasado. El RUT es la llave que **evita** que el problema se repita.
+
+1. **`rut_norm`** — columna generada: solo dígitos y K, sin puntos ni guion. Hace que `12.345.678-9`, `123456789` y `12345678-9` sean el mismo valor. Con índice.
+2. **`rut_dv(text)`** — función de dígito verificador chileno (módulo 11). Verificada contra un cálculo de referencia independiente con ocho cuerpos, incluidos los casos canónicos `11.111.111-1` y `12.345.678-5`.
+3. **`rut_valido`** — columna generada que compara el DV informado con el calculado. Permite listar los RUT mal digitados junto al dígito correcto, para corregirlos a mano.
+4. **Diagnóstico de cobertura**: cuántas fichas tienen RUT, cuántos son válidos y qué porcentaje de la cartera está cubierta.
+5. **Duplicados por RUT** — la evidencia más fuerte que existe. El teléfono se comparte entre familiares y el nombre se escribe de mil formas; el RUT identifica sin ambigüedad. Incluye un bloque `DO` (comentado) que fusiona todos los grupos usando `fusionar_clientes_preservando()`, conservando la ficha de mayor facturación.
+6. **Índice único parcial** (comentado): impide crear dos fichas con el mismo RUT. Aplica solo a los RUT informados y bien formados, así que **no rompe el flujo actual** donde el RUT es opcional. Debe crearse **después** de fusionar los duplicados existentes, o falla.
+
+## Orden recomendado
+1. Ejecutar los bloques 1 y 2: crear columnas y ver la cobertura real de RUT.
+2. Corregir los RUT inválidos que aparezcan (la consulta muestra el DV correcto).
+3. Revisar los duplicados por RUT del bloque 3 y fusionarlos.
+4. Recién entonces activar el índice único del bloque 4.
+
+## Limitación declarada
+La cobertura de RUT en la cartera actual es probablemente baja: el campo era opcional y la planilla ni siquiera tenía la columna. El RUT solo funciona como llave a medida que se vaya capturando. Conviene hacerlo obligatorio en la recepción para clientes empresa desde ya, y para particulares de forma progresiva.
