@@ -1188,3 +1188,76 @@ Ejecutar el recálculo antes de fusionar consolidaría totales que todavía est�
 
 ## Recomendación de fondo
 Mientras el Propietario siga siendo texto libre sin RUT, los duplicados se seguirán generando. La corrección estructural es capturar el RUT en la recepción y usarlo como llave del cliente — el CRM ya valida RUT con módulo 11.
+
+---
+
+# Consolidación de clientes en el ORIGEN (planilla) + consistencia con Supabase
+
+Hasta ahora las correcciones de identidad de cliente vivían solo del lado de Supabase (migraciones 50 y 51). Eso deja el problema abierto: mientras la planilla siga teniendo "Rafel Valderrama" y "Rafael Valderrama" como dos textos distintos, cada nueva OT vuelve a generar fichas separadas. Se corrige el origen.
+
+## `integraciones/normalizar_clientes.gs` (Apps Script nuevo)
+
+Sigue el patrón que la planilla ya usa (`Map_Areas` como tabla de mapeo consultada por una columna calculada). Agrega un menú **"DIDIAL · Datos"** con tres pasos y una utilidad.
+
+### Paso 1 · `mapaClientesGenerar()` — no modifica nada
+Recorre la columna Propietario y agrupa variantes usando dos niveles de evidencia:
+- **Fuerte**: mismo teléfono (últimos 8 dígitos, para que `+569 92764347`, `992764347`, `56992764347` y `92764347` agrupen) o mismo correo.
+- **Débil**: similitud de bigramas sobre el nombre normalizado (sin acentos ni puntuación).
+
+Escribe la pestaña **`Map_Clientes`** con: Grupo, Variante, OTs, Facturación, Evidencia, Nombre canónico sugerido y una casilla **Aplicar**. El canónico sugerido es la variante con más OTs.
+
+Para no comparar todos contra todos en miles de valores, la comparación por nombre se hace solo entre nombres con la misma inicial.
+
+### Paso 2 · Revisión humana
+Se corrige el canónico y se marca **Aplicar** solo en los grupos confirmados. Se pueden **agregar filas a mano**: los casos que el algoritmo no detecta por nombre (ver abajo) se resuelven así.
+
+### Paso 3 · `mapaClientesAplicar()`
+Escribe el canónico en la columna Propietario, **guardando antes el original** en una columna de respaldo `Propietario Original` (solo la primera vez, para que dos pasadas no pierdan el valor real). Reversible con `mapaClientesRevertir()`.
+
+Regenerar el paso 1 **conserva las filas ya marcadas**, incluidas las agregadas a mano.
+
+### Utilidad · `normalizarPatentes()`
+Crea la columna **`Patente Norm`** con la patente sin separadores y en mayúsculas — exactamente lo que produce la columna generada `vehiculos.patente_norm` de Supabase (migración 49). Con eso ambos lados comparten la misma llave de vehículo. Además reporta las patentes escritas de más de una forma (el caso `GR WW76` / `GR WW 76`).
+
+## Calibración del umbral (verificada con datos reales)
+
+| Similitud | Caso | Debe |
+|---|---|---|
+| 0,903 | Rafel Valderrama / Rafael Valderrama | unir |
+| 0,893 | UNVERSIONES GASTRONIMICAS / INVERSIONES GASTRONOMICAS | unir |
+| 0,870 | Fernnda Vega / Fernanda Vega | unir |
+| 0,850 | Contreras Hermanos Ltda / Contreras Hnos Ltda | unir |
+| 0,818 | Felioe Pavez / Felipe Pavez | unir |
+| **0,80** | **umbral** | |
+| 0,710 | Maria Elena Rojas / Maria Elena Soto | separar |
+| 0,583 | Gabriel Monge / Gabriel Nuñez | separar |
+
+Se bajó de 0,82 a 0,80 porque con 0,82 quedaba fuera "Felioe Pavez". El margen contra el falso positivo más alto (0,710) sigue siendo cómodo.
+
+**Limitación importante y declarada**: dos de los casos conocidos **no se detectan por nombre**:
+- `Katterine Rodriguez` / `Katerine` → 0,56
+- `INIA` / `INS. INV. AGROPECUARIA` → 0,18
+
+Solo se agrupan si comparten teléfono o correo en la planilla (INIA sí comparte correo). Si no, hay que agregarlos a mano en `Map_Clientes`. Ningún algoritmo de parecido de texto puede unir "INIA" con "INS. INV. AGROPECUARIA" sin unir también cosas que no corresponden.
+
+## Modelo de consistencia entre planilla y Supabase
+
+| Concepto | Planilla (origen) | Supabase (CRM) | Llave común |
+|---|---|---|---|
+| Vehículo | columna `Patente Norm` | `vehiculos.patente_norm` (generada) | patente sin separadores, mayúsculas |
+| Cliente | `Propietario` consolidado vía `Map_Clientes` | fichas fusionadas con `fusionar_clientes_preservando()` | nombre canónico |
+| Área de servicio | `Área Servicio` (BF), calculada desde `Map_Areas` | — | ya consistente |
+
+El script `crm_actualizar_ot.gs` ya existente sincroniza CRM → planilla al editar un cliente, con la política "el CRM escribe siempre; la vuelta solo completa campos vacíos". Consolidar los nombres en la planilla y fusionar las fichas en Supabase deja ambos lados con la misma identidad, y esa sincronización los mantiene alineados de ahí en adelante.
+
+⚠️ **Detectado de paso**: `crm_actualizar_ot.gs` tiene `CRM_UPD_HOJA = 'OT'`, pero la pestaña de datos se llama **`Hoja 1`**. Si ese Web App está desplegado, no está encontrando la hoja y la sincronización CRM → planilla no está ocurriendo. Verificar y corregir la constante.
+
+## Orden recomendado
+1. `normalizarPatentes()` en la planilla.
+2. Migración 49 en Supabase (`patente_norm`).
+3. `mapaClientesGenerar()` → revisar → `mapaClientesAplicar()`.
+4. Migraciones 50 y 51: diagnosticar, vincular huérfanas, fusionar con `fusionar_clientes_preservando()`.
+5. Recálculo del bloque 6 de la migración 51 (no el de la 50).
+
+## Recomendación de fondo (sigue vigente)
+Mientras el Propietario sea texto libre sin RUT, los duplicados se seguirán generando. Capturar el RUT en la recepción y usarlo como llave es la corrección estructural; el CRM ya valida RUT con módulo 11.

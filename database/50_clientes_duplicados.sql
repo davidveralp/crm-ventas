@@ -258,6 +258,12 @@ $$;
 -- ----------------------------------------------------------------------------
 -- 6) RECÁLCULO GENERAL de facturación histórica
 -- ----------------------------------------------------------------------------
+-- ⚠️ CORREGIDO EN LA MIGRACIÓN 51 — USAR AQUELLA, NO ESTA.
+-- La consulta de verificación de más abajo lista también las fichas cargadas
+-- por `06_carga_clientes.sql`, que tienen facturación histórica importada pero
+-- ninguna fila en `servicios`. Aparecen como "guardado > 0 / real = 0" y NO
+-- están mal: poner sus totales en cero destruiría datos históricos reales
+-- (27 fichas, $10.746.186). Ver `51_facturacion_importada.sql`.
 -- Corrige las fichas cuyo total quedó desactualizado (importaciones antiguas,
 -- vinculaciones posteriores desde Control de OT, borrados). Es seguro y
 -- repetible: deja el total igual a la suma real de sus OTs.
