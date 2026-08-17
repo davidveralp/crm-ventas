@@ -221,8 +221,12 @@ create policy notificaciones_del on notificaciones
 
 
 -- ---- inspecciones_ingreso --------------------------------------------------
--- Se incluye porque es la base de F4 y hoy depende de las políticas genéricas
--- de la migración 47.
+-- ⚠️ ESTE BLOQUE FALLÓ. La política de la migración 47 se llama `ii_tenant`,
+--    no `inspecciones_ingreso_all`, así que el DROP no la encontró y sobrevivió.
+--    Como las políticas permisivas se combinan con OR, `ii_tenant` (for all,
+--    solo por empresa) anulaba las tres políticas por rol de abajo.
+--    CORREGIDO EN `57_fix_rls_ii_tenant.sql`, que elimina las políticas
+--    recorriendo pg_policies en vez de adivinar nombres. Ejecutar esa.
 do $$
 begin
   if exists (select 1 from information_schema.tables

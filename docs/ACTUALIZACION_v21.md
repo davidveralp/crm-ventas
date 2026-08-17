@@ -1627,3 +1627,34 @@ Iniciar sesión como **Víctor Tello** y como un **técnico**, e intentar editar
 | Q2, Q4, Q5, Q6, Q7 | pendientes |
 
 **F1a completa.** Queda ejecutar las migraciones 55 y 56, correr la limpieza de patentes duplicadas (migración 50) y activar el índice único. Con eso se puede empezar F1b: `oportunidades` + `eventos` + estados calculados desde hijos.
+
+---
+
+# Migración 57 — CORRECCIÓN: la política `ii_tenant` anulaba la matriz de roles
+
+## Qué mostró la verificación de la 56
+```
+inspecciones_ingreso | ii_tenant        | ALL      ← no debía estar
+inspecciones_ingreso | inspecciones_ins | INSERT
+inspecciones_ingreso | inspecciones_sel | SELECT
+inspecciones_ingreso | inspecciones_upd | UPDATE
+```
+Las otras cuatro tablas quedaron correctas: 4 políticas cada una, ninguna ALL.
+
+## Causa
+La migración 47 nombró su política **`ii_tenant`**, no `inspecciones_ingreso_all`. La 56 intentaba eliminarla por el nombre equivocado: el `DROP` no encontró nada y la política sobrevivió.
+
+## Por qué no era cosmético
+En PostgreSQL las políticas **permisivas** del mismo comando se combinan con **OR**. Mientras `ii_tenant` existiera como `for all using (empresa_id = empresa_actual())`, bastaba cumplir esa condición para escribir — y las tres políticas por rol quedaban decorativas. Cualquier usuario de la empresa, incluido un asistente de bodega, podía seguir creando y modificando inspecciones.
+
+Es el modo de falla más incómodo de RLS: la verificación estructural "existen las políticas por rol" daba verde, pero el permiso efectivo no había cambiado.
+
+## Corrección de método
+La 57 **no elimina políticas por nombre adivinado**. Recorre `pg_policies` y borra todas las de cada tabla antes de recrear la matriz. Es la única forma de garantizar que no sobreviva ninguna, sin depender de conocer cómo las nombró una migración anterior. Idempotente.
+
+Se agregó además `inspecciones_del`, que faltaba en la 56 (la tabla quedaba sin política de borrado, o sea sin poder borrar).
+
+## Verificación
+La primera consulta del script debe devolver **cero filas**. La segunda debe mostrar 4 políticas por tabla, 20 en total, ninguna con `cmd = ALL`. La tercera lista las políticas ALL que quedan en el resto del proyecto: `clientes`, `actividades` y `campanas` quedan fuera de esta fase a propósito, pero conviene tenerlas a la vista.
+
+La migración 56 quedó anotada señalando el bloque que falló.
