@@ -1699,3 +1699,51 @@ El extractor de patente se probó con ocho títulos reales: acierta en los seis 
 - **Redesplegar** la Edge Function (`supabase functions deploy clickup-sync`). Un push a GitHub NO despliega Edge Functions.
 - El webhook debe incluir el evento **`taskCreated`**. Sin él nada de esto se dispara. Sigue pendiente de confirmar desde la v43.
 - El secret **`CLICKUP_WEBHOOK_SECRET`** debe existir: la v48.1 falla cerrada y sin él el webhook rechaza todo.
+
+---
+
+# Migración 58 — F1b · `oportunidades`, `eventos` y estados calculados
+
+## Hallazgo previo: los hallazgos ya existían
+`diagnosticos_taller` (migración 24) ya tiene `item`, `severidad` (critico | pronto | preventivo | ok), `recomendacion` y `tecnico_id`. **Es la entidad "hallazgo" de la especificación.** No se creó una tabla nueva: se le agregó el vínculo comercial que le faltaba.
+
+Esto reduce el alcance de F4 en la spec: la inspección no parte de cero ni en el módulo (`InspeccionIngreso.jsx`) ni en los hallazgos.
+
+## El problema concreto que resuelve
+Hoy el técnico registra un diagnóstico y de ahí en adelante nadie sabe qué pasó con él. No hay forma de responder *"¿cuántos hallazgos críticos se convirtieron en venta?"*, que es la pregunta que originó el módulo entero.
+
+`oportunidades` es el puente entre el hallazgo técnico y la venta. Un hallazgo que no se ofrece es una pérdida invisible; una oportunidad registra el ofrecimiento **y su desenlace**.
+
+## `eventos` — append-only de verdad
+Se creó con políticas de **solo SELECT e INSERT**. Sin UPDATE ni DELETE, nadie puede reescribir la historia — que es el punto de tener un log separado de `auditoria`. Incluye `registrar_evento()` como helper.
+
+Se mantiene la decisión C4 de la Fase 0: `auditoria` responde *"¿quién cambió este campo?"*, `eventos` responde *"¿qué pasó con esta oportunidad?"*.
+
+## Estado calculado, no escrito
+`oportunidades.estado` **se deriva del presupuesto asociado** vía `oportunidad_estado_calculado()`. Así no puede quedar en 'ofrecida' cuando su presupuesto ya fue aprobado — el desincronizado clásico cuando el estado es un campo libre.
+
+Mapeo verificado contra los estados reales de `presupuestos_taller` (los seis del frontend: solicitado, cotizando, enviado, aprobado, parcial, rechazado):
+
+| Presupuesto | Oportunidad |
+|---|---|
+| sin presupuesto | detectada, u ofrecida si tiene `ofrecida_en` |
+| solicitado | ofrecida |
+| cotizando, enviado | presupuestada |
+| aprobado, parcial | aprobada |
+| rechazado | rechazada |
+
+Un `motivo_cierre` explícito manda sobre todo lo demás.
+
+### Sobre la recursión de los triggers
+`tg_oport_autoestado` es `AFTER UPDATE OF presupuesto_id, motivo_cierre, ofrecida_en`. La función `oportunidad_sincronizar` solo escribe `estado` y `cerrada_en`, que **no** están en esa lista, así que el UPDATE interno no vuelve a disparar el trigger. Es la razón de acotar las columnas vigiladas en vez de usar un `AFTER UPDATE` genérico — con uno genérico esto entraría en bucle.
+
+## Vista `v_conversion_oportunidades`
+La métrica que motivó el módulo, por mes y severidad: detectadas, ofrecidas, aprobadas, rechazadas, **sin_ofrecer**, montos, % de ofrecimiento y % de cierre.
+
+`sin_ofrecer` es la cifra importante: hallazgos que nunca llegaron al cliente. Es la pérdida que hoy no se ve.
+
+## RLS
+Mismo criterio de la 56. El técnico **puede crear** una oportunidad (es quien detecta el hallazgo) pero **no gestionarla comercialmente**: el update queda para asesor, jefe de taller y adquisiciones.
+
+## Pendiente
+Falta la interfaz. La migración deja el modelo funcionando, pero nadie puede crear una oportunidad desde la app todavía. Siguiente paso natural: un botón en el detalle del trabajo de taller que convierta un diagnóstico en oportunidad, y una bandeja de oportunidades sin ofrecer para el asesor.
