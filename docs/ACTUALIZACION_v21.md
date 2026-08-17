@@ -1567,3 +1567,63 @@ Existe un cliente "Andres Aracena" (`fba1feae-…`, tipo Interno, Suzuki) en la 
 | Q2, Q4, Q5, Q6, Q7 | pendientes |
 
 F1a se reduce a: helper `auth_rol()`, políticas RLS por entidad, y limpieza de patentes duplicadas antes del índice único.
+
+---
+
+# Migración 56 — F1a · Helper `auth_rol()` y matriz de permisos por rol
+
+Cierra **C3**, el último punto sustantivo de la Fase 0.
+
+## Hallazgo: la RLS del módulo operativo no distingue roles
+
+Verificado en `22_actualizacion_v18.sql`: las cuatro tablas del módulo tienen una sola política generada en bucle:
+
+```sql
+create policy %I_all on %I for all
+  using (empresa_id = empresa_actual())
+```
+
+Es decir, **cualquier usuario autenticado de la empresa puede leer y escribir todo**. Un técnico puede modificar montos de `presupuestos_taller`; cualquiera puede leer las notificaciones de los demás. No es un riesgo teórico: son tablas con datos de dinero y asignación de trabajo, sin ninguna barrera por rol.
+
+## Helpers agregados
+- `auth_rol()` — rol del usuario autenticado, como texto.
+- `auth_rol_en(text[])` — pertenencia a un grupo.
+- `es_asesor()`, `es_taller()`, `es_adquisiciones()`, `es_admin_o_jefe()` — atajos por función de negocio. Nombrarlos así hace las políticas legibles y permite cambiar la composición de un grupo en un solo lugar.
+
+**`es_adquisiciones()` es categoría propia, no parte de `es_taller()`.** Es la decisión que se discutió: el coordinador de adquisiciones participa del flujo de taller y del comercial, pero no necesita ver la operación del box. Si heredara los permisos de taller terminaría con acceso a cosas que no le corresponden.
+
+## Criterio de la matriz
+**Lectura amplia dentro de la empresa; escritura restringida según responsabilidad.** El taller es un espacio de coordinación: ocultar información entre roles genera más problemas que los que resuelve. Lo que importa controlar es quién *modifica* qué.
+
+| Entidad | Escritura permitida a |
+|---|---|
+| `trabajos_taller` | admin, jefe_taller, técnico, asesor (crea el ingreso) |
+| `tareas_taller` | admin, jefe_taller, técnico (marca sus ítems de la lista de control) |
+| `presupuestos_taller` | admin, jefe_taller, adquisiciones (elabora), asesor (solicita) |
+| `notificaciones` | cualquiera puede emitir; solo el destinatario marca leída |
+| `inspecciones_ingreso` | admin, taller, asesor (se captura en recepción) |
+
+**El cambio de fondo: el técnico queda fuera de la escritura de `presupuestos_taller`.** No fija montos ni cambia estados comerciales. El borrado se restringe más que la edición: solo admin en presupuestos, admin o jefe en el resto.
+
+## Dos errores detectados y corregidos durante la escritura
+1. **`notificaciones` tiene `rol_destino`**, no solo `usuario_id`. La primera versión de la política de lectura solo cubría el destinatario directo, lo que habría dejado **invisibles los avisos dirigidos por rol** — que son precisamente los del circuito N6-N9. Corregido: la política cubre `usuario_id`, `rol_destino`, difusión general y admin. El `update` también, porque marcar como leída un aviso de rol escribe en `leida_por` desde alguien que no es `usuario_id`.
+2. **`coordinador_bodega` no existe en el enum.** Los valores reales son `encargado_bodega` y `asistente_bodega`. Se validaron todos los roles referenciados contra el enum real: no queda ninguno inventado.
+
+## Lo que NO toca
+Las políticas de `clientes`, `actividades` y `campanas`. Funcionan, están probadas, y la migración 41 resolvió ahí un caso difícil (lectura de clientes con tarea de campaña asignada). Uniformarlas ahora arriesga romper el módulo comercial sin beneficio para el operativo.
+
+## Prueba obligatoria antes de dar F1a por cerrada
+Iniciar sesión como **Víctor Tello** y como un **técnico**, e intentar editar un presupuesto. El técnico debe recibir error de permisos; Víctor debe poder. Sin esa prueba la matriz está escrita pero no verificada — y una política RLS mal escrita falla en silencio, devolviendo cero filas en vez de un error.
+
+## Estado de la Fase 0
+
+| Punto | Estado |
+|---|---|
+| C1, C2, C5 | resueltos antes de esta fase |
+| **C3 · RLS por rol** | **resuelto (migración 56)** |
+| C4 · eventos vs auditoría | vigente, se aborda en F1b |
+| C6, C7 | vigentes, menores |
+| Q1, Q3 | respondidas |
+| Q2, Q4, Q5, Q6, Q7 | pendientes |
+
+**F1a completa.** Queda ejecutar las migraciones 55 y 56, correr la limpieza de patentes duplicadas (migración 50) y activar el índice único. Con eso se puede empezar F1b: `oportunidades` + `eventos` + estados calculados desde hijos.
