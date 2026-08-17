@@ -341,7 +341,7 @@ export function fmtFonoOT(value) {
 }
 
 // ---- OT · técnicos, encuesta y "cómo conoció" (réplica fiel) -------
-export const OT_TECNICOS = ['Ignacio', 'Shelmy', 'Felipe', 'Sergio', 'Gabriel', 'Javier', 'Wilson', 'Alexis', 'Andrés']
+export const OT_TECNICOS = ['Ignacio', 'Shelmy', 'Felipe', 'Sergio', 'Gabriel', 'Javier', 'Wilson', 'Alexis', 'Andrés', 'Pablo']
 export const OT_CONOCIO = [
   { v: 'Recomendación', e: '🗣️' }, { v: 'Video de Instagram', e: '📸' },
   { v: 'Facebook', e: '📘' }, { v: 'Google', e: '🔍' },

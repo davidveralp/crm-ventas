@@ -1522,3 +1522,48 @@ La migración 52 quedó anotada en su punto 2 señalando el error, para que no c
 
 ## Nota
 No requiere cambios en el frontend: el código ya enviaba los tres campos correctamente. Faltaba únicamente el esquema.
+
+---
+
+# Fase 0 · Q3 cerrada — equipo por rol y migración 55
+
+## Equipo confirmado
+
+| Rol | Personas | Estado |
+|---|---|---|
+| `admin` | David Vera, Jessica Díaz | ya en el sistema |
+| `asesor_toyota` | Diego Leyton | ya en el sistema |
+| `asesor_multimarca` | David Rivera, Matías Ponce | ya en el sistema |
+| `jefe_taller` | **Andrés Aracena** | crear usuario |
+| `coordinador_adquisiciones` | **Víctor Tello** | crear usuario |
+| `tecnico` | Gabriel Cayo, Javier Guzmán, Felipe, Sergio, **Pablo Donoso** | según decisión Q4 |
+
+`coordinador_adquisiciones` **es** el "encargado de presupuestos" de la especificación (confirmado por David). `helpers.js:469` ya lo etiquetaba como *"Encargado de Presupuestos / Adquisiciones"*, así que el mapeo estaba codificado desde antes.
+
+**Con esto los cinco roles que pide la spec quedan cubiertos por personas reales**, que es el prerrequisito para probar la matriz de permisos (C3) y el circuito de notificaciones N6-N9.
+
+## `database/55_usuarios_operacion.sql`
+Crea los perfiles de Andrés Aracena y Víctor Tello. **Requiere que antes existan sus cuentas en Supabase → Authentication**, porque `usuarios.id` referencia `auth.users(id)`. Incluye una consulta que lista las cuentas de Authentication sin perfil, el bloque de técnicos comentado (depende de Q4), y una verificación final que marca `FALTA` si algún rol quedó sin nadie.
+
+Los correos van como marcadores `CORREO_…@didial.cl` y hay que reemplazarlos. Si un correo no existe en `auth.users`, la fila no se inserta y **no se produce error**: por eso la verificación del punto 4 es necesaria.
+
+## Cambio en el frontend
+`OT_TECNICOS` pasa de 9 a 10 nombres: se agrega **Pablo**. Aparecía asignando tareas en ClickUp pero no estaba en el catálogo, así que sus OTs no se le podían atribuir en Nueva OT ni en los análisis por técnico.
+
+## Aclaración: Andrés Aracena como cliente
+Existe un cliente "Andres Aracena" (`fba1feae-…`, tipo Interno, Suzuki) en la carga inicial. **No es un duplicado ni un error.** `clientes` es quien trae un vehículo a atender; `usuarios` es quien opera el sistema. La misma persona puede ser ambas, y el tipo "Interno" ya la distingue en los análisis comerciales.
+
+## Estado de la Fase 0 tras esta verificación
+
+| Punto | Estado |
+|---|---|
+| C1 · Presupuestos | resuelto (`presupuestos_taller`, migración 22) |
+| C2 · Roles | resuelto (los 5 existen, con permisos y notificaciones) |
+| C5 · RUT y patente | resuelto (migraciones 09, 49, 50, 53) |
+| Q1 · Qué proyecto | respondida: este, en la migración 55 |
+| Q3 · Quiénes ocupan los roles | **respondida** |
+| C3 · RLS por rol | **vigente — único punto sustantivo de F1a** |
+| C4, C6, C7 | vigentes, menores |
+| Q2, Q4, Q5, Q6, Q7 | pendientes |
+
+F1a se reduce a: helper `auth_rol()`, políticas RLS por entidad, y limpieza de patentes duplicadas antes del índice único.
