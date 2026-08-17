@@ -1658,3 +1658,44 @@ Se agregó además `inspecciones_del`, que faltaba en la 56 (la tabla quedaba si
 La primera consulta del script debe devolver **cero filas**. La segunda debe mostrar 4 políticas por tabla, 20 en total, ninguna con `cmd = ALL`. La tercera lista las políticas ALL que quedan en el resto del proyecto: `clientes`, `actividades` y `campanas` quedan fuera de esta fase a propósito, pero conviene tenerlas a la vista.
 
 La migración 56 quedó anotada señalando el bloque que falló.
+
+---
+
+# Autovinculación de tareas de ClickUp al módulo Taller (clickup-sync v49)
+
+## Situación previa
+Toda tarea creada directamente en ClickUp caía en `clickup_tareas_pendientes` para revisión manual en la bandeja. El criterio de la v43 era correcto y sigue vigente: **no crear datos a partir de texto ambiguo**. Un título como `JS WW 16 TOYOTA HILUX NELSON VALLEJO OT 12902/TRAS 1667` no es un formulario.
+
+## Qué cambia
+Se automatiza **solo el caso inequívoco**. Si el título contiene una patente que identifica a **un único** vehículo de la base, el vínculo no requiere criterio humano y el trabajo de taller se crea directo.
+
+Las tres condiciones son todas necesarias:
+1. Hay patente extraíble del título.
+2. Esa patente coincide con **exactamente un** vehículo (`limit(2)` para detectar la ambigüedad sin traer todo).
+3. Ese vehículo **no tiene** ya un trabajo de taller abierto.
+
+Si alguna falla, la tarea cae en la bandeja como antes. La bandeja no se elimina: pasa a recibir solo los casos que de verdad necesitan una persona.
+
+Esto es posible ahora por la migración 49: `vehiculos.patente_norm` permite buscar `GR WW76` y `GR WW 76` como el mismo valor, que antes exigía dos consultas y no era confiable.
+
+## Tres desenlaces
+| Situación | Acción |
+|---|---|
+| Patente única, sin trabajo abierto | Crea el trabajo con estado, prioridad y fecha límite de ClickUp, y notifica al `jefe_taller` para que confirme |
+| Patente única, con trabajo abierto sin tarjeta espejo | **Enlaza** los dos en vez de duplicar |
+| Patente única, con trabajo abierto que ya tiene tarjeta | A la bandeja: dos tarjetas para el mismo vehículo lo decide una persona |
+
+La notificación al jefe de taller es deliberada: el vínculo es confiable pero no infalible, y un trabajo creado en silencio es peor que uno creado con aviso.
+
+## Tres errores corregidos durante la escritura
+Verificado contra la estructura real de `trabajos_taller` (migración 22):
+1. `descripcion` **no existe** como columna — la correcta es `observaciones_cliente`.
+2. `origen` **no existe**; se eliminó del insert.
+3. `EMPRESA_ID` no estaba declarada. La tabla tiene `default empresa_actual()`, pero el webhook escribe con **service role**, donde `auth.uid()` es null y ese default devolvería null. Hay que pasarlo explícito.
+
+El extractor de patente se probó con ocho títulos reales: acierta en los seis que traen patente (incluyendo minúsculas y formatos con y sin espacios) y devuelve null en los dos que no.
+
+## Requisitos de despliegue
+- **Redesplegar** la Edge Function (`supabase functions deploy clickup-sync`). Un push a GitHub NO despliega Edge Functions.
+- El webhook debe incluir el evento **`taskCreated`**. Sin él nada de esto se dispara. Sigue pendiente de confirmar desde la v43.
+- El secret **`CLICKUP_WEBHOOK_SECRET`** debe existir: la v48.1 falla cerrada y sin él el webhook rechaza todo.

@@ -95,6 +95,10 @@ ESTADO_CLICKUP_A_CRM['complete'] = 'listo_entrega'   // cierre formal en ClickUp
 const PRIORIDAD_CRM_A_CLICKUP: Record<string, number> = { urgente: 1, alta: 2, normal: 3 }
 const PRIORIDAD_CLICKUP_A_CRM: Record<number, string> = { 1: 'urgente', 2: 'alta', 3: 'normal', 4: 'normal' }
 
+// La tabla tiene `default empresa_actual()`, pero el webhook escribe con service
+// role, donde auth.uid() es null y ese default devolvería null. Hay que pasarlo.
+const EMPRESA_ID = '00000000-0000-0000-0000-000000000001'
+
 // IDs de los campos personalizados de la lista "Vehiculos en Taller"
 // (obtenidos vía la API de ClickUp — ver docs/ACTUALIZACION_v21.md v42)
 const CAMPO_DATOS_CLIENTE = '61ad3618-8fe4-49e8-9b74-9beae1e15ec5'
@@ -304,10 +308,83 @@ Deno.serve(async (req) => {
       // el clickup_subtask_id) — se ignora, no es una tarjeta nueva suelta.
       if (tarea.parent) return json({ ok: true, ignorado: 'es una subtarea (aún sincronizando)' })
 
+      const patente = extraerPatente(tarea.name)
+
+      // ---- AUTOVINCULACIÓN (v49) -------------------------------------------
+      // Si el título trae una patente que identifica a UN solo vehículo de la
+      // base, el vínculo es inequívoco y no necesita revisión humana: se crea
+      // el trabajo de taller directamente.
+      //
+      // Las tres condiciones son necesarias. Sin ellas se vuelve al problema
+      // original —crear datos a partir de texto ambiguo— que es justamente lo
+      // que la bandeja existe para evitar:
+      //   1. Hay patente extraíble del título.
+      //   2. Esa patente existe en `vehiculos` y coincide con EXACTAMENTE uno.
+      //   3. Ese vehículo NO tiene ya un trabajo de taller abierto.
+      // Si alguna falla, la tarea cae en la bandeja como antes.
+      if (patente) {
+        const pnorm = patente.replace(/[^A-Z0-9]/g, '')
+
+        // limit(2) a propósito: permite detectar la ambigüedad sin traer todo
+        const { data: vehs } = await service.from('vehiculos')
+          .select('id, cliente_id, marca, modelo, patente')
+          .eq('patente_norm', pnorm).limit(2)
+
+        if (vehs && vehs.length === 1) {
+          const veh = vehs[0]
+
+          const { data: abierto } = await service.from('trabajos_taller')
+            .select('id, clickup_task_id')
+            .eq('vehiculo_id', veh.id)
+            .not('estado', 'in', '("entregado","cancelado")')
+            .limit(1).maybeSingle()
+
+          if (abierto && !abierto.clickup_task_id) {
+            // Ya existe el trabajo en el CRM pero sin tarjeta espejo:
+            // se enlazan en vez de duplicar.
+            await service.from('trabajos_taller')
+              .update({ clickup_task_id: body.task_id }).eq('id', abierto.id)
+            return json({ ok: true, autovinculado: 'trabajo existente', trabajo_id: abierto.id })
+          }
+
+          if (!abierto) {
+            const { data: nuevo, error: eIns } = await service.from('trabajos_taller').insert({
+              empresa_id: EMPRESA_ID,
+              vehiculo_id: veh.id,
+              cliente_id: veh.cliente_id,
+              titulo: tarea.name,
+              observaciones_cliente: tarea.text_content || tarea.description || null,
+              estado: ESTADO_CLICKUP_A_CRM[(tarea.status?.status || '').toLowerCase()] || 'en_reparacion',
+              prioridad: PRIORIDAD_CLICKUP_A_CRM[Number(tarea.priority?.id)] || 'normal',
+              fecha_limite: tarea.due_date ? new Date(Number(tarea.due_date)).toISOString().slice(0, 10) : null,
+              clickup_task_id: body.task_id
+            }).select('id').maybeSingle()
+
+            if (!eIns && nuevo) {
+              // Aviso al jefe de taller: el trabajo se creó solo, conviene que
+              // alguien lo revise aunque el vínculo sea confiable.
+              await service.from('notificaciones').insert({
+                empresa_id: EMPRESA_ID,
+                rol_destino: 'jefe_taller',
+                titulo: `Trabajo vinculado automáticamente · ${veh.patente}`,
+                cuerpo: `Tarea de ClickUp "${tarea.name}" se asoció al ${veh.marca || ''} ${veh.modelo || ''} (${veh.patente}). Revisar que corresponda.`,
+                url: `/taller?trabajo=${nuevo.id}`
+              })
+              return json({ ok: true, autovinculado: 'trabajo creado', trabajo_id: nuevo.id, patente: veh.patente })
+            }
+            console.error('Autovinculación falló al insertar, se deriva a bandeja:', eIns?.message)
+          }
+          // Si el vehículo ya tiene un trabajo abierto CON tarjeta espejo, no se
+          // toca: son dos tarjetas para el mismo vehículo y eso lo decide una
+          // persona. Cae a la bandeja.
+        }
+      }
+
+      // ---- Bandeja de revisión (comportamiento original) --------------------
       await service.from('clickup_tareas_pendientes').upsert({
         clickup_task_id: body.task_id, titulo: tarea.name,
         descripcion: tarea.text_content || tarea.description || null,
-        patente_candidata: extraerPatente(tarea.name), estado: 'pendiente'
+        patente_candidata: patente, estado: 'pendiente'
       }, { onConflict: 'clickup_task_id' })
       return json({ ok: true, registrado_en_bandeja: true })
     }
