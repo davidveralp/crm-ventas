@@ -1888,3 +1888,27 @@ Botón **"🔧 Hacer RADAR de salud"** en el detalle del trabajo en Taller, visi
 
 ## Nota sobre el alcance
 La tablet resuelve la ergonomía, no necesariamente la conectividad. Vale la pena medir la cobertura WiFi real en los boxes antes de decidir si hace falta el desarrollo offline completo: si la señal es estable, lo implementado basta.
+
+---
+
+# v75 — Panel de Vehículos
+
+`src/pages/Vehiculos.jsx` (nuevo), rutas `/vehiculos` y `/vehiculos/:id`, entrada en el menú OPERACIÓN. Sin migración.
+
+Ver **`docs/CAMBIOS_v75.md`** para el resumen funcional e instructivo de uso.
+
+## Motivación
+El CRM estaba organizado por cliente, pero en un taller la unidad de trabajo es el vehículo: es lo que entra, se inspecciona y acumula historial técnico. Un cliente con tres autos tenía la información de los tres mezclada.
+
+## Contenido
+- **Listado** con búsqueda por patente (vía `patente_norm`, tolerante a formato), marca, modelo o cliente. Cuatro contadores que funcionan como filtro: total, con críticos, por atender, sin RADAR.
+- **Ficha** con cinco pestañas: Resumen (panel de salud + datos completos), RADAR, Presupuestos, Servicios y Taller. Cabecera con visitas, facturado, ticket promedio y última visita.
+- **RADAR desplegable**: por primera vez se pueden ver los **45 criterios** de una inspección con lo que respondió el técnico, agrupados por categoría, incluidos los que salieron bien. Hasta ahora solo se veían los rojos y amarillos.
+
+## Decisiones
+- **Corte en 200 filas** en el listado. Con ~1.150 vehículos, renderizar todos hace la tabla lenta sin beneficio; se avisa cuando hay más resultados.
+- **Los servicios se cruzan por patente**, no por `vehiculo_id`, porque el histórico importado de la planilla no tiene ese vínculo. Se documenta como limitación: una patente escrita de dos formas podría dejar visitas fuera.
+- La tabla usa `fetchAllRows` para evitar el corte silencioso a 1000 filas de Supabase, el mismo bug que afectó al listado de clientes.
+
+## Pendiente
+Edición del vehículo desde la ficha, exportación a Excel/PDF, y recordatorio de próxima mantención por kilometraje —que ahora es viable porque están el km y el historial en el mismo lugar.
