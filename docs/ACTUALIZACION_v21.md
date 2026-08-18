@@ -1854,3 +1854,37 @@ Si falta la migración, muestra un aviso en vez de fallar.
 Falta la **pantalla de captura**: hoy el técnico todavía no puede completar el RADAR desde la app. El modelo, el catálogo, las vistas y la visualización están listos; falta el formulario de 45 criterios agrupados por categoría con su semáforo y campo de observación por sección.
 
 Eso depende de **Q4** de la Fase 0, que sigue sin respuesta: si el técnico captura desde el box necesita funcionamiento sin conexión (IndexedDB + sincronización diferida, 1-2 semanas extra); si se usa un tablet fijo en recepción, la pantalla es directa.
+
+---
+
+# v74 — Pantalla de captura del RADAR (Q4 resuelta: tablets)
+
+`src/components/RadarInspeccion.jsx`. Con esto el circuito RADAR queda completo: captura → hallazgos → presupuesto → oportunidad → panel de conversión.
+
+## Decisiones de diseño para tablet
+- **Una categoría por pantalla**, no un formulario de 45 campos. Pestañas grandes arriba, con contador y color por sección (rojo si hay críticos, verde si está completa).
+- **Botones en vez de desplegables.** El técnico toca la opción directamente; no abre una lista y busca. Mínimo 48px de alto, que es el objetivo táctil cómodo con guantes.
+- **La categoría no se elige**: es el encabezado. Corrige el defecto del formulario de ClickUp, que la pedía ocho veces.
+- **La observación solo aparece cuando hay algo que observar**: si la respuesta es "Bien" o "No aplica", el campo no se muestra. Evita 45 campos de texto vacíos.
+- El color del semáforo está en el propio botón, así que el estado de cada criterio se ve sin leer.
+
+## Resistencia a cortes de conexión
+Sin ser offline-first completo:
+- **Guardado incremental**: cada respuesta se envía al momento con `upsert`, no al final.
+- **Cola local**: lo que no alcanzó a enviarse queda en el navegador y se reintenta con cada interacción. La cola reemplaza por código, así que cambiar de opinión sobre un criterio no acumula duplicados (verificado).
+- **Retomar a medias**: si existe una inspección `en_proceso` para el trabajo, se reabre con lo ya respondido en vez de empezar de cero.
+- **Contador de pendientes** visible en la barra de progreso, y `Completar` se bloquea si queda algo sin sincronizar — mejor impedir el cierre que dar por completa una inspección incompleta.
+
+Esto cubre el bache de WiFi de unos segundos, que es el caso frecuente. **No cubre trabajar sin señal durante toda la inspección**: para eso haría falta IndexedDB y sincronización diferida (1-2 semanas). Si al usar las tablets en el box aparecen zonas sin cobertura, ese es el siguiente paso.
+
+## Al completar
+1. Marca la inspección como completada y registra el km.
+2. Llama a `radar_volcar_hallazgos()`: los rojos y amarillos pasan a `diagnosticos_taller`, con la categoría en el nombre del ítem y la opción más la observación como recomendación.
+3. Si hay críticos, notifica al jefe de taller.
+4. Desde ahí el flujo existente sigue: botón "Pasar a presupuesto" → oportunidades → panel de venta cruzada.
+
+## Dónde está
+Botón **"🔧 Hacer RADAR de salud"** en el detalle del trabajo en Taller, visible para técnico y jefe, junto al panel de salud del vehículo. Se abre a pantalla completa (`fixed inset-0`), que es lo apropiado en tablet.
+
+## Nota sobre el alcance
+La tablet resuelve la ergonomía, no necesariamente la conectividad. Vale la pena medir la cobertura WiFi real en los boxes antes de decidir si hace falta el desarrollo offline completo: si la señal es estable, lo implementado basta.

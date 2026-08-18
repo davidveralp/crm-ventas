@@ -40,6 +40,7 @@ function TallerInterno() {
   const [presups, setPresups] = useState([])
   const [diags, setDiags] = useState([])
   const [oports, setOports] = useState([])
+  const [radarDe, setRadarDe] = useState(null)   // trabajo cuyo RADAR se está capturando
   const [margenes, setMargenes] = useState({ repuesto: 35, lubricante: 30, filtro: 30, consumible: 25, ajuste_asesor_pct: 10 })
   const [usuarios, setUsuarios] = useState([])
   const [vista, setVista] = useState('tablero') // tablero | lista | tecnicos | indicadores
@@ -500,7 +501,28 @@ function TallerInterno() {
           tareas={tareasDe(sel.id)} presups={presupsDe(sel.id)} tecnicos={tecnicos} nombreDe={nombreDe}
           diags={diags.filter((d) => d.trabajo_id === sel.id)} margenes={margenes}
           esJefe={esJefe} esTecnico={esTecnico} esCompras={esCompras} perfil={perfil} now={now} tituloDe={tituloDe}
-          acciones={{ moverEstado, guardarTrabajo, agregarTarea, asignarTarea, iniciarTarea, terminarTarea, terminarTodas, eliminarTarea, solicitarPresupuesto, guardarPresup, agregarDiag, borrarDiag, diagAPresupuesto, marcarRespaldo }} />
+          acciones={{ moverEstado, guardarTrabajo, agregarTarea, asignarTarea, iniciarTarea, terminarTarea, terminarTodas, eliminarTarea, solicitarPresupuesto, guardarPresup, agregarDiag, borrarDiag, diagAPresupuesto, marcarRespaldo, abrirRadar: setRadarDe }} />
+      )}
+
+      {/* RADAR a pantalla completa: pensado para tablet en el box */}
+      {radarDe && (
+        <div className="fixed inset-0 z-50 bg-white flex flex-col">
+          <RadarInspeccion
+            trabajo={radarDe}
+            onCerrar={() => { setRadarDe(null); cargar() }}
+            onCompletada={(r) => {
+              setRadarDe(null); cargar()
+              const msg = r.hallazgos
+                ? `RADAR completado. ${r.hallazgos} hallazgo(s) pasaron al diagnóstico técnico.`
+                : 'RADAR completado sin hallazgos que reportar.'
+              if (r.criticos) {
+                notificar({ empresa_id: perfil.empresa_id, rol: 'jefe_taller',
+                  titulo: `RADAR con ${r.criticos} crítico(s)`,
+                  cuerpo: tituloDe(radarDe), url: '/taller' })
+              }
+              alert(msg)
+            }} />
+        </div>
       )}
     </div>
   )
@@ -627,7 +649,13 @@ function Detalle({ t, onClose, tareas, presups, tecnicos, nombreDe, diags, marge
 
         {/* Salud del vehículo · alertas RADAR de inspecciones anteriores */}
         {t.vehiculo_id && (
-          <div className="mb-3"><PanelVehiculo vehiculoId={t.vehiculo_id} /></div>
+          <div className="mb-3">
+            <PanelVehiculo vehiculoId={t.vehiculo_id} />
+            {(esTecnico || esJefe) && (
+              <button type="button" onClick={() => acciones.abrirRadar(t)}
+                      className="btn-accion mt-2">🔧 Hacer RADAR de salud</button>
+            )}
+          </div>
         )}
 
         {/* Diagnóstico técnico */}
@@ -861,6 +889,7 @@ function SeccionDiag({ t, diags, esJefe, esTecnico, nombreDe, acciones }) {
                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); acciones.agregarDiag(t, d); setD({ item: '', severidad: 'preventivo', recomendacion: '' }) } }} />
           <button className="btn-soft sm:col-span-2" onClick={() => { acciones.agregarDiag(t, d); setD({ item: '', severidad: 'preventivo', recomendacion: '' }) }}>+ Agregar hallazgo</button>
         </div>
+
       )}
     </div>
   )
