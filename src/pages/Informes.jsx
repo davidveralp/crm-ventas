@@ -6,6 +6,7 @@ import { SEGMENTOS, segLabel, fmtCLP, TIPOS_SERVICIO } from '../lib/helpers'
 import * as XLSX from 'xlsx'
 import PanelOperativo from './PanelOperativo'
 import MapaClientes from './MapaClientes'
+import OportunidadesInforme from './OportunidadesInforme'
 
 export default function Informes() {
   const [d, setD] = useState(null)
@@ -165,6 +166,7 @@ export default function Informes() {
     <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-sm">
       <button onClick={() => setVista('operativo')} className={`px-3 py-1.5 ${vista === 'operativo' ? 'bg-deep text-white' : 'text-slate-500'}`}>Panel operativo</button>
       <button onClick={() => setVista('comercial')} className={`px-3 py-1.5 ${vista === 'comercial' ? 'bg-deep text-white' : 'text-slate-500'}`}>Comercial</button>
+      <button onClick={() => setVista('oportunidades')} className={`px-3 py-1.5 ${vista === 'oportunidades' ? 'bg-deep text-white' : 'text-slate-500'}`}>Venta cruzada</button>
       <button onClick={() => setVista('mapa')} className={`px-3 py-1.5 ${vista === 'mapa' ? 'bg-deep text-white' : 'text-slate-500'}`}>Mapa de clientes</button>
     </div>
   )
@@ -179,6 +181,19 @@ export default function Informes() {
         <Tabs />
       </div>
       <PanelOperativo />
+    </div>
+  )
+
+  if (vista === 'oportunidades') return (
+    <div className="space-y-6">
+      <div className="flex items-end justify-between flex-wrap gap-3 no-print">
+        <div>
+          <h1 className="text-xl font-bold text-ink">Informes</h1>
+          <p className="text-sm text-slate-500">Conversión de venta cruzada · hallazgos a venta</p>
+        </div>
+        <Tabs />
+      </div>
+      <OportunidadesInforme />
     </div>
   )
 

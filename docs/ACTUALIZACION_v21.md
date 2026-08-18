@@ -1747,3 +1747,110 @@ Mismo criterio de la 56. El técnico **puede crear** una oportunidad (es quien d
 
 ## Pendiente
 Falta la interfaz. La migración deja el modelo funcionando, pero nadie puede crear una oportunidad desde la app todavía. Siguiente paso natural: un botón en el detalle del trabajo de taller que convierta un diagnóstico en oportunidad, y una bandeja de oportunidades sin ofrecer para el asesor.
+
+---
+
+# Actualización v72 — Interfaz de oportunidades: el circuito queda cerrado
+
+Frontend (`Taller.jsx`, `Informes.jsx`, `OportunidadesInforme.jsx` nuevo). Requiere la **migración 58**.
+
+## 1. Las oportunidades se crean solas en el flujo que ya existía
+`Taller.jsx` ya tenía `diagAPresupuesto()`: convierte los hallazgos del diagnóstico en ítems de un presupuesto. **No se agregó un flujo nuevo** — se enganchó el registro de oportunidades a ese mismo botón.
+
+Al pasar un diagnóstico a presupuesto:
+- Se captura el `id` del presupuesto creado (antes se descartaba).
+- Se genera **una oportunidad por hallazgo** con severidad ≠ ok, enlazada al diagnóstico, al trabajo, al cliente, al vehículo, al técnico que lo detectó y al asesor del trabajo.
+- Se marca `ofrecida_en`, porque pasar a presupuesto **es** el ofrecimiento.
+- El estado no se escribe: lo calcula la base desde el presupuesto (migración 58).
+
+**Sin duplicados**: se filtran los diagnósticos que ya tienen oportunidad, así que reintentar el botón no genera registros repetidos.
+
+**Sin bloquear el flujo**: si el insert de oportunidades falla, el presupuesto ya se creó y no se revierte; el error va a consola. La medición no debe impedir la operación.
+
+## 2. Panel "Venta cruzada" en Informes
+Pestaña nueva junto a Panel operativo, Comercial y Mapa de clientes.
+
+**La cifra que va primero es "Sin ofrecer"**, no el porcentaje de cierre. Es deliberado: los hallazgos que nunca llegaron al cliente son la pérdida que hoy no aparece en ningún informe, porque el diagnóstico moría en la ficha del trabajo. El % de cierre mide qué tan bien se vende; "sin ofrecer" mide lo que ni siquiera se intentó.
+
+Incluye:
+- Cuatro indicadores: sin ofrecer (con su monto), % ofrecimiento, % cierre, venta cruzada lograda.
+- **Tabla por severidad**, con una alerta explícita si hay hallazgos **críticos** sin ofrecer: es el caso más grave porque es riesgo para el cliente y venta perdida a la vez.
+- Detalle filtrable por estado, con hallazgo, vehículo, cliente, quién lo detectó y qué asesor lo tiene asignado.
+- Selector de 3, 6 o 12 meses.
+
+Si la tabla no existe todavía, muestra un mensaje que indica que falta la migración 58 en vez de fallar.
+
+## 3. Corrección detectada al integrar
+Al agregar la consulta de oportunidades a `cargar()` en Taller, el destructuring quedó con 6 variables para 7 promesas — `mg` (márgenes) estaba recibiendo las oportunidades. Corregido antes de compilar. Es el riesgo típico de `Promise.all` con destructuring posicional.
+
+## Estado del circuito
+```
+técnico registra diagnóstico
+  → jefe pasa a presupuesto (crea oportunidad, marca ofrecida)
+    → adquisiciones cotiza      → oportunidad = presupuestada
+      → cliente aprueba/rechaza → oportunidad = aprobada | rechazada
+        → panel de venta cruzada mide la conversión
+```
+Es el primer momento en que la pregunta *"¿cuántos hallazgos se convirtieron en venta?"* tiene respuesta en el sistema.
+
+## Limitación declarada
+`monto_estimado` queda **null** en las oportunidades creadas desde el diagnóstico, porque en ese momento el hallazgo todavía no está valorizado — la cotización viene después. El panel muestra los montos como `—` hasta que se capture. Dos formas de resolverlo, ninguna implementada aún: pedir un estimado al registrar el hallazgo, o traer el valor del ítem del presupuesto una vez cotizado. La segunda es más precisa; la primera permite medir la pérdida de los que nunca se cotizan, que es justamente lo que interesa medir.
+
+---
+
+# Migración 59 + v73 — RADAR de Salud Vehicular integrado al CRM
+
+## Análisis del RADAR en ClickUp
+Catálogo leído directamente del formulario "RADAR DE SALUD VEHICULAR" (espacio SERVICIO TECNICO, lista `901328193477`): **45 criterios en 8 categorías**.
+
+| # | Categoría | Criterios |
+|---|---|---|
+| 1 | Tren delantero | 6 |
+| 2 | Tren trasero | 7 |
+| 3 | Suspensión | 3 |
+| 4 | Ruedas | 5 |
+| 5 | Frenos | 8 |
+| 6 | Engrase | 1 |
+| 7 | Luces | 9 |
+| 8 | Compartimiento de motor | 6 |
+
+### El problema de diseño, confirmado
+El formulario tiene **8 campos desplegables llamados "Radar a Revisar"** (1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1, 8.1), cada uno con las **mismas 8 opciones**. Son ocho selecciones que el técnico debe llenar y que no aportan información: la categoría ya está implícita en la numeración del criterio.
+
+En el CRM la categoría es una **tabla** (`radar_categorias`), no un campo a completar. El técnico no la elige: la ve como encabezado de sección. **Ocho interacciones menos por inspección.**
+
+### Semáforo
+Los colores de ClickUp se traducen al mismo vocabulario que ya usa `diagnosticos_taller`: `#e5484d` → critico, `#ffc53d` → pronto, `#30a46c` → ok, `#cecece` → na.
+
+## Modelo (migración 59)
+- **`radar_categorias`** y **`radar_criterios`** — el catálogo, sembrado con los 45 criterios y sus opciones en `jsonb`. Editable desde la base sin tocar código.
+- **`radar_inspecciones`** — una por trabajo/vehículo, con técnico, km, estado y la respuesta del cliente (el campo ⭐ del formulario original).
+- **`radar_respuestas`** — una por criterio, con opción elegida, severidad derivada y observación. `unique (inspeccion_id, criterio_codigo)`.
+- RLS con el criterio de la migración 56: el catálogo lo lee todo el mundo y solo admin/jefe lo modifica; las inspecciones las captura el técnico.
+
+El orden dentro de cada categoría se calcula desde el propio código con `string_to_array(codigo,'.')::int[]`, verificado para que `7.9.1` quede después de `7.9` y no entre `7.1` y `7.2`.
+
+### `radar_volcar_hallazgos()` — la conexión al flujo que ya existe
+Cada rojo o amarillo se convierte en `diagnosticos_taller`, que es la tabla que alimenta el presupuesto y las oportunidades (migración 58). **El RADAR no queda como módulo aislado**: sus hallazgos entran al circuito que ya produce venta cruzada medible. La función no duplica si se ejecuta dos veces, y registra el hecho en `eventos`.
+
+### Vistas
+- **`v_radar_alertas`** — solo rojos y amarillos por vehículo, con observación, técnico y antigüedad en días.
+- **`v_radar_resumen`** — semáforo por inspección: cuántos críticos, pronto, ok y no aplica.
+
+## Panel del vehículo (`PanelVehiculo.jsx`)
+Componente nuevo, en dos modos:
+- **Completo**: alertas agrupadas por categoría, con la opción elegida y la observación del técnico, borde de color según gravedad, y contadores de críticos y por atender.
+- **Compacto** (`compacto`): resumen de una línea para listados.
+
+Distingue la **inspección más reciente** (vigente) del **historial anterior**, colapsado. Y si la última inspección tiene más de 180 días, advierte que conviene confirmar las alertas antes de ofrecerlas: una alerta de hace un año probablemente ya se resolvió, y ofrecerla al cliente como actual daña la credibilidad.
+
+Si falta la migración, muestra un aviso en vez de fallar.
+
+### Dónde se ve
+- **Taller** → detalle del trabajo, sobre la sección de diagnóstico técnico. El técnico ve qué se detectó antes en ese vehículo.
+- **Ficha del cliente** → dentro de cada tarjeta de vehículo. El asesor ve las alertas al hablar con el cliente, que es el momento en que sirven.
+
+## Pendiente
+Falta la **pantalla de captura**: hoy el técnico todavía no puede completar el RADAR desde la app. El modelo, el catálogo, las vistas y la visualización están listos; falta el formulario de 45 criterios agrupados por categoría con su semáforo y campo de observación por sección.
+
+Eso depende de **Q4** de la Fase 0, que sigue sin respuesta: si el técnico captura desde el box necesita funcionamiento sin conexión (IndexedDB + sincronización diferida, 1-2 semanas extra); si se usa un tablet fijo en recepción, la pantalla es directa.

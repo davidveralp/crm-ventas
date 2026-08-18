@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import PanelVehiculo from '../components/PanelVehiculo'
 import CotizacionRapida from '../components/CotizacionRapida'
 import { useAuth } from '../context/AuthContext'
 import { Pill, Modal, StatCard, SelectMarca, TimePicker } from '../components/UI'
@@ -719,6 +720,8 @@ export default function ClienteDetalle() {
                       <button onClick={() => borrarVehiculo(v.id)} className="text-xs text-slate-300 hover:text-red-500">✕</button>
                     </div>
                   </div>
+                  {/* Alertas del RADAR: rojos y amarillos con su observación */}
+                  <div className="mt-2"><PanelVehiculo vehiculoId={v.id} /></div>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2 text-xs text-slate-500">
                     <div><span className="text-slate-400">Tipo:</span> {v.tipo_vehiculo || '—'}</div>
                     <div><span className="text-slate-400">Km actual:</span> {km ? km.toLocaleString('es-CL') : '—'}</div>

@@ -39,6 +39,7 @@ function TallerInterno() {
   const [tareas, setTareas] = useState([])
   const [presups, setPresups] = useState([])
   const [diags, setDiags] = useState([])
+  const [oports, setOports] = useState([])
   const [margenes, setMargenes] = useState({ repuesto: 35, lubricante: 30, filtro: 30, consumible: 25, ajuste_asesor_pct: 10 })
   const [usuarios, setUsuarios] = useState([])
   const [vista, setVista] = useState('tablero') // tablero | lista | tecnicos | indicadores
@@ -50,16 +51,17 @@ function TallerInterno() {
   useEffect(() => { cargar() }, [])
 
   async function cargar() {
-    const [t, ta, pr, us, dg, mg] = await Promise.all([
+    const [t, ta, pr, us, dg, op, mg] = await Promise.all([
       supabase.from('trabajos_taller').select('*, clientes(nombre,apellidos,telefono), vehiculos(patente,marca,modelo,tipo_vehiculo)').order('creado_en', { ascending: false }),
       supabase.from('tareas_taller').select('*').order('orden'),
       supabase.from('presupuestos_taller').select('*').order('creado_en', { ascending: false }),
       supabase.from('usuarios').select('id,nombre,rol,activo'),
       supabase.from('diagnosticos_taller').select('*').order('creado_en'),
+      supabase.from('oportunidades').select('id,diagnostico_id,trabajo_id,estado,titulo,severidad,ofrecida_en').order('detectada_en', { ascending: false }),
       supabase.from('empresa_config').select('valor').eq('empresa_id', perfil.empresa_id).eq('clave', 'margenes').maybeSingle()
     ])
     setTrabajos(t.data || []); setTareas(ta.data || []); setPresups(pr.data || [])
-    setDiags(dg.data || [])
+    setDiags(dg.data || []); setOports(op.data || [])
     if (mg.data?.valor) setMargenes((m) => ({ ...m, ...mg.data.valor }))
     setUsuarios((us.data || []).filter((u) => u.activo !== false))
     setCargando(false)
@@ -189,10 +191,39 @@ function TallerInterno() {
         cant: 1, costo: 0, precio: 0, en_stock: null, severidad: d.severidad
       }))
     ]
-    await supabase.from('presupuestos_taller').insert({
+    const { data: pres } = await supabase.from('presupuestos_taller').insert({
       empresa_id: perfil.empresa_id, trabajo_id: t.id, items,
       notas: 'Generado desde el diagnóstico', solicitado_por: perfil.id, estado: 'cotizando'
-    })
+    }).select('id').maybeSingle()
+
+    // v50: cada hallazgo genera una OPORTUNIDAD, que es lo que permite medir
+    // después cuántos se convirtieron en venta. El estado de la oportunidad lo
+    // calcula la base desde el presupuesto (migración 58), no se escribe aquí.
+    if (hallazgos.length) {
+      const yaConOportunidad = new Set(
+        (oports || []).filter((o) => o.diagnostico_id).map((o) => o.diagnostico_id)
+      )
+      const nuevas = hallazgos
+        .filter((d) => !yaConOportunidad.has(d.id))
+        .map((d) => ({
+          empresa_id: perfil.empresa_id,
+          diagnostico_id: d.id, trabajo_id: t.id,
+          cliente_id: t.cliente_id, vehiculo_id: t.vehiculo_id,
+          titulo: d.item,
+          detalle: d.recomendacion || null,
+          severidad: d.severidad,
+          detectado_por: d.tecnico_id,
+          asignado_a: t.asesor_id,
+          presupuesto_id: pres?.id || null,
+          ofrecida_en: new Date().toISOString()
+        }))
+      if (nuevas.length) {
+        const { error: eOp } = await supabase.from('oportunidades').insert(nuevas)
+        // Si falla, el presupuesto ya se creó: no se revierte, solo se avisa.
+        if (eOp) console.error('No se pudieron registrar las oportunidades:', eOp.message)
+      }
+    }
+
     notificar({ empresa_id: perfil.empresa_id, rol: 'coordinador_adquisiciones', titulo: 'Revisión lista · cotizar presupuesto', cuerpo: `${tituloDe(t)} · ${ (t.repuestos_requeridos || []).length } repuesto(s), ${ (t.insumos_requeridos || []).length } insumo(s) requeridos`, url: '/presupuestos' })
     notificar({ empresa_id: perfil.empresa_id, rol: 'encargado_bodega', titulo: 'Revisar stock para presupuesto', cuerpo: tituloDe(t), url: '/taller' })
     cargar()
@@ -593,6 +624,11 @@ function Detalle({ t, onClose, tareas, presups, tecnicos, nombreDe, diags, marge
             <span className="pill bg-deep text-white text-[10px] font-mono">⏱ {fmtCrono((t.cerrado_en ? new Date(t.cerrado_en).getTime() : now) / 1000 - new Date(t.creado_en).getTime() / 1000)}</span>
           </div>
         </div>
+
+        {/* Salud del vehículo · alertas RADAR de inspecciones anteriores */}
+        {t.vehiculo_id && (
+          <div className="mb-3"><PanelVehiculo vehiculoId={t.vehiculo_id} /></div>
+        )}
 
         {/* Diagnóstico técnico */}
         <SeccionDiag t={t} diags={diags} esJefe={esJefe} esTecnico={esTecnico} nombreDe={nombreDe} acciones={acciones} />
