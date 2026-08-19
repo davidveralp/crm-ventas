@@ -1912,3 +1912,36 @@ El CRM estaba organizado por cliente, pero en un taller la unidad de trabajo es 
 
 ## Pendiente
 Edición del vehículo desde la ficha, exportación a Excel/PDF, y recordatorio de próxima mantención por kilometraje —que ahora es viable porque están el km y el historial en el mismo lugar.
+
+---
+
+# v76 + migración 60 — Presupuestos por vehículo
+
+Ver **`docs/CAMBIOS_v76.md`** para el resumen funcional e instructivo.
+
+## Reformulación de la solicitud
+La petición original era "continuar con el sistema de presupuestos y creación de presupuestos por vehículos". Dos correcciones al planteamiento:
+
+1. **El sistema ya existía y funcionaba**: tabla con ítems, seis estados, PDF oficial, WhatsApp, notificación al coordinador y vínculo con oportunidades. No había que "continuarlo" sino resolver un bloqueo concreto.
+2. **"Presupuestos por vehículo" no era viable como estaba**: `trabajo_id` era `NOT NULL`, así que cotizar exigía un trabajo de taller abierto.
+
+El problema real: no se podía cotizar a un cliente que llama a preguntar, ni dar seguimiento a una alerta RADAR de una visita anterior.
+
+## Flujo confirmado
+El **asesor** describe qué necesita el cliente; el **coordinador de adquisiciones** valoriza y envía con precios de venta reales. Es el circuito N6-N9 extendido al vehículo sin OT.
+
+## Migración 60
+- `trabajo_id` pasa a nullable; se agregan `vehiculo_id`, `cliente_id`, `solicitud`, `origen` y `vigencia_dias`.
+- Restricción `presup_ancla_chk`: debe existir trabajo **o** vehículo. `NOT VALID` para no bloquear filas históricas.
+- **Backfill**: los presupuestos existentes reciben su `vehiculo_id` y `cliente_id` desde su trabajo, para que el historial aparezca completo desde el primer día.
+- `presupuesto_vincular_trabajo()` — engancha una cotización previa al trabajo cuando el vehículo entra. Valida que sea el mismo vehículo: vincular presupuestos de otro auto mezclaría historias.
+- `radar_items_sugeridos()` — devuelve los rojos y amarillos de la última inspección en formato de ítem.
+- `presupuesto_crear_oportunidad()` — para que las cotizaciones sin trabajo también entren en la medición de venta cruzada.
+
+## Frontend
+- `SolicitarPresupuesto.jsx` — modal con texto libre + alertas RADAR marcables. Los ítems nacen **sin precio**: quien describe no valoriza.
+- Ficha del vehículo: botón, columna **Origen** en la pestaña Presupuestos, y carga unificada (anclados al vehículo + los de sus trabajos, sin duplicar vía `Map`).
+- `Presupuestos.jsx`: el `select` ahora trae `veh:vehiculo_id(...)` y `cli:cliente_id(...)`. Sin eso los presupuestos sin trabajo llegaban con `trabajos_taller: null` y no mostraban patente. El código ya tenía el respaldo `p.veh` previsto pero nunca se poblaba.
+
+## Pendiente
+Botón de vinculación a trabajo, aplicación automática de la vigencia, y decisión sobre si el asesor puede dar un rango referencial en la llamada (hoy el sistema lo impide a propósito).

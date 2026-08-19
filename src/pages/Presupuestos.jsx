@@ -42,7 +42,7 @@ function PresupuestosInterno() {
         .select('*, clientes(nombre,apellidos)')
         .order('proxima_gestion', { ascending: true, nullsFirst: false }),
       supabase.from('presupuestos_taller')
-        .select('*, trabajos_taller(id, titulo, servicio_solicitado, observaciones_cliente, estado, vehiculo_id, asesor_id, respaldo_ot_firmada, respaldo_video, historial, vehiculos(patente,marca,modelo,tipo_vehiculo), clientes(nombre,apellidos))')
+        .select('*, trabajos_taller(id, titulo, servicio_solicitado, observaciones_cliente, estado, vehiculo_id, asesor_id, respaldo_ot_firmada, respaldo_video, historial, vehiculos(patente,marca,modelo,tipo_vehiculo), clientes(nombre,apellidos)), veh:vehiculo_id(patente,marca,modelo,tipo_vehiculo), cli:cliente_id(nombre,apellidos)')
         .order('creado_en', { ascending: false })
     ])
     // v24/v33: datos del vehículo + cliente para el PDF oficial (cotizaciones

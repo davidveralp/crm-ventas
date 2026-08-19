@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { supabase, fetchAllRows } from '../lib/supabase'
 import { fmtCLP, formatPatente, patenteLimpia } from '../lib/helpers'
 import PanelVehiculo from '../components/PanelVehiculo'
+import SolicitarPresupuesto from '../components/SolicitarPresupuesto'
 
 /* ============================================================================
    Panel de Vehículos
@@ -185,6 +186,7 @@ function Ficha({ id }) {
   const [criterios, setCriterios] = useState([])
   const [tab, setTab] = useState('resumen')
   const [radarAbierto, setRadarAbierto] = useState(null)
+  const [pidiendo, setPidiendo] = useState(false)
   const [estado, setEstado] = useState('cargando')
 
   useEffect(() => { cargar() }, [id]) // eslint-disable-line
@@ -205,11 +207,15 @@ function Ficha({ id }) {
     ])
     setOts(o.data || []); setTrabajos(t.data || []); setRadares(r.data || []); setCriterios(c.data || [])
 
+    // Presupuestos del vehículo: los anclados directamente (migración 60) y los
+    // que cuelgan de sus trabajos de taller. Se unen sin duplicar.
     const ids = (t.data || []).map((x) => x.id)
-    if (ids.length) {
-      const { data: p } = await supabase.from('presupuestos_taller').select('*').in('trabajo_id', ids).order('creado_en', { ascending: false })
-      setPresups(p || [])
-    }
+    const consultas = [supabase.from('presupuestos_taller').select('*').eq('vehiculo_id', id)]
+    if (ids.length) consultas.push(supabase.from('presupuestos_taller').select('*').in('trabajo_id', ids))
+    const res = await Promise.all(consultas)
+    const mapa = new Map()
+    res.forEach((r) => (r.data || []).forEach((x) => mapa.set(x.id, x)))
+    setPresups([...mapa.values()].sort((a2, b2) => (b2.creado_en > a2.creado_en ? 1 : -1)))
     const rids = (r.data || []).map((x) => x.id)
     if (rids.length) {
       const { data: rr } = await supabase.from('radar_respuestas').select('*').in('inspeccion_id', rids)
@@ -261,10 +267,13 @@ function Ficha({ id }) {
             </p>
             {v.clientes && (
               <button onClick={() => nav(`/clientes/${v.clientes.id}`)}
-                      className="text-sm text-blue-700 hover:underline mt-1">
+                      className="text-sm text-blue-700 hover:underline mt-1 block">
                 {nombreCli(v.clientes)} →
               </button>
             )}
+            <button onClick={() => setPidiendo(true)} className="btn-accion mt-2">
+              💰 Solicitar presupuesto
+            </button>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
             <div><div className="text-[11px] text-slate-400">Visitas</div><div className="font-semibold text-ink">{K.visitas}</div></div>
@@ -386,20 +395,23 @@ function Ficha({ id }) {
         <div className="card overflow-x-auto">
           <table className="w-full text-sm min-w-[560px]">
             <thead><tr className="text-slate-400 text-xs border-b">
-              <th className="text-left p-2">Fecha</th><th className="text-left">Estado</th>
-              <th className="text-right">Ítems</th><th className="text-right">Monto</th><th className="text-left">Notas</th>
+              <th className="text-left p-2">Fecha</th><th className="text-left">Origen</th><th className="text-left">Estado</th>
+              <th className="text-right">Ítems</th><th className="text-right">Monto</th><th className="text-left">Solicitud / Notas</th>
             </tr></thead>
             <tbody>
               {presups.map((p) => (
                 <tr key={p.id} className="border-b last:border-0">
                   <td className="p-2">{fecha(p.creado_en)}</td>
+                  <td className="text-[11px] text-slate-400">
+                    {p.origen === 'radar' ? 'RADAR' : p.origen === 'vehiculo' ? 'Consulta' : 'Taller'}
+                  </td>
                   <td><span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600">{p.estado}</span></td>
                   <td className="text-right">{Array.isArray(p.items) ? p.items.length : 0}</td>
                   <td className="text-right font-medium">{p.monto ? fmtCLP(p.monto) : '—'}</td>
-                  <td className="truncate max-w-[220px] text-slate-500">{p.notas || '—'}</td>
+                  <td className="truncate max-w-[220px] text-slate-500">{p.solicitud || p.notas || '—'}</td>
                 </tr>
               ))}
-              {!presups.length && <tr><td colSpan={5} className="p-4 text-slate-400 text-center">Sin presupuestos.</td></tr>}
+              {!presups.length && <tr><td colSpan={6} className="p-4 text-slate-400 text-center">Sin presupuestos.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -428,6 +440,12 @@ function Ficha({ id }) {
             </tbody>
           </table>
         </div>
+      )}
+
+      {pidiendo && (
+        <SolicitarPresupuesto vehiculo={v}
+          onCerrar={() => setPidiendo(false)}
+          onCreado={() => { setPidiendo(false); setTab('presupuestos'); cargar() }} />
       )}
 
       {tab === 'taller' && (
