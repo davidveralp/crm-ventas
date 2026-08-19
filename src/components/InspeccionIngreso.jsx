@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { formatPatente, patenteLimpia } from '../lib/helpers'
+import { imprimirInspeccion } from '../lib/inspeccionPDF'
 
-// v45 · Inspección de ingreso — paso previo a Nueva OT. Al terminar, crea
+// v77 · Inspección de ingreso — formulario de página única (antes 7 pasos).
+// Paso previo a Nueva OT. Al terminar, crea
 // el registro de inspección (fotos, firma, diagrama de daños marcado) y
 // entrega los datos ya listos para prellenar el formulario de Nueva OT.
 
@@ -30,13 +32,11 @@ const INVENTARIO = [
   'Tapones de Rueda', 'Cables', 'Pisos de Goma', 'Estéreos', 'Encendedores', 'Tapa Combustible'
 ]
 
-const PASOS = ['Datos', 'Luces e inventario', 'Combustible', 'Daños', 'Fotos', 'Checklist', 'Firma']
 
 export default function InspeccionIngreso({ perfil, onCompletada, onCancelar }) {
-  const [paso, setPaso] = useState(0)
   const [guardando, setGuardando] = useState(false)
 
-  // ---- paso 1: datos generales ----
+  // ---- sección 1: datos generales ----
   const [busca, setBusca] = useState('')
   const [veh, setVeh] = useState(null)
   const [d, setD] = useState({
@@ -54,16 +54,16 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar }) 
     setVeh(data?.[0] || null)
   }
 
-  // ---- paso 2: luces + inventario ----
+  // ---- sección 2: luces + inventario ----
   const [luces, setLuces] = useState([])
   const [inventario, setInventario] = useState({})
   const toggleLuz = (k) => setLuces((l) => l.includes(k) ? l.filter((x) => x !== k) : [...l, k])
   const toggleInv = (k) => setInventario((i) => ({ ...i, [k]: !i[k] }))
 
-  // ---- paso 3: combustible ----
+  // ---- sección 3: combustible ----
   const [combustible, setCombustible] = useState(4) // 0(E) .. 8(F)
 
-  // ---- paso 4: diagrama de daños ----
+  // ---- sección 4: diagrama de daños ----
   const [silueta, setSilueta] = useState('sedan')
   const [danos, setDanos] = useState([])
   const imgRef = useRef(null)
@@ -76,7 +76,7 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar }) 
   const setDescDano = (i, texto) => setDanos((ds) => ds.map((x, j) => j === i ? { ...x, descripcion: texto } : x))
   const quitarDano = (i) => setDanos((ds) => ds.filter((_, j) => j !== i).map((x, k) => ({ ...x, numero: k + 1 })))
 
-  // ---- paso 5: fotos ----
+  // ---- sección 5: fotos ----
   const [fotos, setFotos] = useState([])
   const [subiendo, setSubiendo] = useState(false)
   async function subirFotos(files) {
@@ -94,7 +94,7 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar }) 
   }
   const quitarFoto = (i) => setFotos((f) => f.filter((_, j) => j !== i))
 
-  // ---- paso 6: checklist + observaciones asesor ----
+  // ---- sección 6: checklist + observaciones asesor ----
   const [checklist, setChecklist] = useState([])
   const [nuevoItem, setNuevoItem] = useState('')
   const [obsAsesor, setObsAsesor] = useState('')
@@ -102,7 +102,7 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar }) 
   const marcarItem = (i, estado) => setChecklist((c) => c.map((x, j) => j === i ? { ...x, estado } : x))
   const quitarItem = (i) => setChecklist((c) => c.filter((_, j) => j !== i))
 
-  // ---- paso 7: firma ----
+  // ---- sección 7: firma ----
   const canvasRef = useRef(null)
   const dibujando = useRef(false)
   function iniciarTrazo(e) {
@@ -120,6 +120,29 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar }) 
   }
   const soltarTrazo = () => { dibujando.current = false }
   const limpiarFirma = () => canvasRef.current.getContext('2d').clearRect(0, 0, canvasRef.current.width, canvasRef.current.height)
+
+  /** Arma el objeto que consume el generador del documento. */
+  function datosDoc(extra = {}) {
+    const cli = veh?.clientes
+    return {
+      fecha: d.fecha,
+      patente: veh?.patente ? formatPatente(veh.patente) : formatPatente(d.patente),
+      marca: veh?.marca || '', modelo: veh?.modelo || '',
+      anio: veh?.anio || '', color: veh?.color || '', chasis: veh?.chasis || '',
+      km: d.km,
+      cliente: cli ? [cli.nombre, cli.apellidos].filter(Boolean).join(' ') : [d.nombre, d.apellidos].filter(Boolean).join(' '),
+      rut: cli?.rut || d.rut, direccion: cli?.direccion || '', email: cli?.email || '',
+      telefono: cli?.telefono || d.telefono,
+      trabajo: d.trabajo_a_realizar, observacionesCliente: d.observaciones_cliente,
+      observacionesAsesor: obsAsesor,
+      luces, inventario, combustible, danos, checklist, fotos,
+      asesor: perfil?.nombre || '',
+      ...extra
+    }
+  }
+
+  /** Abre el documento sin guardar, para revisarlo antes de registrar. */
+  function vistaPrevia() { imprimirInspeccion(datosDoc()) }
 
   async function registrar() {
     setGuardando(true)
@@ -147,6 +170,9 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar }) 
     setGuardando(false)
     if (error) return alert('Error al registrar la inspección: ' + error.message)
 
+    // Documento oficial, ya con la firma subida a Storage
+    imprimirInspeccion(datosDoc({ numero: insp.id.slice(0, 8).toUpperCase(), firmaUrl }))
+
     const siluetaInfo = SILUETAS.find((s) => s.key === silueta)
     onCompletada({
       inspeccion_id: insp.id,
@@ -163,18 +189,20 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar }) 
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+      <div className="bg-white rounded-xl w-full max-w-3xl h-[94vh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
           <div>
             <h2 className="text-lg font-bold text-ink">Inspección de ingreso</h2>
-            <p className="text-xs text-slate-400">Paso {paso + 1} de {PASOS.length} · {PASOS[paso]}</p>
+            <p className="text-xs text-slate-400">Formulario completo · desplázate hacia abajo</p>
           </div>
           <button type="button" onClick={onCancelar} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
           {/* ---- PASO 0: DATOS ---- */}
-          {paso === 0 && (
+          {/* sección 1 */}
+          <h3 className="text-sm font-bold text-ink border-b border-slate-200 pb-1 pt-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-deep text-white text-[10px] mr-2">1</span>Datos del vehículo y cliente</h3>
+          {true && (
             <div className="space-y-3">
               <div>
                 <label className="label">Patente *</label>
@@ -211,7 +239,9 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar }) 
           )}
 
           {/* ---- PASO 1: LUCES + INVENTARIO ---- */}
-          {paso === 1 && (
+          {/* sección 2 */}
+          <h3 className="text-sm font-bold text-ink border-b border-slate-200 pb-1 pt-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-deep text-white text-[10px] mr-2">2</span>Luces de advertencia e inventario</h3>
+          {true && (
             <div className="space-y-4">
               <div>
                 <label className="label mb-2">Luces de advertencia encendidas</label>
@@ -239,7 +269,9 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar }) 
           )}
 
           {/* ---- PASO 2: COMBUSTIBLE ---- */}
-          {paso === 2 && (
+          {/* sección 3 */}
+          <h3 className="text-sm font-bold text-ink border-b border-slate-200 pb-1 pt-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-deep text-white text-[10px] mr-2">3</span>Combustible</h3>
+          {true && (
             <div>
               <label className="label mb-3">Nivel de combustible</label>
               <div className="flex items-center gap-2">
@@ -253,7 +285,9 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar }) 
           )}
 
           {/* ---- PASO 3: DAÑOS ---- */}
-          {paso === 3 && (
+          {/* sección 4 */}
+          <h3 className="text-sm font-bold text-ink border-b border-slate-200 pb-1 pt-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-deep text-white text-[10px] mr-2">4</span>Daños al ingreso</h3>
+          {true && (
             <div className="space-y-3">
               <div className="flex flex-wrap gap-1.5">
                 {SILUETAS.map((s) => (
@@ -286,7 +320,9 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar }) 
           )}
 
           {/* ---- PASO 4: FOTOS ---- */}
-          {paso === 4 && (
+          {/* sección 5 */}
+          <h3 className="text-sm font-bold text-ink border-b border-slate-200 pb-1 pt-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-deep text-white text-[10px] mr-2">5</span>Fotografías</h3>
+          {true && (
             <div className="space-y-3">
               <label className="btn-soft inline-block cursor-pointer">
                 {subiendo ? 'Subiendo…' : '📎 Cargar fotos'}
@@ -306,7 +342,9 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar }) 
           )}
 
           {/* ---- PASO 5: CHECKLIST + OBS ASESOR ---- */}
-          {paso === 5 && (
+          {/* sección 6 */}
+          <h3 className="text-sm font-bold text-ink border-b border-slate-200 pb-1 pt-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-deep text-white text-[10px] mr-2">6</span>Checklist</h3>
+          {true && (
             <div className="space-y-3">
               <label className="label">Items checklist</label>
               <div className="flex gap-1.5">
@@ -331,7 +369,9 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar }) 
           )}
 
           {/* ---- PASO 6: FIRMA ---- */}
-          {paso === 6 && (
+          {/* sección 7 */}
+          <h3 className="text-sm font-bold text-ink border-b border-slate-200 pb-1 pt-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-deep text-white text-[10px] mr-2">7</span>Firma del cliente</h3>
+          {true && (
             <div className="space-y-3">
               <label className="label">Firma del cliente</label>
               <canvas ref={canvasRef} width={560} height={220}
@@ -344,17 +384,15 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar }) 
           )}
         </div>
 
-        <div className="flex items-center justify-between px-5 py-4 border-t border-slate-100">
-          <button type="button" className="btn-soft" onClick={() => paso === 0 ? onCancelar() : setPaso((p) => p - 1)}>
-            {paso === 0 ? 'Cancelar' : '← Atrás'}
-          </button>
-          {paso < PASOS.length - 1 ? (
-            <button type="button" className="btn-primary" disabled={!puedeAvanzar} onClick={() => setPaso((p) => p + 1)}>Siguiente →</button>
-          ) : (
-            <button type="button" className="btn-primary" disabled={guardando} onClick={registrar}>
-              {guardando ? 'Registrando…' : '✓ Registrar y continuar a Nueva OT'}
+        <div className="flex items-center justify-between px-5 py-4 border-t border-slate-100 gap-3 flex-wrap">
+          <button type="button" className="btn-soft" onClick={onCancelar}>Cancelar</button>
+          <div className="flex items-center gap-2 flex-wrap">
+            {!puedeAvanzar && <span className="text-xs text-slate-400">Falta patente y kilometraje</span>}
+            <button type="button" className="btn-soft" onClick={vistaPrevia}>Vista previa</button>
+            <button type="button" className="btn-primary" disabled={!puedeAvanzar || guardando} onClick={registrar}>
+              {guardando ? 'Registrando…' : '✓ Registrar e imprimir'}
             </button>
-          )}
+          </div>
         </div>
       </div>
     </div>

@@ -1945,3 +1945,25 @@ El **asesor** describe qué necesita el cliente; el **coordinador de adquisicion
 
 ## Pendiente
 Botón de vinculación a trabajo, aplicación automática de la vigencia, y decisión sobre si el asesor puede dar un rango referencial en la llamada (hoy el sistema lo impide a propósito).
+
+---
+
+# v77 — Inspección de ingreso: página única + documento imprimible
+
+Ver **`docs/CAMBIOS_v77.md`**. Sin migración.
+
+## Cambios
+1. **De 7 pasos a página única.** Se eliminaron el estado `paso`, la constante `PASOS` y los botones Atrás/Siguiente. Cada bloque `{paso === N && (` pasó a `{true && (` con un encabezado numerado antes. Ventana más ancha (`max-w-3xl`) y alto casi completo (`h-[94vh]`).
+2. **`src/lib/inspeccionPDF.js`** — genera el documento con el formato oficial de la OT en papel (referencia: OT 13544): cabecera de empresa, datos en dos columnas, "Cliente Solicita", políticas de servicio textuales y bloques de firma. Agrega lo que el papel no tiene: combustible con barra, luces, inventario, daños numerados, checklist y fotos.
+3. **Botón "Vista previa"** — abre el documento sin guardar, para revisar antes de registrar.
+4. Al registrar, el documento se abre con la firma ya subida a Storage.
+
+## Decisiones
+- **`window.print()` en vez de jsPDF**, coherente con presupuestos y cotización rápida. El navegador imprime a vectorial y no agrega dependencias.
+- **Espera de imágenes antes de imprimir**: sin eso la firma y las fotos salen en blanco, porque el diálogo se abre antes de que carguen. Con tope de 3 segundos por si alguna no responde.
+- **Carta vertical** (`size: letter portrait`), que es el formato del papel actual.
+
+## Limitaciones declaradas
+- El PDF no se archiva en Storage; se genera al momento.
+- El diagrama de daños va como lista numerada, no como imagen de la silueta marcada.
+- **Chasis (VIN) sale vacío**: el documento lo contempla pero el modelo no tiene el campo. Detectado en la auditoría v76 junto con aseguradora y la distinción cliente/dueño.
