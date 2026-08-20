@@ -223,7 +223,10 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
     })
   }
 
-  const puedeAvanzar = paso !== 0 || (d.patente.trim().length >= 5 && d.km)
+  // v79 fix: antes decía `paso !== 0 || (...)`, pero `paso` se eliminó en v77
+  // al pasar a formulario de página única. Quedaba un ReferenceError que dejaba
+  // la pantalla en blanco. La condición real es que haya patente y kilometraje.
+  const puedeAvanzar = d.patente.trim().length >= 5 && !!d.km
 
   return (
     <div className={comoPagina

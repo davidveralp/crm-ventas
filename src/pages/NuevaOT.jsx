@@ -207,7 +207,8 @@ export default function NuevaOT() {
       if (datos.telefono) set('telefono', datos.telefono)
     }
     buscarVehiculo(datos.patente)
-    setMostrarInspeccion(false)
+    // v79: ya no hay modal que cerrar; los datos llegan desde el panel
+    // Nuevo cliente vía location.state.
   }
 
   const marcaFinal = () => (f.marca === '__otra__' ? f.marcaOtra.trim() : f.marca)
