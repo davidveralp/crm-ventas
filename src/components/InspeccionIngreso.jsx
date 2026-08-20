@@ -188,8 +188,8 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar }) 
   const puedeAvanzar = paso !== 0 || (d.patente.trim().length >= 5 && d.km)
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl w-full max-w-3xl h-[94vh] flex flex-col">
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="bg-white sm:rounded-xl w-full max-w-3xl h-[100dvh] sm:h-[94vh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
           <div>
             <h2 className="text-lg font-bold text-ink">Inspección de ingreso</h2>
@@ -210,7 +210,7 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar }) 
                 {veh && <p className="text-xs text-green-600 mt-1">✓ {veh.marca} {veh.modelo} · {[veh.clientes?.nombre, veh.clientes?.apellidos].filter(Boolean).join(' ')}</p>}
                 {!veh && patenteLimpia(busca).length >= 5 && <p className="text-xs text-slate-400 mt-1">Patente nueva — completa los datos del cliente más abajo.</p>}
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div><label className="label">Kilometraje *</label><input className="input" type="number" value={d.km} onChange={(e) => setD({ ...d, km: e.target.value })} /></div>
                 <div><label className="label">Fecha</label><input className="input" type="date" value={d.fecha} onChange={(e) => setD({ ...d, fecha: e.target.value })} /></div>
               </div>
@@ -219,7 +219,7 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar }) 
                 <input className="input" type="date" value={d.fecha_probable_entrega} onChange={(e) => setD({ ...d, fecha_probable_entrega: e.target.value })} />
               </div>
               {!veh && (
-                <div className="grid grid-cols-2 gap-3 rounded-lg bg-paper p-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-lg bg-paper p-3">
                   <input className="input" placeholder="Nombre(s)" value={d.nombre} onChange={(e) => setD({ ...d, nombre: e.target.value })} />
                   <input className="input" placeholder="Apellidos" value={d.apellidos} onChange={(e) => setD({ ...d, apellidos: e.target.value })} />
                   <input className="input" placeholder="RUT" value={d.rut} onChange={(e) => setD({ ...d, rut: e.target.value })} />
@@ -245,7 +245,7 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar }) 
             <div className="space-y-4">
               <div>
                 <label className="label mb-2">Luces de advertencia encendidas</label>
-                <div className="grid grid-cols-4 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-4 gap-2">
                   {LUCES.map((l) => (
                     <button key={l.key} type="button" onClick={() => toggleLuz(l.key)}
                             className={`text-xs px-2 py-2 rounded-lg border ${luces.includes(l.key) ? 'bg-didial-red text-white border-didial-red' : 'border-slate-200 text-slate-600'}`}>
@@ -256,7 +256,7 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar }) 
               </div>
               <div>
                 <label className="label mb-2">Inventario presente</label>
-                <div className="grid grid-cols-3 gap-x-3 gap-y-1.5 text-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-2 text-sm">
                   {INVENTARIO.map((it) => (
                     <label key={it} className="flex items-center gap-1.5 cursor-pointer">
                       <input type="checkbox" checked={!!inventario[it]} onChange={() => toggleInv(it)} />
@@ -329,7 +329,7 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar }) 
                 <input type="file" accept="image/*" multiple className="hidden" disabled={subiendo}
                        onChange={(e) => e.target.files.length && subirFotos([...e.target.files])} />
               </label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-3 gap-2">
                 {fotos.map((f, i) => (
                   <div key={i} className="relative">
                     <img src={f.url} alt={f.nombre} className="w-full h-24 object-cover rounded-lg border border-slate-100" />

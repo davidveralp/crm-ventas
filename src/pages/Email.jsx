@@ -245,7 +245,7 @@ function Reportes() {
               <div><div className="text-lg font-bold text-[#1D9E75]">{f.clicPct}%</div><div className="text-[10px] text-slate-400">Clics</div></div>
             </div>
           </div>
-          <div className="grid grid-cols-3 md:grid-cols-6 gap-2 text-center text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-6 gap-2 text-center text-xs">
             <Celda n={f.enviados}   label="Enviados"   c="#94a3b8" />
             <Celda n={f.entregados} label="Entregados" c="#5B9BB5" />
             <Celda n={f.abiertos}   label="Abiertos"   c="#185FA5" />

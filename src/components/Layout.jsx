@@ -52,13 +52,26 @@ const GRUPO_ADMIN = { titulo: 'Administración', items: [
   { to: '/usuarios', label: 'Usuarios', icon: 'usuarios' }
 ]}
 
-const MOVIL = [
+/* Barra inferior en móvil. Antes era puramente comercial (clientes, gestiones,
+   campañas), así que quien trabaja en el taller no llegaba a su pantalla sin
+   pasar por el menú. Ahora depende del rol: cada perfil ve sus cinco accesos. */
+const MOVIL_COMERCIAL = [
   { to: '/', label: 'Inicio', icon: 'dashboard' },
   { to: '/clientes', label: 'Clientes', icon: 'clientes', feature: 'crm' },
+  { to: '/vehiculos', label: 'Vehículos', icon: 'taller', feature: 'ot' },
   { to: '/gestiones', label: 'Gestiones', icon: 'gestiones', feature: 'crm' },
-  { to: '/calendario', label: 'Agenda', icon: 'calendario', feature: 'agenda' },
-  { to: '/campanas', label: 'Campañas', icon: 'campanas', feature: 'campanas' }
+  { to: '/calendario', label: 'Agenda', icon: 'calendario', feature: 'agenda' }
 ]
+
+const MOVIL_TALLER = [
+  { to: '/', label: 'Inicio', icon: 'dashboard' },
+  { to: '/taller', label: 'Taller', icon: 'taller', feature: 'ot' },
+  { to: '/vehiculos', label: 'Vehículos', icon: 'taller', feature: 'ot' },
+  { to: '/nueva-ot', label: 'Nueva OT', icon: 'nuevaot', feature: 'ot' },
+  { to: '/presupuestos', label: 'Presup.', icon: 'presupuestos', feature: 'ot' }
+]
+
+const ROLES_TALLER_MOVIL = ['jefe_taller', 'tecnico', 'coordinador_adquisiciones', 'encargado_bodega', 'asistente_bodega']
 
 function Icon({ d }) {
   return (
@@ -181,11 +194,11 @@ export default function Layout({ children }) {
                   className="text-sm text-sky/80">Salir</button>
         </header>
         <main className="flex-1 overflow-y-auto p-4 md:p-8">{children}</main>
-        <nav className="md:hidden grid grid-cols-5 bg-white border-t border-slate-200">
-          {MOVIL.filter((m) => !m.feature || tieneFeature(m.feature)).map(({ to, label, icon }) => (
+        <nav className="md:hidden grid grid-cols-5 bg-white border-t border-slate-200 sticky bottom-0 z-30" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+          {(ROLES_TALLER_MOVIL.includes(perfil?.rol) ? MOVIL_TALLER : MOVIL_COMERCIAL).filter((m) => !m.feature || tieneFeature(m.feature)).map(({ to, label, icon }) => (
             <NavLink key={to} to={to} end={to === '/'}
               className={({ isActive }) =>
-                `flex flex-col items-center gap-0.5 py-2 text-[10px] ${isActive ? 'text-deep' : 'text-slate-400'}`
+                `flex flex-col items-center justify-center gap-0.5 text-[10px] min-h-[52px] ${isActive ? 'text-deep' : 'text-slate-400'}`
               }>
               <Icon d={ICONS[icon]} />
               <span>{label}</span>

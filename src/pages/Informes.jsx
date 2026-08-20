@@ -328,7 +328,7 @@ export default function Informes() {
           Evaluados contra rangos de gestión de postventa (estudio de industria julio 2026, La Serena–Coquimbo).
           Son órdenes de magnitud de gestión, no percentiles calculados sobre una muestra de talleres chilenos comparables.
         </p>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {refComercial.map((x) => {
             const col = x.estado === 'En meta' ? '#1f9d57' : x.estado === 'Vigilar' ? '#e0a020' : '#e0382b'
             const bg = x.estado === 'En meta' ? '#e8f6ee' : x.estado === 'Vigilar' ? '#fdf6e3' : '#fdecea'
@@ -355,7 +355,7 @@ export default function Informes() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard titulo="Clientes" valor={r.totalClientes} />
         <StatCard titulo="Conversión global" valor={`${r.conversionGlobal}%`} />
         <StatCard titulo="Presupuestos en juego" valor={fmtCLP(r.enJuego)} />
@@ -409,7 +409,7 @@ export default function Informes() {
       {/* Métricas de gestión */}
       <div className="card p-5">
         <h3 className="font-semibold text-ink mb-3">Gestión comercial</h3>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="rounded-lg bg-paper p-4">
             <div className="text-2xl font-bold text-[#1D9E75]">{r.gestion.abiertas}</div>
             <div className="text-xs text-slate-500">Gestiones abiertas</div>

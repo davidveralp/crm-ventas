@@ -256,7 +256,7 @@ function ModalResolver({ grupo, modo, perfil, onClose, onListo }) {
   const camposVehiculo = () => grupo.patente ? (
     <>
       <div className="text-xs font-semibold text-slate-500 pt-1">Vehículo · patente {formatPatente(grupo.patente)}</div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div><label className="label">Marca</label>
           <input className="input" value={f.marca} onChange={(e) => setF({ ...f, marca: e.target.value })} /></div>
         <div><label className="label">Modelo</label>
@@ -279,7 +279,7 @@ function ModalResolver({ grupo, modo, perfil, onClose, onListo }) {
              : `Vincular ${grupo.ots.length} OT a un cliente existente`}>
       {modo === 'crear' ? (
         <form onSubmit={crear} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div><label className="label">Nombre(s) *</label>
               <input className="input" required autoFocus value={f.nombre} onChange={(e) => setF({ ...f, nombre: e.target.value })} /></div>
             <div><label className="label">Apellido(s)</label>

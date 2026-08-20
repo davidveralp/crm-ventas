@@ -242,3 +242,38 @@ body {
   #panel-print .min-w-\[720px\], #panel-print .min-w-\[640px\],
   #panel-print .min-w-\[560px\], #panel-print .min-w-full { min-width: 0 !important; }
 }
+
+/* ================== Adaptación a celular ==================
+   Reglas globales para pantallas chicas. Se aplican a toda la app en vez de
+   repetir clases archivo por archivo. */
+@media (max-width: 639px) {
+  /* iOS hace zoom automático al enfocar un campo con letra menor a 16px.
+     Ese zoom descoloca el layout y obliga a alejar a mano en cada campo. */
+  input, select, textarea { font-size: 16px !important; }
+
+  /* Objetivo táctil cómodo. 44px es el mínimo recomendado; con guantes o
+     dedos grandes, menos que eso genera errores de toque constantes. */
+  .input, input, select, button, .btn-soft, .btn-primary, .btn-accion {
+    min-height: 44px;
+  }
+  /* Los botones dentro de tablas y píldoras quedan exentos: ahí el alto lo
+     define la fila y forzar 44px rompe la densidad. */
+  table button, .pill, td button, th button { min-height: 0; }
+
+  /* Las tablas que igual necesitan desplazarse lo hacen con inercia */
+  .overflow-x-auto { -webkit-overflow-scrolling: touch; }
+
+  /* Modales a pantalla completa: en móvil los márgenes roban espacio útil */
+  .modal-movil { border-radius: 0 !important; height: 100dvh !important; max-height: 100dvh !important; }
+
+  /* Menos aire entre tarjetas para que quepa más contenido por pantalla */
+  .card { padding: 0.75rem; }
+
+  /* Evita que un texto largo sin espacios (correo, patente, URL) desborde */
+  .card, td, li, p { overflow-wrap: anywhere; }
+}
+
+/* La barra inferior no debe tapar el último elemento de la página */
+@media (max-width: 767px) {
+  main { padding-bottom: 1rem; }
+}

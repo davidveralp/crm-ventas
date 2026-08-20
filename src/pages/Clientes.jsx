@@ -174,7 +174,7 @@ export default function Clientes() {
       </div>
       {vistaTab === 'tareas' ? <TareasCampana perfil={perfil} esAdmin={esAdmin} /> : (<>
 
-      <div className="grid grid-cols-2 md:flex md:flex-wrap gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:flex md:flex-wrap gap-3">
         <select className="input md:w-56" value={orden} onChange={(e) => setOrden(e.target.value)}>
           {Object.entries(ORDENES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </select>
@@ -283,7 +283,7 @@ export default function Clientes() {
 
       <Modal abierto={modal} onClose={() => setModal(false)} titulo="Nuevo cliente" ancho="max-w-xl">
         <form onSubmit={guardar} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="label">{form.tipo === 'EMPRESA' ? 'Razón social *' : 'Nombre(s) *'}</label>
               <input className="input" required value={form.nombre}
@@ -312,7 +312,7 @@ export default function Clientes() {
                      placeholder="12.345.678-9" />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="label">Teléfono *</label>
               <input className="input" required value={form.telefono}
@@ -326,7 +326,7 @@ export default function Clientes() {
                      onChange={(e) => setForm({ ...form, email: e.target.value })} />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="label">Tipo</label>
               <select className="input" value={form.tipo}
@@ -358,7 +358,7 @@ export default function Clientes() {
             <div className="space-y-3">
               <input className="input" required placeholder="Calle y número" value={form.direccion}
                      onChange={(e) => setForm({ ...form, direccion: e.target.value })} />
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="label">Comuna / Sector *</label>
                   <input className="input" required value={form.comuna}
@@ -376,7 +376,7 @@ export default function Clientes() {
           {/* Vehículo inicial */}
           <div className="border-t border-slate-100 pt-3">
             <div className="text-xs font-semibold text-slate-500 mb-2">Vehículo (opcional)</div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="label">Marca</label>
                 <SelectMarca value={form.v_marca} onChange={(v) => setForm({ ...form, v_marca: v })} />

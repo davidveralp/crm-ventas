@@ -159,10 +159,10 @@ export default function Calendario() {
             <div className="font-semibold text-ink">{MESES[ref.getMonth()]} {ref.getFullYear()}</div>
             <button className="btn-soft text-sm py-1" onClick={() => moverMes(1)}>→</button>
           </div>
-          <div className="grid grid-cols-7 gap-1 text-center text-[11px] text-slate-400">
+          <div className="grid grid-cols-1 sm:grid-cols-7 gap-1 text-center text-[11px] text-slate-400">
             {DIAS.map((d) => <div key={d}>{d}</div>)}
           </div>
-          <div className="grid grid-cols-7 gap-1">
+          <div className="grid grid-cols-1 sm:grid-cols-7 gap-1">
             {grilla.map((d, i) => {
               const k = iso(d)
               const items = porFecha[k] || []
@@ -306,7 +306,7 @@ export default function Calendario() {
         )}
         {detalle && editando && (
           <form onSubmit={guardarCita} className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="label">Fecha *</label>
                 <input className="input" type="date" required value={editando.proxima_fecha}

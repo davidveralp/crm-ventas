@@ -756,7 +756,7 @@ export default function NuevaOT() {
           ))}
           <div className="sm:col-span-2">
             <label className="label">5. ¿Cómo conoció DIDIAL? <span className="text-slate-400 font-normal">(mide nuestras estrategias de marketing)</span></label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-3 gap-2">
               {OT_CONOCIO.map((c) => (
                 <button type="button" key={c.v} onClick={() => set('enc_conocio', c.v)}
                   className={`px-3 py-2 rounded-lg border text-sm transition text-center ${f.enc_conocio === c.v

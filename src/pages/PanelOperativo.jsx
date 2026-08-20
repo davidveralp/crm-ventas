@@ -1012,10 +1012,10 @@ export default function PanelOperativo() {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
         {kpis.map((k) => <KPI key={k.titulo} titulo={k.titulo} valor={k.valor} color={semaforo(k.estado)} sub={k.sub} />)}
       </div>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <KPI titulo="Vehículos en taller" valor={D.enTaller} color={C.blue} sub="Estado = En taller (toda la base)" />
         <KPI titulo="Permanencia real" valor={D.perm.toFixed(1) + ' días'} color={null} sub={'Presupuestada ' + D.permP.toFixed(1) + ' días'} />
         <KPI titulo="Ventas del período" valor={CLP(D.ventasTotal)} color={C.green} sub={net ? 'Neto' : 'Bruto'} />
@@ -1026,7 +1026,7 @@ export default function PanelOperativo() {
       <div className="card p-4">
         <h3 className="font-semibold text-ink mb-1">Indicadores con alerta</h3>
         <p className="text-[11px] text-slate-400 mb-3">Evaluados contra rangos de gestión de postventa. {FUENTE_BENCHMARKS}</p>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <KPIb titulo="Presupuestos del período" valor={D.gen} sub={`${D.apr} con documento · ${D.aprPct}%`} clave="conversion" raw={D.aprPct} />
           <KPIb titulo="Vehículos sobre 5 días" valor={D.permSobre5} sub={`${D.permEntre2y5} entre 2 y 5 días · ${D.vehiculos} OTs`} clave="detenidos" raw={D.permSobre5} ctx={{ totalOT: D.vehiculos }} />
           <KPIb titulo="Permanencia promedio" valor={D.perm.toFixed(1) + ' días'} sub="Malo sobre 5 · alerta desde 2" clave="permanencia" raw={D.perm} />
@@ -1109,7 +1109,7 @@ export default function PanelOperativo() {
           Calculado sobre <strong>toda la historia</strong> de la base ({D.mercado.totalPatentes.toLocaleString('es-CL')} patentes), no solo el período:
           preguntar si un cliente volvió exige mirar más allá del rango seleccionado.
         </p>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
           <KPIb titulo="Vehículos de una sola visita" valor={D.mercado.unaVisitaPct.toFixed(1) + '%'} sub={`${D.mercado.unaVisita.toLocaleString('es-CL')} de ${D.mercado.totalPatentes.toLocaleString('es-CL')} patentes`} clave="unaVisita" raw={D.mercado.unaVisitaPct} />
           <KPIb titulo="Frecuencia de visita" valor={D.mercado.frecuencia.toFixed(2)} sub="OTs por patente en el período" clave="frecuencia" raw={D.mercado.frecuencia} />
           <KPI titulo="Retención de la cohorte" valor={D.mercado.cohorte ? D.mercado.retencion.toFixed(1) + '%' : '—'} color={D.mercado.retencion >= 60 ? C.green : D.mercado.retencion >= 40 ? C.amber : C.red}
@@ -1488,7 +1488,7 @@ export default function PanelOperativo() {
                   </div>
                   <div className="text-xl font-semibold text-ink mt-1">{CLP(c.total)}</div>
                   <div className="text-xs text-slate-400">{c.ot} OTs · ticket {CLP(c.ticket)}</div>
-                  <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-100">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-100">
                     <div>
                       <div className="text-[10px] text-slate-400">Venta promedio</div>
                       <div className="text-sm font-semibold text-ink">{CLPc(c.ventaMes)}<span className="text-[10px] font-normal text-slate-400"> /mes</span></div>
@@ -1723,7 +1723,7 @@ export default function PanelOperativo() {
         <div className="card p-4">
           <h3 className="font-semibold text-ink mb-1">Área DyP (Desabolladura y Pintura)</h3>
           <p className="text-[11px] text-slate-400 mb-2">OTs cuyo servicio pertenece al área DyP según la clasificación de la hoja. El desglose por técnico muestra quién ejecutó esos trabajos.</p>
-          <div className="grid grid-cols-4 gap-2 mb-3 text-center">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 mb-3 text-center">
             <div><div className="text-xs text-slate-400">OTs</div><div className="font-bold text-ink">{D.dyp.rows.length}</div></div>
             <div><div className="text-xs text-slate-400">Ventas</div><div className="font-bold text-ink text-sm">{CLP(D.dyp.ventas)}</div></div>
             <div><div className="text-xs text-slate-400">MO neta</div><div className="font-bold text-ink text-sm">{CLP(D.dyp.mo)}</div></div>

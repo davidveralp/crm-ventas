@@ -100,7 +100,7 @@ export default function Pipeline() {
       </div>
 
       {/* Métricas */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
         <StatCard titulo="En cohorte" valor={m.total} sub={campSel ? campSel.nombre : 'Todos'} />
         <StatCard titulo="Tasa de contacto" valor={`${m.tasaContacto}%`} />
         <StatCard titulo="Tasa de conversión" valor={`${m.tasaConversion}%`} />

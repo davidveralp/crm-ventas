@@ -167,7 +167,7 @@ export default function FacturasRepuestos({ perfil, onAsignado }) {
           const lineas = repuestos.filter((r) => r.id_factura === detalleFactura.id)
           return (
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-2 text-xs text-slate-600">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-600">
                 <div><b>RUT emisor:</b> {detalleFactura.rut_emisor || '—'}</div>
                 <div><b>Fecha:</b> {fmtFecha(detalleFactura.fecha_emision)}</div>
                 <div><b>Neto:</b> {fmtCLP(detalleFactura.neto)}</div>
@@ -316,7 +316,7 @@ function AsignarRepuesto({ asignar, perfil, margenDefault, onListo }) {
         {vehInfo === false && <p className="text-[11px] text-didial-red mt-0.5">No existe esa patente en el CRM. Créala primero (ficha del cliente).</p>}
         {vehInfo && <p className="text-[11px] text-green-600 mt-0.5">✓ {[vehInfo.marca, vehInfo.modelo].filter(Boolean).join(' ')} · {[vehInfo.clientes?.nombre, vehInfo.clientes?.apellidos].filter(Boolean).join(' ')}</p>}
       </div>
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <div>
           <label className="label">Cantidad</label>
           <input className="input" type="number" min="1" max={pend} value={cantidad}

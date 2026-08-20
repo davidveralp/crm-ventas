@@ -88,7 +88,7 @@ function Listado() {
         <p className="text-sm text-slate-500">Historial técnico por patente · {K.total.toLocaleString('es-CL')} vehículos</p>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { k: 'todos', label: 'Total', v: K.total, c: '#2f6fb0' },
           { k: 'criticos', label: 'Con críticos', v: K.criticos, c: SEV.critico.color },
@@ -105,14 +105,54 @@ function Listado() {
       </div>
 
       <div className="flex gap-2 items-center flex-wrap">
-        <input className="input flex-1 min-w-[220px]" placeholder="Buscar por patente, marca, modelo o cliente…"
+        <input className="input flex-1 w-full sm:min-w-[220px]" placeholder="Buscar por patente, marca, modelo o cliente…"
                value={q} onChange={(e) => setQ(e.target.value)} />
         {filtro !== 'todos' && (
           <button onClick={() => setFiltro('todos')} className="btn-soft text-sm">Quitar filtro ✕</button>
         )}
       </div>
 
-      <div className="card overflow-x-auto">
+      {/* Móvil: tarjetas. Una tabla de 6 columnas en 360px obliga a desplazar
+          horizontalmente, que es la peor interacción posible en celular. */}
+      <div className="sm:hidden space-y-2">
+        {visibles.slice(0, 200).map((v) => {
+          const a = alertas[v.id]
+          return (
+            <button key={v.id} onClick={() => nav(`/vehiculos/${v.id}`)}
+              className="card p-3 w-full text-left active:bg-slate-50">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="font-semibold text-ink">{v.patente ? formatPatente(v.patente) : 'Sin patente'}</div>
+                  <div className="text-sm text-slate-600 truncate">
+                    {[v.marca, v.modelo, v.version].filter(Boolean).join(' ') || '—'}
+                  </div>
+                  <div className="text-xs text-slate-400 truncate">{nombreCli(v.clientes)}</div>
+                </div>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  {!a ? <span className="text-[10px] text-slate-300">sin RADAR</span> : (
+                    <span className="flex gap-1">
+                      {a.critico > 0 && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold"
+                              style={{ background: SEV.critico.bg, color: SEV.critico.color }}>{a.critico}</span>
+                      )}
+                      {a.pronto > 0 && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold"
+                              style={{ background: SEV.pronto.bg, color: SEV.pronto.color }}>{a.pronto}</span>
+                      )}
+                    </span>
+                  )}
+                  <span className="text-[11px] text-slate-400">
+                    {v.anio || '—'}{v.km_ultimo ? ` · ${(v.km_ultimo / 1000).toFixed(0)}k km` : ''}
+                  </span>
+                </div>
+              </div>
+            </button>
+          )
+        })}
+        {!visibles.length && <div className="card p-4 text-sm text-slate-400 text-center">Sin vehículos que coincidan.</div>}
+      </div>
+
+      <div className="card overflow-x-auto hidden sm:block">
         <table className="w-full text-sm min-w-[720px]">
           <thead>
             <tr className="text-slate-400 text-xs border-b">
@@ -275,7 +315,7 @@ function Ficha({ id }) {
               💰 Solicitar presupuesto
             </button>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-4 gap-3 text-sm w-full sm:w-auto">
             <div><div className="text-[11px] text-slate-400">Visitas</div><div className="font-semibold text-ink">{K.visitas}</div></div>
             <div><div className="text-[11px] text-slate-400">Facturado</div><div className="font-semibold text-ink">{fmtCLP(K.facturado)}</div></div>
             <div><div className="text-[11px] text-slate-400">Ticket prom.</div><div className="font-semibold text-ink">{fmtCLP(K.ticket)}</div></div>
@@ -393,7 +433,7 @@ function Ficha({ id }) {
 
       {tab === 'presupuestos' && (
         <div className="card overflow-x-auto">
-          <table className="w-full text-sm min-w-[560px]">
+          <table className="w-full text-sm min-w-[460px]">
             <thead><tr className="text-slate-400 text-xs border-b">
               <th className="text-left p-2">Fecha</th><th className="text-left">Origen</th><th className="text-left">Estado</th>
               <th className="text-right">Ítems</th><th className="text-right">Monto</th><th className="text-left">Solicitud / Notas</th>
@@ -419,7 +459,7 @@ function Ficha({ id }) {
 
       {tab === 'servicios' && (
         <div className="card overflow-x-auto">
-          <table className="w-full text-sm min-w-[620px]">
+          <table className="w-full text-sm min-w-[520px]">
             <thead><tr className="text-slate-400 text-xs border-b">
               <th className="text-left p-2">Fecha</th><th className="text-left">OT</th>
               <th className="text-left">Servicio</th><th className="text-right">Km</th>

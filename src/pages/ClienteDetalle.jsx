@@ -495,7 +495,7 @@ export default function ClienteDetalle() {
         </div>
 
         {/* Resumen rápido para el vendedor */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-4 gap-3 mt-6">
           <StatCard titulo="Visitas (OT)" valor={cliente.num_ot || 0} />
           <StatCard titulo="Ticket promedio" valor={fmtCLP(cliente.ticket_promedio)} />
           <StatCard titulo="Última visita" valor={fmtFecha(cliente.ultima_visita)}
@@ -503,7 +503,7 @@ export default function ClienteDetalle() {
           <StatCard titulo="Vehículos" valor={vehiculos.length} />
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-5 text-sm border-t border-slate-100 pt-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-4 gap-4 mt-5 text-sm border-t border-slate-100 pt-4">
           <div><div className="text-xs text-slate-400">RUT</div>{cliente.rut || '—'}</div>
           <div><div className="text-xs text-slate-400">Teléfono</div>{cliente.telefono ? formatTelefono(cliente.telefono) : '—'}</div>
           <div><div className="text-xs text-slate-400">Correo</div>{cliente.email || '—'}</div>
@@ -722,7 +722,7 @@ export default function ClienteDetalle() {
                   </div>
                   {/* Alertas del RADAR: rojos y amarillos con su observación */}
                   <div className="mt-2"><PanelVehiculo vehiculoId={v.id} /></div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2 text-xs text-slate-500">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-4 gap-2 mt-2 text-xs text-slate-500">
                     <div><span className="text-slate-400">Tipo:</span> {v.tipo_vehiculo || '—'}</div>
                     <div><span className="text-slate-400">Km actual:</span> {km ? km.toLocaleString('es-CL') : '—'}</div>
                     <div><span className="text-slate-400">Próx. servicio:</span> {v.proximo_servicio_km ? v.proximo_servicio_km.toLocaleString('es-CL') + ' km' : '—'}</div>
@@ -841,7 +841,7 @@ export default function ClienteDetalle() {
               <span className="w-5 h-5 rounded-full bg-deep text-white text-xs flex items-center justify-center">1</span>
               Contacto
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="label">Tipo de contacto</label>
                 <select className="input" value={act.tipo} onChange={(e) => setAct({ ...act, tipo: e.target.value })}>
@@ -886,7 +886,7 @@ export default function ClienteDetalle() {
             </label>
             {conPresup && (
               <div className="px-3 pb-3 space-y-3 border-t border-slate-100 pt-3">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="label">N° presupuesto</label>
                     <input className="input" value={presup.numero} onChange={(e) => setPresup({ ...presup, numero: e.target.value })} placeholder="Opcional" />
@@ -901,7 +901,7 @@ export default function ClienteDetalle() {
                   <textarea className="input" rows="2" value={presup.descripcion} onChange={(e) => setPresup({ ...presup, descripcion: e.target.value })}
                             placeholder="Ej: cambio de embrague + revisión frenos" />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="label">Estado</label>
                     <select className="input" value={presup.estado} onChange={(e) => setPresup({ ...presup, estado: e.target.value })}>
@@ -930,7 +930,7 @@ export default function ClienteDetalle() {
                 <div className="rounded-lg bg-paper p-3 space-y-3">
                   <div>
                     <label className="label">Tipo de agendamiento</label>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       {Object.entries(TIPOS_AGENDA).map(([k, v]) => (
                         <button type="button" key={k}
                                 onClick={() => setAct({ ...act, agenda_tipo: k })}
@@ -949,7 +949,7 @@ export default function ClienteDetalle() {
                            onChange={(e) => setAct({ ...act, proxima_accion: e.target.value })}
                            placeholder="Ej: confirmar hora de la visita" />
                   </div>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <label className="label">Fecha</label>
                       <input className="input" type="date" value={act.proxima_fecha}
@@ -1035,7 +1035,7 @@ export default function ClienteDetalle() {
       <Modal abierto={modalC} onClose={() => setModalC(false)} titulo="Editar datos de contacto">
         {contacto && (
           <form onSubmit={guardarContacto} className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="label">{contacto.tipo === 'EMPRESA' ? 'Razón social *' : 'Nombre(s) *'}</label>
                 <input className="input" required value={contacto.nombre}
@@ -1056,7 +1056,7 @@ export default function ClienteDetalle() {
                 </div>
               )}
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="label">RUT *</label>
                 <input className="input" required value={contacto.rut}
@@ -1073,7 +1073,7 @@ export default function ClienteDetalle() {
                 </select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="label">Teléfono *</label>
                 <input className="input" required value={contacto.telefono}
@@ -1090,7 +1090,7 @@ export default function ClienteDetalle() {
               <input className="input" required value={contacto.direccion} placeholder="Calle y número"
                      onChange={(e) => setContacto({ ...contacto, direccion: e.target.value })} />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="label">Comuna / Sector *</label>
                 <input className="input" required value={contacto.comuna}
@@ -1248,7 +1248,7 @@ export default function ClienteDetalle() {
       <Modal abierto={modalV} onClose={() => { setModalV(false); setVeh(VEH_VACIO) }}
              titulo={veh.id ? 'Editar vehículo' : 'Agregar vehículo'}>
         <form onSubmit={guardarVehiculo} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="label">Marca</label>
               <SelectMarca value={veh.marca} onChange={(v) => setVeh({ ...veh, marca: v })} />

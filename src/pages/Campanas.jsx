@@ -339,7 +339,7 @@ export default function Campanas() {
           </div>
           <div className="rounded-lg bg-paper p-3 space-y-3">
             <div className="text-xs font-semibold text-slate-500 uppercase">Audiencia · clientes con servicio en el rango</div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="label">Servicio desde *</label>
                 <input className="input" type="date" required value={fN.fecha_desde}
@@ -351,7 +351,7 @@ export default function Campanas() {
                        onChange={(e) => setFN({ ...fN, fecha_hasta: e.target.value })} />
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label className="label">Tipo de servicio</label>
                 <select className="input" value={fN.tipo_servicio} onChange={(e) => setFN({ ...fN, tipo_servicio: e.target.value })}>

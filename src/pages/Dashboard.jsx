@@ -71,7 +71,7 @@ export default function Dashboard() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard titulo="Clientes" valor={m.totalClientes} />
         <StatCard titulo={esAdmin ? 'Ventas del equipo (mes)' : 'Mis ventas del mes'} valor={fmtCLP(m.ventasAsesor)} sub={`${m.otsMes} OT en el mes`} />
         <StatCard titulo="Tasa de reconversión" valor={`${m.conversion}%`} sub="Clientes que vuelven a comprar" />

@@ -110,7 +110,7 @@ function Marca({ perfil, recargar }) {
       </div>
       <div>
         <label className="label">Colores de marca</label>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-4 gap-3">
           {COLS.map(({ k, label }) => (
             <div key={k} className="flex items-center gap-2">
               <input type="color" value={b.colores[k] || '#1C4357'}

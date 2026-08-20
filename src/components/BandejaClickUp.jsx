@@ -140,7 +140,7 @@ function RevisarTarea({ perfil, p, onListo }) {
       {modo === 'crear' && (
         <div className="space-y-2">
           <p className="text-[11px] text-slate-400">Datos sugeridos del título — revisa y corrige antes de guardar.</p>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <input className="input text-sm" placeholder="Patente *" value={nuevoCli.patente}
                    onChange={(e) => setNuevoCli({ ...nuevoCli, patente: e.target.value })} />
             <input className="input text-sm" placeholder="RUT" value={nuevoCli.rut}

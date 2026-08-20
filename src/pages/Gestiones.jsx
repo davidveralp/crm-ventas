@@ -75,7 +75,7 @@ export default function Gestiones() {
         <p className="text-sm text-slate-500">Control del ciclo de vida de los procesos comerciales</p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
         <Kpi n={kpis.abiertas}   label="Abiertas"  color="#1D9E75" />
         <Kpi n={kpis.pendientes} label="Pendientes (sin próximo paso)" color="#C98A1B" />
         <Kpi n={kpis.vencidas}   label="Vencidas (seguimiento atrasado)" color="#A32D2D" />

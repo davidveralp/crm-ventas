@@ -149,7 +149,7 @@ export default function Usuarios() {
             <label className="label">Nombre *</label>
             <input className="input" required value={fEdit.nombre} onChange={(e) => setFEdit({ ...fEdit, nombre: e.target.value })} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="label">Rol</label>
               <select className="input" value={fEdit.rol} onChange={(e) => setFEdit({ ...fEdit, rol: e.target.value })}>
@@ -184,7 +184,7 @@ export default function Usuarios() {
             <input className="input" required value={form.nombre}
                    onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="label">Correo *</label>
               <input className="input" type="email" required value={form.email}
@@ -197,7 +197,7 @@ export default function Usuarios() {
                      placeholder="mín. 6 caracteres" />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="label">Rol</label>
               <select className="input" value={form.rol}

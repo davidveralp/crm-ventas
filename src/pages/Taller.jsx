@@ -43,7 +43,12 @@ function TallerInterno() {
   const [radarDe, setRadarDe] = useState(null)   // trabajo cuyo RADAR se está capturando
   const [margenes, setMargenes] = useState({ repuesto: 35, lubricante: 30, filtro: 30, consumible: 25, ajuste_asesor_pct: 10 })
   const [usuarios, setUsuarios] = useState([])
-  const [vista, setVista] = useState('tablero') // tablero | lista | tecnicos | indicadores
+  // En móvil el kanban obliga a desplazarse lateralmente entre 10 columnas de
+  // 250px. La vista de lista es vertical y se lee de corrido, así que es la que
+  // corresponde en pantalla chica. En escritorio se mantiene el tablero.
+  const [vista, setVista] = useState(
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches ? 'lista' : 'tablero'
+  ) // tablero | lista | tecnicos | indicadores
   const [sel, setSel] = useState(null)          // trabajo abierto en detalle
   const [now, setNow] = useState(Date.now())
   const [cargando, setCargando] = useState(true)
@@ -324,7 +329,7 @@ function TallerInterno() {
           <h1 className="text-xl font-bold text-ink">Taller</h1>
           <p className="text-sm text-slate-500">{activos.length} vehículos activos · {IND.enCurso} tareas en curso</p>
         </div>
-        <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-sm">
+        <div className="inline-flex rounded-lg border border-slate-200 overflow-x-auto text-sm max-w-full">
           {[['tablero', 'Tablero'], ['lista', 'Lista'], ['tecnicos', 'Técnicos'], ['indicadores', 'Indicadores']].map(([v, l]) => (
             <button key={v} onClick={() => setVista(v)} className={`px-3 py-1.5 ${vista === v ? 'bg-deep text-white' : 'text-slate-500'}`}>{l}</button>
           ))}
@@ -339,7 +344,7 @@ function TallerInterno() {
           {ORDEN_ESTADOS.map((e) => {
             const col = trabajos.filter((t) => t.estado === e)
             return (
-              <div key={e} className="min-w-[250px] w-[250px] shrink-0 rounded-xl bg-mist/50 p-2"
+              <div key={e} className="min-w-[220px] w-[220px] sm:min-w-[250px] sm:w-[250px] shrink-0 rounded-xl bg-mist/50 p-2"
                    onDragOver={(ev) => { if (esJefe) { ev.preventDefault(); ev.dataTransfer.dropEffect = 'move' } }}
                    onDrop={(ev) => {
                      if (!esJefe) return
@@ -445,7 +450,7 @@ function TallerInterno() {
       {/* ---- INDICADORES ---- */}
       {vista === 'indicadores' && (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="card p-4"><div className="text-xs text-slate-500">Tareas completadas</div><div className="text-2xl font-bold text-ink">{IND.term}<span className="text-sm text-slate-400 font-normal"> / {IND.totalTareas}</span></div></div>
             <div className="card p-4"><div className="text-xs text-slate-500">Tareas en curso</div><div className="text-2xl font-bold text-ink">{IND.enCurso}</div></div>
             <div className="card p-4"><div className="text-xs text-slate-500">Tiempo prom. por trabajo</div><div className="text-2xl font-bold text-ink font-mono">{fmtCrono(IND.promTrabajo)}</div></div>

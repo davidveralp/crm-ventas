@@ -1967,3 +1967,32 @@ Ver **`docs/CAMBIOS_v77.md`**. Sin migración.
 - El PDF no se archiva en Storage; se genera al momento.
 - El diagrama de daños va como lista numerada, no como imagen de la silueta marcada.
 - **Chasis (VIN) sale vacío**: el documento lo contempla pero el modelo no tiene el campo. Detectado en la auditoría v76 junto con aseguradora y la distinción cliente/dueño.
+
+---
+
+# v78 — Interfaz adaptada a celular
+
+Ver **`docs/CAMBIOS_v78.md`**. Sin migración. Alcance: toda la app.
+
+## Diagnóstico previo
+El `Layout` ya tenía barra inferior en móvil, pero **puramente comercial**: quien trabaja en taller no llegaba a su pantalla sin abrir el menú. Y las pantallas operativas tenían tres problemas concretos: grids de 2-4 columnas sin breakpoint, tablas con `min-w-[720px]` y objetivos táctiles chicos.
+
+## Cambios
+1. **Barra inferior por rol.** `MOVIL_TALLER` (Inicio, Taller, Vehículos, Nueva OT, Presupuestos) vs `MOVIL_COMERCIAL`. `sticky bottom-0` y `env(safe-area-inset-bottom)` para el notch.
+2. **Taller abre en Lista bajo 640px.** Detectado con `matchMedia` en la inicialización del estado. El kanban de 10 columnas de 250px es inusable en 360px.
+3. **Vehículos: tarjetas en móvil, tabla en escritorio.** La tabla de 6 columnas obligaba a scroll horizontal, que es la peor interacción posible en celular.
+4. **21 archivos con grids adaptados**: toda ocurrencia de `grid-cols-N` (N≥2) sin breakpoint pasó a `grid-cols-1 sm:grid-cols-N`, con expresión regular que respeta los que ya tenían prefijo.
+5. **Inspección a pantalla completa en móvil**: `h-[100dvh]` sin bordes redondeados ni padding externo.
+6. **Reglas globales en `index.css`** bajo `@media (max-width: 639px)`:
+   - `font-size: 16px !important` en campos — **evita el zoom automático de iOS**, que descoloca el layout en cada foco.
+   - `min-height: 44px` en controles, con exención para botones dentro de tablas y píldoras, donde forzarlo rompe la densidad.
+   - `overflow-wrap: anywhere` para que correos y URLs no estiren las tarjetas.
+
+## Dos correcciones durante el proceso
+- El reemplazo masivo de grids también tocó el `grid-cols-5` de la **barra de navegación**, que habría apilado los 5 iconos verticalmente. Revertido: ahí las 5 columnas son la razón de ser del componente.
+- Verificado que **las reglas de impresión del Panel operativo no se vieron afectadas**: apuntan a `.grid.lg\:grid-cols-N`, selector que sobrevive al cambio.
+
+## Limitaciones declaradas
+- Las tablas de detalle (presupuestos, servicios) siguen siendo tablas con scroll lateral. Convertirlas todas a tarjetas era demasiado cambio en una sola versión.
+- La inspección de ingreso **no tiene cola local** como el RADAR: si se cae la señal, se pierde lo no guardado.
+- Los gráficos del Panel operativo se encogen bastante; para revisar en celular conviene el PDF.
