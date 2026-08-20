@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { formatPatente, patenteLimpia, TRACCIONES, TRANSMISIONES, TRANSMISION_LABEL } from '../lib/helpers'
+import { formatPatente, patenteLimpia, formatRut, fmtFonoOT, TRACCIONES, TRANSMISIONES, TRANSMISION_LABEL } from '../lib/helpers'
 import { imprimirInspeccion } from '../lib/inspeccionPDF'
 
 // v77 · Inspección de ingreso — formulario de página única (antes 7 pasos).
@@ -14,17 +14,38 @@ const SILUETAS = [
   { key: 'moto', label: 'Moto', tipoVehiculo: 'AUTO' },
   { key: 'camion_europeo', label: 'Camión Europeo', tipoVehiculo: 'VAN/FURGON/CAMION' },
   { key: 'camion_americano', label: 'Camión Americano', tipoVehiculo: 'VAN/FURGON/CAMION' },
-  { key: 'furgon', label: 'Furgón', tipoVehiculo: 'VAN/FURGON/CAMION' },
-  { key: 'tractor', label: 'Tractor', tipoVehiculo: 'VAN/FURGON/CAMION' }
+  { key: 'furgon', label: 'Furgón', tipoVehiculo: 'VAN/FURGON/CAMION' }
 ]
 
+/* Testigos del tablero. El color es el que usa la norma en un tablero real:
+   rojo = detener el vehículo, ámbar = revisar pronto, verde/azul = en uso.
+   Al marcar un testigo, el icono toma su color, igual que se encendería. */
 const LUCES = [
-  { key: 'motor', label: 'Motor' }, { key: 'check_engine', label: 'Check engine' },
-  { key: 'abs', label: 'ABS' }, { key: 'aceite', label: 'Aceite' },
-  { key: 'bateria', label: 'Batería' }, { key: 'airbag', label: 'Airbag' },
-  { key: 'freno_mano', label: 'Freno de mano' }, { key: 'luces_altas', label: 'Luces' },
-  { key: 'neumatico', label: 'Neumático' }, { key: 'temperatura', label: 'Temperatura' }
+  { key: 'check_engine', label: 'Check engine', color: '#e0a020', icono: 'motor' },
+  { key: 'motor', label: 'Falla motor', color: '#e0382b', icono: 'motor' },
+  { key: 'aceite', label: 'Aceite', color: '#e0382b', icono: 'aceite' },
+  { key: 'temperatura', label: 'Temperatura', color: '#e0382b', icono: 'temp' },
+  { key: 'bateria', label: 'Batería', color: '#e0382b', icono: 'bateria' },
+  { key: 'freno_mano', label: 'Freno', color: '#e0382b', icono: 'freno' },
+  { key: 'airbag', label: 'Airbag', color: '#e0382b', icono: 'airbag' },
+  { key: 'abs', label: 'ABS', color: '#e0a020', icono: 'abs' },
+  { key: 'neumatico', label: 'Presión neumáticos', color: '#e0a020', icono: 'neumatico' },
+  { key: 'luces_altas', label: 'Luces altas', color: '#2f6fb0', icono: 'luces' }
 ]
+
+/* Trazos de cada testigo. Se dibujan con SVG en vez de imágenes para que
+   tomen el color al encenderse y no pesen en la carga. */
+const ICONO_LUZ = {
+  motor: <><path d="M4 13v-3h2V8h3V6h4l2 2h2v2h2v5h-2v2h-4l-2-2H9v2H6v-2H4z"/><path d="M11 8v3"/></>,
+  aceite: <><path d="M3 15c3-1 5-4 9-4 3 0 5 1 6 3"/><path d="M5 15c0 1.7 1.3 3 3 3s3-1.3 3-3"/><path d="M14 6l2 2"/></>,
+  temp: <><path d="M12 3a2 2 0 012 2v8a4 4 0 11-4 0V5a2 2 0 012-2z"/><path d="M17 6h4M17 10h3M17 14h4"/></>,
+  bateria: <><rect x="3" y="7" width="18" height="11" rx="1.5"/><path d="M7 4v3M17 4v3M7.5 12h3M9 10.5v3M14 12h3"/></>,
+  freno: <><circle cx="12" cy="12" r="7"/><path d="M12 5v14M5 12h14" strokeDasharray="2 3"/><path d="M9 9l6 6M15 9l-6 6"/></>,
+  airbag: <><circle cx="8" cy="9" r="3.5"/><path d="M13 6c3 1.5 4.5 4 4.5 7"/><path d="M6 14c0 2.5 2 4.5 5 4.5h6"/></>,
+  abs: <><circle cx="12" cy="12" r="7.5"/><path d="M7 12h10" strokeDasharray="2 2"/><text x="12" y="14.5" fontSize="6" textAnchor="middle" fill="currentColor" stroke="none">ABS</text></>,
+  neumatico: <><path d="M6 8h12l1.5 6H4.5L6 8z"/><path d="M4.5 14v3M19.5 14v3"/><path d="M12 3v3M9.5 4.5L12 6l2.5-1.5"/></>,
+  luces: <><path d="M4 8h5c3 0 5 1.8 5 4s-2 4-5 4H4V8z"/><path d="M16 8h4M16 12h5M16 16h4"/></>
+}
 
 const INVENTARIO = [
   'Gatos', 'Herramientas', 'Radios', 'Triángulos', 'Tapetes', 'Parabrisas',
@@ -46,7 +67,10 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
     marca: '', modelo: '', version: '', anio: '', color: '', chasis: '', cilindrada: '', traccion: '', transmision: ''
   })
 
-  async function buscarVehiculo(q) {
+  async function buscarVehiculo(entrada) {
+    // Mismo formato que Nueva OT: se normaliza mientras se escribe, así el
+    // usuario no tiene que acordarse de los espacios ni de las mayúsculas.
+    const q = formatPatente(entrada)
     setBusca(q); setD({ ...d, patente: q })
     if (patenteLimpia(q).length < 5) { setVeh(null); return }
     const { data } = await supabase.from('vehiculos')
@@ -251,7 +275,8 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
             <div className="space-y-3">
               <div>
                 <label className="label">Patente *</label>
-                <input className="input" autoFocus value={busca} onChange={(e) => buscarVehiculo(e.target.value)} placeholder="Ej: GH TY 34" />
+                <input className="input uppercase" autoFocus value={busca} maxLength={10}
+                       onChange={(e) => buscarVehiculo(e.target.value)} placeholder="Ej: GH TY 34" />
                 {veh && <p className="text-xs text-green-600 mt-1">✓ {veh.marca} {veh.modelo} · {[veh.clientes?.nombre, veh.clientes?.apellidos].filter(Boolean).join(' ')}</p>}
                 {!veh && patenteLimpia(busca).length >= 5 && <p className="text-xs text-slate-400 mt-1">Patente nueva — completa los datos del cliente más abajo.</p>}
               </div>
@@ -270,8 +295,12 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <input className="input" placeholder="Nombre(s)" value={d.nombre} onChange={(e) => setD({ ...d, nombre: e.target.value })} />
                       <input className="input" placeholder="Apellidos" value={d.apellidos} onChange={(e) => setD({ ...d, apellidos: e.target.value })} />
-                      <input className="input" placeholder="RUT" value={d.rut} onChange={(e) => setD({ ...d, rut: e.target.value })} />
-                      <input className="input" placeholder="Teléfono" value={d.telefono} onChange={(e) => setD({ ...d, telefono: e.target.value })} />
+                      <input className="input" placeholder="12.345.678-9" value={d.rut}
+                             onChange={(e) => setD({ ...d, rut: e.target.value })}
+                             onBlur={(e) => setD({ ...d, rut: formatRut(e.target.value) })} />
+                      <input className="input" placeholder="+56 9 1234 5678" inputMode="tel" value={d.telefono}
+                             onChange={(e) => setD({ ...d, telefono: e.target.value })}
+                             onBlur={(e) => setD({ ...d, telefono: fmtFonoOT(e.target.value) })} />
                       <input className="input" placeholder="Correo" value={d.email} onChange={(e) => setD({ ...d, email: e.target.value })} />
                       <input className="input" placeholder="Ciudad" value={d.ciudad} onChange={(e) => setD({ ...d, ciudad: e.target.value })} />
                       <input className="input sm:col-span-2" placeholder="Dirección" value={d.direccion} onChange={(e) => setD({ ...d, direccion: e.target.value })} />
@@ -318,13 +347,31 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
             <div className="space-y-4">
               <div>
                 <label className="label mb-2">Luces de advertencia encendidas</label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-4 gap-2">
-                  {LUCES.map((l) => (
-                    <button key={l.key} type="button" onClick={() => toggleLuz(l.key)}
-                            className={`text-xs px-2 py-2 rounded-lg border ${luces.includes(l.key) ? 'bg-didial-red text-white border-didial-red' : 'border-slate-200 text-slate-600'}`}>
-                      {l.label}
-                    </button>
-                  ))}
+                <p className="text-[11px] text-slate-400 mb-2">
+                  Toca el testigo que esté encendido en el tablero. Se pinta con su color real.
+                </p>
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                  {LUCES.map((l) => {
+                    const on = luces.includes(l.key)
+                    return (
+                      <button key={l.key} type="button" onClick={() => toggleLuz(l.key)}
+                        className="flex flex-col items-center gap-1 px-1 py-2 rounded-lg border-2 transition-colors"
+                        style={{
+                          borderColor: on ? l.color : '#e2e8f0',
+                          background: on ? l.color + '18' : '#fff',
+                          color: on ? l.color : '#94a3b8'
+                        }}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"
+                             strokeLinecap="round" strokeLinejoin="round" className="w-7 h-7">
+                          {ICONO_LUZ[l.icono]}
+                        </svg>
+                        <span className="text-[10px] leading-tight text-center"
+                              style={{ color: on ? l.color : '#64748b', fontWeight: on ? 600 : 400 }}>
+                          {l.label}
+                        </span>
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
               <div>
@@ -347,13 +394,50 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
           {true && (
             <div>
               <label className="label mb-3">Nivel de combustible</label>
-              <div className="flex items-center gap-2">
-                <span className="text-lg font-bold text-didial-red">E</span>
+              {/* Indicador de aguja como el del tablero: se lee de un vistazo y
+                  el técnico lo reconoce sin traducir un número a octavos.
+                  El arco va de E a F sobre 180°, con la zona baja en rojo. */}
+              <div className="flex flex-col items-center">
+                <svg viewBox="0 0 200 118" className="w-56 max-w-full">
+                  {/* arco de fondo */}
+                  <path d="M20 100 A80 80 0 0 1 180 100" fill="none" stroke="#e2e8f0" strokeWidth="14" strokeLinecap="round" />
+                  {/* reserva: primer cuarto en rojo */}
+                  <path d="M20 100 A80 80 0 0 1 43.4 43.4" fill="none" stroke="#e0382b" strokeWidth="14" strokeLinecap="round" />
+                  {/* marcas de E, 1/4, 1/2, 3/4, F */}
+                  {[0, 2, 4, 6, 8].map((n) => {
+                    const ang = Math.PI - (n / 8) * Math.PI
+                    const x1 = 100 + Math.cos(ang) * 66, y1 = 100 - Math.sin(ang) * 66
+                    const x2 = 100 + Math.cos(ang) * 56, y2 = 100 - Math.sin(ang) * 56
+                    return <line key={n} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#94a3b8" strokeWidth="2" />
+                  })}
+                  <text x="16" y="114" fontSize="15" fontWeight="700" fill="#e0382b">E</text>
+                  <text x="176" y="114" fontSize="15" fontWeight="700" fill="#111922">F</text>
+                  <text x="100" y="30" fontSize="11" fill="#94a3b8" textAnchor="middle">1/2</text>
+                  {/* aguja */}
+                  {(() => {
+                    const ang = Math.PI - (combustible / 8) * Math.PI
+                    return (
+                      <>
+                        <line x1="100" y1="100" x2={100 + Math.cos(ang) * 62} y2={100 - Math.sin(ang) * 62}
+                              stroke="#111922" strokeWidth="3.5" strokeLinecap="round" />
+                        <circle cx="100" cy="100" r="7" fill="#111922" />
+                        <circle cx="100" cy="100" r="3" fill="#fff" />
+                      </>
+                    )
+                  })()}
+                  {/* surtidor */}
+                  <g transform="translate(88,58)" stroke="#94a3b8" strokeWidth="1.6" fill="none" strokeLinecap="round">
+                    <rect x="0" y="2" width="11" height="14" rx="1.5" />
+                    <path d="M0 6h11M13 5v8a2 2 0 002 2h1V8l-3-3" />
+                  </g>
+                </svg>
                 <input type="range" min="0" max="8" step="1" value={combustible}
-                       onChange={(e) => setCombustible(+e.target.value)} className="flex-1" />
-                <span className="text-lg font-bold text-ink">F</span>
+                       onChange={(e) => setCombustible(+e.target.value)}
+                       className="w-56 max-w-full mt-1" aria-label="Nivel de combustible" />
+                <p className="text-sm font-semibold text-ink mt-1">
+                  {['Vacío', '1/8', '1/4', '3/8', '1/2', '5/8', '3/4', '7/8', 'Lleno'][combustible]}
+                </p>
               </div>
-              <p className="text-center text-sm text-slate-500 mt-2">{combustible}/8</p>
             </div>
           )}
 
