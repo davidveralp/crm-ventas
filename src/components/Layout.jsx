@@ -76,11 +76,15 @@ function Icon({ d }) {
 
 export default function Layout({ children }) {
   const { perfil, esAdmin, logout } = useAuth()
-  const [buscando, setBuscando] = useState(false)
-  // Solo los accesos habilitados para esta empresa, para que el grid no deje huecos
-  const movilVisible = MOVIL.filter((m) => !m.feature || tieneFeature(m.feature))
   const { tieneFeature, nombre } = useConfig()
   const navigate = useNavigate()
+  const [buscando, setBuscando] = useState(false)
+
+  // Solo los accesos habilitados para esta empresa, para que el grid no deje
+  // huecos. Va DESPUÉS de useConfig: con `const`, usar tieneFeature antes de su
+  // declaración lanza "Cannot access before initialization" y, como Layout
+  // envuelve toda la app, deja la pantalla en blanco en cualquier vista.
+  const movilVisible = MOVIL.filter((m) => !m.feature || tieneFeature(m.feature))
   const [alertas, setAlertas] = useState(0)
 
   useEffect(() => {
