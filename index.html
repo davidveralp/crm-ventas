@@ -12,6 +12,34 @@
   </head>
   <body>
     <div id="root"></div>
+
+    <!-- Red de seguridad: si el navegador no logra cargar el módulo principal
+         (típicamente porque una caché vieja apunta a un archivo con hash que ya
+         no existe tras un despliegue), en vez de dejar la pantalla en blanco se
+         limpia la caché y se recarga una sola vez.
+         El centinela en sessionStorage evita un bucle de recargas si el fallo
+         es por otra causa. -->
+    <script>
+      window.addEventListener('error', function (e) {
+        var esModulo = e.target && e.target.tagName === 'SCRIPT';
+        if (!esModulo) return;
+        if (sessionStorage.getItem('recuperando')) return;   // ya se intentó
+        sessionStorage.setItem('recuperando', '1');
+        if (window.caches && caches.keys) {
+          caches.keys().then(function (ns) {
+            return Promise.all(ns.map(function (n) { return caches.delete(n); }));
+          }).then(function () { location.reload(); });
+        } else {
+          location.reload();
+        }
+      }, true);
+
+      // Si la app arrancó bien, se limpia el centinela.
+      window.addEventListener('load', function () {
+        setTimeout(function () { sessionStorage.removeItem('recuperando'); }, 4000);
+      });
+    </script>
+
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

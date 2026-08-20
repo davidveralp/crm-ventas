@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useState, useEffect } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import BuscadorGlobal from './BuscadorGlobal'
 import { useConfig } from '../context/ConfigContext'
 import Recordatorios from './Recordatorios'
 import Campanita from './Campanita'
@@ -53,26 +54,16 @@ const GRUPO_ADMIN = { titulo: 'Administración', items: [
   { to: '/usuarios', label: 'Usuarios', icon: 'usuarios' }
 ]}
 
-/* Barra inferior en móvil. Antes era puramente comercial (clientes, gestiones,
-   campañas), así que quien trabaja en el taller no llegaba a su pantalla sin
-   pasar por el menú. Ahora depende del rol: cada perfil ve sus cinco accesos. */
-const MOVIL_COMERCIAL = [
+/* Barra inferior en móvil: los cinco accesos que se usan de pie, en el
+   mostrador o junto al vehículo. La búsqueda no ocupa un lugar aquí porque
+   está siempre disponible en la cabecera. */
+const MOVIL = [
   { to: '/', label: 'Inicio', icon: 'dashboard' },
-  { to: '/clientes', label: 'Clientes', icon: 'clientes', feature: 'crm' },
-  { to: '/vehiculos', label: 'Vehículos', icon: 'taller', feature: 'ot' },
-  { to: '/gestiones', label: 'Gestiones', icon: 'gestiones', feature: 'crm' },
+  { to: '/nuevo-cliente', label: 'Ingreso', icon: 'clientes', feature: 'ot' },
+  { to: '/taller', label: 'Taller', icon: 'taller', feature: 'ot' },
+  { to: '/presupuestos', label: 'Presup.', icon: 'presupuestos', feature: 'crm' },
   { to: '/calendario', label: 'Agenda', icon: 'calendario', feature: 'agenda' }
 ]
-
-const MOVIL_TALLER = [
-  { to: '/', label: 'Inicio', icon: 'dashboard' },
-  { to: '/taller', label: 'Taller', icon: 'taller', feature: 'ot' },
-  { to: '/vehiculos', label: 'Vehículos', icon: 'taller', feature: 'ot' },
-  { to: '/nueva-ot', label: 'Nueva OT', icon: 'nuevaot', feature: 'ot' },
-  { to: '/presupuestos', label: 'Presup.', icon: 'presupuestos', feature: 'ot' }
-]
-
-const ROLES_TALLER_MOVIL = ['jefe_taller', 'tecnico', 'coordinador_adquisiciones', 'encargado_bodega', 'asistente_bodega']
 
 function Icon({ d }) {
   return (
@@ -85,6 +76,9 @@ function Icon({ d }) {
 
 export default function Layout({ children }) {
   const { perfil, esAdmin, logout } = useAuth()
+  const [buscando, setBuscando] = useState(false)
+  // Solo los accesos habilitados para esta empresa, para que el grid no deje huecos
+  const movilVisible = MOVIL.filter((m) => !m.feature || tieneFeature(m.feature))
   const { tieneFeature, nombre } = useConfig()
   const navigate = useNavigate()
   const [alertas, setAlertas] = useState(0)
@@ -188,15 +182,24 @@ export default function Layout({ children }) {
       <div className="flex-1 flex flex-col min-w-0">
         <header className="md:hidden flex items-center justify-between carbon-sidebar text-white px-4 py-3">
           <span className="font-bold tracking-tight">{nombre || 'CRM'}</span>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            <button onClick={() => setBuscando(true)} aria-label="Buscar vehículo o cliente"
+                    className="text-white/90 active:text-white">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                   className="w-5 h-5"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
+            </button>
             <Campanita />
           </div>
           <button onClick={async () => { await logout(); navigate('/login') }}
                   className="text-sm text-sky/80">Salir</button>
         </header>
         <main className="flex-1 overflow-y-auto p-4 md:p-8">{children}</main>
-        <nav className="md:hidden grid grid-cols-5 bg-white border-t border-slate-200 sticky bottom-0 z-30" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-          {(ROLES_TALLER_MOVIL.includes(perfil?.rol) ? MOVIL_TALLER : MOVIL_COMERCIAL).filter((m) => !m.feature || tieneFeature(m.feature)).map(({ to, label, icon }) => (
+
+        <BuscadorGlobal abierto={buscando} onCerrar={() => setBuscando(false)} />
+        <nav className="md:hidden grid bg-white border-t border-slate-200 sticky bottom-0 z-30"
+             style={{ paddingBottom: 'env(safe-area-inset-bottom)',
+                      gridTemplateColumns: `repeat(${movilVisible.length || 1}, minmax(0, 1fr))` }}>
+          {movilVisible.map(({ to, label, icon }) => (
             <NavLink key={to} to={to} end={to === '/'}
               className={({ isActive }) =>
                 `flex flex-col items-center justify-center gap-0.5 text-[10px] min-h-[52px] ${isActive ? 'text-deep' : 'text-slate-400'}`
