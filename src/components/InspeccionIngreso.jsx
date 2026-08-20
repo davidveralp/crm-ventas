@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { formatPatente, patenteLimpia } from '../lib/helpers'
+import { formatPatente, patenteLimpia, TRACCIONES, TRANSMISIONES, TRANSMISION_LABEL } from '../lib/helpers'
 import { imprimirInspeccion } from '../lib/inspeccionPDF'
 
 // v77 · Inspección de ingreso — formulario de página única (antes 7 pasos).
@@ -33,7 +33,7 @@ const INVENTARIO = [
 ]
 
 
-export default function InspeccionIngreso({ perfil, onCompletada, onCancelar }) {
+export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, comoPagina = false }) {
   const [guardando, setGuardando] = useState(false)
 
   // ---- sección 1: datos generales ----
@@ -42,7 +42,8 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar }) 
   const [d, setD] = useState({
     patente: '', km: '', fecha: new Date().toISOString().slice(0, 10), fecha_probable_entrega: '',
     ingreso_grua: false, trabajo_a_realizar: '', observaciones_cliente: '',
-    nombre: '', apellidos: '', rut: '', telefono: ''
+    nombre: '', apellidos: '', rut: '', telefono: '', email: '', direccion: '', ciudad: '',
+    marca: '', modelo: '', version: '', anio: '', color: '', chasis: '', cilindrada: '', traccion: '', transmision: ''
   })
 
   async function buscarVehiculo(q) {
@@ -148,6 +149,43 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar }) 
     setGuardando(true)
     let clienteId = veh?.cliente_id || null, vehiculoId = veh?.id || null
 
+    // Si la patente es nueva, se crean la ficha de cliente y la de vehículo.
+    // Antes esto no ocurría: la inspección quedaba sin cliente ni vehículo.
+    try {
+      if (!clienteId && (d.nombre.trim() || d.apellidos.trim() || d.rut.trim())) {
+        const { data: cli, error: eCli } = await supabase.from('clientes').insert({
+          empresa_id: perfil.empresa_id,
+          nombre: d.nombre.trim() || '(sin nombre)', apellidos: d.apellidos.trim() || null,
+          rut: d.rut.trim() || null, telefono: d.telefono.trim() || null,
+          email: d.email?.trim() || null, direccion: d.direccion?.trim() || null,
+          ciudad: d.ciudad?.trim() || null,
+          vendedor_id: perfil.id, estado: 'nuevo'
+        }).select('id').single()
+        if (eCli) throw new Error('No se pudo crear el cliente: ' + eCli.message)
+        clienteId = cli.id
+      }
+
+      if (!vehiculoId && patenteLimpia(d.patente).length >= 5) {
+        const siluetaTipo = SILUETAS.find((x) => x.key === silueta)?.tipoVehiculo || null
+        const { data: vh, error: eVeh } = await supabase.from('vehiculos').insert({
+          empresa_id: perfil.empresa_id, cliente_id: clienteId,
+          patente: formatPatente(d.patente),
+          marca: d.marca?.trim() || null, modelo: d.modelo?.trim() || null,
+          version: d.version?.trim() || null, anio: parseInt(d.anio, 10) || null,
+          color: d.color?.trim() || null, chasis: d.chasis?.trim() || null,
+          cilindrada: d.cilindrada?.trim() || null,
+          traccion: d.traccion || null, transmision: d.transmision || null,
+          tipo_vehiculo: siluetaTipo,
+          km_ultimo: parseInt(d.km, 10) || null, km_actual_estimado: parseInt(d.km, 10) || null
+        }).select('id').single()
+        if (eVeh) throw new Error('No se pudo crear el vehículo: ' + eVeh.message)
+        vehiculoId = vh.id
+      }
+    } catch (e) {
+      setGuardando(false)
+      return alert(e.message)
+    }
+
     // firma → storage
     let firmaUrl = null
     const firmaBlob = await new Promise((res) => canvasRef.current.toBlob(res, 'image/png'))
@@ -188,8 +226,12 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar }) 
   const puedeAvanzar = paso !== 0 || (d.patente.trim().length >= 5 && d.km)
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="bg-white sm:rounded-xl w-full max-w-3xl h-[100dvh] sm:h-[94vh] flex flex-col">
+    <div className={comoPagina
+      ? ''
+      : 'fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4'}>
+      <div className={comoPagina
+        ? 'bg-white rounded-xl flex flex-col'
+        : 'bg-white sm:rounded-xl w-full max-w-3xl h-[100dvh] sm:h-[94vh] flex flex-col'}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
           <div>
             <h2 className="text-lg font-bold text-ink">Inspección de ingreso</h2>
@@ -198,7 +240,7 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar }) 
           <button type="button" onClick={onCancelar} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        <div className={comoPagina ? "px-5 py-4 space-y-4" : "flex-1 overflow-y-auto px-5 py-4 space-y-4"}>
           {/* ---- PASO 0: DATOS ---- */}
           {/* sección 1 */}
           <h3 className="text-sm font-bold text-ink border-b border-slate-200 pb-1 pt-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-deep text-white text-[10px] mr-2">1</span>Datos del vehículo y cliente</h3>
@@ -219,12 +261,40 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar }) 
                 <input className="input" type="date" value={d.fecha_probable_entrega} onChange={(e) => setD({ ...d, fecha_probable_entrega: e.target.value })} />
               </div>
               {!veh && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-lg bg-paper p-3">
-                  <input className="input" placeholder="Nombre(s)" value={d.nombre} onChange={(e) => setD({ ...d, nombre: e.target.value })} />
-                  <input className="input" placeholder="Apellidos" value={d.apellidos} onChange={(e) => setD({ ...d, apellidos: e.target.value })} />
-                  <input className="input" placeholder="RUT" value={d.rut} onChange={(e) => setD({ ...d, rut: e.target.value })} />
-                  <input className="input" placeholder="Teléfono" value={d.telefono} onChange={(e) => setD({ ...d, telefono: e.target.value })} />
-                </div>
+                <>
+                  <div className="rounded-lg bg-paper p-3 space-y-2">
+                    <p className="text-xs font-semibold text-slate-500 uppercase">Datos del cliente</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <input className="input" placeholder="Nombre(s)" value={d.nombre} onChange={(e) => setD({ ...d, nombre: e.target.value })} />
+                      <input className="input" placeholder="Apellidos" value={d.apellidos} onChange={(e) => setD({ ...d, apellidos: e.target.value })} />
+                      <input className="input" placeholder="RUT" value={d.rut} onChange={(e) => setD({ ...d, rut: e.target.value })} />
+                      <input className="input" placeholder="Teléfono" value={d.telefono} onChange={(e) => setD({ ...d, telefono: e.target.value })} />
+                      <input className="input" placeholder="Correo" value={d.email} onChange={(e) => setD({ ...d, email: e.target.value })} />
+                      <input className="input" placeholder="Ciudad" value={d.ciudad} onChange={(e) => setD({ ...d, ciudad: e.target.value })} />
+                      <input className="input sm:col-span-2" placeholder="Dirección" value={d.direccion} onChange={(e) => setD({ ...d, direccion: e.target.value })} />
+                    </div>
+                  </div>
+                  <div className="rounded-lg bg-paper p-3 space-y-2">
+                    <p className="text-xs font-semibold text-slate-500 uppercase">Datos del vehículo</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <input className="input" placeholder="Marca" value={d.marca} onChange={(e) => setD({ ...d, marca: e.target.value.toUpperCase() })} />
+                      <input className="input" placeholder="Modelo (sin cilindrada ni tracción)" value={d.modelo} onChange={(e) => setD({ ...d, modelo: e.target.value.toUpperCase() })} />
+                      <input className="input" placeholder="Versión (GL, Sport…)" value={d.version} onChange={(e) => setD({ ...d, version: e.target.value })} />
+                      <input className="input" placeholder="Cilindrada (2.0)" value={d.cilindrada} onChange={(e) => setD({ ...d, cilindrada: e.target.value })} />
+                      <input className="input" type="number" placeholder="Año" value={d.anio} onChange={(e) => setD({ ...d, anio: e.target.value })} />
+                      <input className="input" placeholder="Color" value={d.color} onChange={(e) => setD({ ...d, color: e.target.value })} />
+                      <select className="input" value={d.traccion} onChange={(e) => setD({ ...d, traccion: e.target.value })}>
+                        <option value="">Tracción…</option>
+                        {TRACCIONES.map((t) => <option key={t}>{t}</option>)}
+                      </select>
+                      <select className="input" value={d.transmision} onChange={(e) => setD({ ...d, transmision: e.target.value })}>
+                        <option value="">Transmisión…</option>
+                        {TRANSMISIONES.map((t) => <option key={t} value={t}>{TRANSMISION_LABEL[t] || t}</option>)}
+                      </select>
+                      <input className="input sm:col-span-2" placeholder="N° de chasis (VIN)" value={d.chasis} onChange={(e) => setD({ ...d, chasis: e.target.value.toUpperCase() })} />
+                    </div>
+                  </div>
+                </>
               )}
               <div>
                 <label className="label">Ingreso en grúa</label>

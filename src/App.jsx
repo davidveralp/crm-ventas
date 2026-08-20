@@ -13,6 +13,7 @@ import NuevaOT from './pages/NuevaOT'
 import Configuracion from './pages/Configuracion'
 import Taller from './pages/Taller'
 import Vehiculos from './pages/Vehiculos'
+import NuevoCliente from './pages/NuevoCliente'
 import ControlOT from './pages/ControlOT'
 import Agenda from './pages/Agenda'
 import Calendario from './pages/Calendario'
@@ -49,6 +50,7 @@ export default function App() {
       <Route path="/datos"       element={conLayout(<Datos />)} />
       <Route path="/nueva-ot"    element={conLayout(<NuevaOT />)} />
       <Route path="/taller"      element={conLayout(<Taller />)} />
+      <Route path="/nuevo-cliente" element={conLayout(<NuevoCliente />)} />
       <Route path="/vehiculos"     element={conLayout(<Vehiculos />)} />
       <Route path="/vehiculos/:id" element={conLayout(<Vehiculos />)} />
       <Route path="/control-ot"  element={conLayout(<ControlOT />)} />

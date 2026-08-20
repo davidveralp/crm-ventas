@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import {
@@ -9,7 +9,6 @@ import {
   OT_TECNICOS, OT_CONOCIO, OT_ENCUESTA, enviarASheet, TIPOS_VEHICULO, sucursalDeAsesor,
   TRACCIONES, TRANSMISIONES, TRANSMISION_LABEL
 } from '../lib/helpers'
-import InspeccionIngreso from '../components/InspeccionIngreso'
 
 const hoy = () => new Date().toISOString().slice(0, 10)
 
@@ -66,6 +65,7 @@ const Chip = ({ activo, onClick, children }) => (
 )
 
 export default function NuevaOT() {
+  const location = useLocation()
   const { perfil } = useAuth()
   const [params] = useSearchParams()
   const [f, setF] = useState(VACIA)
@@ -78,7 +78,6 @@ export default function NuevaOT() {
   const [secOtro, setSecOtro] = useState('') // técnico secundario "Otro"
   const [presups, setPresups] = useState([])   // presupuestos de taller del vehículo
   const [selItems, setSelItems] = useState({}) // "presupId:i" -> true
-  const [mostrarInspeccion, setMostrarInspeccion] = useState(false)  // v45
   const [inspeccionId, setInspeccionId] = useState(null)             // v45
 
   // URL del Apps Script de la planilla (config por empresa)
@@ -184,6 +183,13 @@ export default function NuevaOT() {
   // v45: al terminar el asistente de inspección, precarga el formulario
   // con lo ya relevado (patente, marca/modelo, km, tipo de vehículo,
   // datos del cliente si era nuevo, trabajo a realizar/observaciones).
+  // v79: los datos ya no llegan de un modal interno, sino del panel Nuevo
+  // cliente vía navigate('/nueva-ot', { state: { inspeccion } }).
+  useEffect(() => {
+    const insp = location.state?.inspeccion
+    if (insp) { prefillDesdeInspeccion(insp); window.history.replaceState({}, '') }
+  }, []) // eslint-disable-line
+
   function prefillDesdeInspeccion(datos) {
     setInspeccionId(datos.inspeccion_id)
     set('patente', datos.patente)
@@ -466,11 +472,6 @@ export default function NuevaOT() {
           <p className="text-sm text-slate-500">Asesor: <b>{perfil?.nombre}</b></p>
         </div>
         <div className="flex items-center gap-4">
-          {!inspeccionId && (
-            <button type="button" className="btn-soft text-sm" onClick={() => setMostrarInspeccion(true)}>
-              📋 Iniciar con inspección de ingreso
-            </button>
-          )}
           {inspeccionId && <span className="text-xs text-green-600 font-medium">✓ Con inspección de ingreso</span>}
           <div className="text-right">
             <div className="text-xs text-slate-500">Total reparación</div>
@@ -478,10 +479,6 @@ export default function NuevaOT() {
           </div>
         </div>
       </div>
-
-      {mostrarInspeccion && (
-        <InspeccionIngreso perfil={perfil} onCompletada={prefillDesdeInspeccion} onCancelar={() => setMostrarInspeccion(false)} />
-      )}
 
       <Seccion n={1} titulo="Ingreso de Orden">
         <Campo label="N° Orden de Trabajo">

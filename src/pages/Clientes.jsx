@@ -169,7 +169,7 @@ export default function Clientes() {
             <button onClick={() => setVistaTab('clientes')} className={`px-3 py-1.5 ${vistaTab === 'clientes' ? 'bg-deep text-white' : 'text-slate-500'}`}>Clientes</button>
             <button onClick={() => setVistaTab('tareas')} className={`px-3 py-1.5 ${vistaTab === 'tareas' ? 'bg-deep text-white' : 'text-slate-500'}`}>📋 Tareas</button>
           </div>
-          <button className="btn-primary" onClick={() => setModal(true)}>+ Nuevo cliente</button>
+          <button className="btn-primary" onClick={() => navigate('/nuevo-cliente')}>+ Nuevo cliente</button>
         </div>
       </div>
       {vistaTab === 'tareas' ? <TareasCampana perfil={perfil} esAdmin={esAdmin} /> : (<>
@@ -217,7 +217,7 @@ export default function Clientes() {
         <div className="card p-3 text-xs text-slate-600 border-l-4" style={{ borderLeftColor: 'rgb(var(--c-amber))' }}>
           ⚠ La <b>OT {otHuerfana}</b> existe en el historial sincronizado, pero su cliente aún no está creado en el CRM
           (viene de la base de OT). Se crea automáticamente al ejecutar la sincronización
-          (<code>crmSyncServicios()</code> v2) — o agrégalo manualmente con "+ Nuevo cliente" usando su patente.
+          (<code>crmSyncServicios()</code> v2) — o regístralo desde el panel Nuevo cliente con su patente.
         </div>
       )}
       {filtrada.length === 0 ? (

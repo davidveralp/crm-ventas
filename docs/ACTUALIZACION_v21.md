@@ -1996,3 +1996,31 @@ El `Layout` ya tenía barra inferior en móvil, pero **puramente comercial**: qu
 - Las tablas de detalle (presupuestos, servicios) siguen siendo tablas con scroll lateral. Convertirlas todas a tarjetas era demasiado cambio en una sola versión.
 - La inspección de ingreso **no tiene cola local** como el RADAR: si se cae la señal, se pierde lo no guardado.
 - Los gráficos del Panel operativo se encogen bastante; para revisar en celular conviene el PDF.
+
+---
+
+# v79 + migración 61 — Panel Nuevo Cliente
+
+Ver **`docs/CAMBIOS_v79.md`**.
+
+## Unificación
+Tres flujos separados pasan a ser uno: el botón "+ Nuevo cliente" (4 campos), la inspección opcional dentro de Nueva OT, y la creación del vehículo al guardar la OT. Ahora la recepción produce ficha de cliente + ficha de vehículo + documento de ingreso en un solo recorrido.
+
+## Cambios
+- **`src/pages/NuevoCliente.jsx`** con dos modos: *Ingreso con vehículo* (reutiliza `InspeccionIngreso` con la prop nueva `comoPagina`) y *Solo cliente* (ficha marcada como incompleta).
+- **`InspeccionIngreso`** acepta `comoPagina`: sin overlay fijo ni altura de viewport, se integra en el flujo de la página.
+- **Campos nuevos** en la inspección cuando la patente es nueva: bloque de cliente (correo, ciudad, dirección) y bloque de vehículo completo (marca, modelo, versión, cilindrada, año, color, tracción, transmisión, chasis).
+- Botón de inspección **eliminado** de Nueva OT; el traspaso de datos ahora va por `navigate('/nueva-ot', { state: { inspeccion } })`.
+- El botón del listado de Clientes redirige al panel.
+
+## Corrección importante detectada
+`registrar()` de la inspección **guardaba el registro sin crear cliente ni vehículo** cuando la patente era nueva: `clienteId` y `vehiculoId` quedaban en `null` y la inspección resultaba huérfana. Ahora se crean antes del insert, dentro de try/catch, y si falla se aborta con mensaje en vez de guardar a medias.
+
+## Migración 61
+`clientes.ficha_incompleta` con índice parcial, más un **trigger sobre `vehiculos`** que la limpia automáticamente al asociarle uno. Se prefiere el trigger a pedirle al usuario que desmarque una casilla que va a olvidar. Incluye regularización de las fichas existentes que ya tienen vehículo.
+
+## Pendientes relacionados
+- **`vehiculos.chasis` no existe**: el formulario lo pide y el documento lo imprime, pero no se guarda. Falta la columna (hallazgo de la auditoría v76).
+- Sin validación de RUT en el formulario pese a que `rut_dv()` existe desde la migración 53.
+- Sin detección de cliente duplicado por RUT o teléfono antes de crear.
+- **"Punto de venta"** queda como panel futuro para la venta libre sin vehículo.
