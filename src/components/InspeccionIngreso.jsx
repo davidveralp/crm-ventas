@@ -33,18 +33,89 @@ const LUCES = [
   { key: 'luces_altas', label: 'Luces altas', color: '#2f6fb0', icono: 'luces' }
 ]
 
-/* Trazos de cada testigo. Se dibujan con SVG en vez de imágenes para que
-   tomen el color al encenderse y no pesen en la carga. */
+/* Testigos dibujados siguiendo las formas estándar del tablero (referencia:
+   iconografía ISO 2575 que usan todos los fabricantes). Van como SVG y no como
+   imágenes para que tomen el color al encenderse y no pesen en la carga.
+   `fill="currentColor"` en las siluetas macizas, trazo en el resto. */
 const ICONO_LUZ = {
-  motor: <><path d="M4 13v-3h2V8h3V6h4l2 2h2v2h2v5h-2v2h-4l-2-2H9v2H6v-2H4z"/><path d="M11 8v3"/></>,
-  aceite: <><path d="M3 15c3-1 5-4 9-4 3 0 5 1 6 3"/><path d="M5 15c0 1.7 1.3 3 3 3s3-1.3 3-3"/><path d="M14 6l2 2"/></>,
-  temp: <><path d="M12 3a2 2 0 012 2v8a4 4 0 11-4 0V5a2 2 0 012-2z"/><path d="M17 6h4M17 10h3M17 14h4"/></>,
-  bateria: <><rect x="3" y="7" width="18" height="11" rx="1.5"/><path d="M7 4v3M17 4v3M7.5 12h3M9 10.5v3M14 12h3"/></>,
-  freno: <><circle cx="12" cy="12" r="7"/><path d="M12 5v14M5 12h14" strokeDasharray="2 3"/><path d="M9 9l6 6M15 9l-6 6"/></>,
-  airbag: <><circle cx="8" cy="9" r="3.5"/><path d="M13 6c3 1.5 4.5 4 4.5 7"/><path d="M6 14c0 2.5 2 4.5 5 4.5h6"/></>,
-  abs: <><circle cx="12" cy="12" r="7.5"/><path d="M7 12h10" strokeDasharray="2 2"/><text x="12" y="14.5" fontSize="6" textAnchor="middle" fill="currentColor" stroke="none">ABS</text></>,
-  neumatico: <><path d="M6 8h12l1.5 6H4.5L6 8z"/><path d="M4.5 14v3M19.5 14v3"/><path d="M12 3v3M9.5 4.5L12 6l2.5-1.5"/></>,
-  luces: <><path d="M4 8h5c3 0 5 1.8 5 4s-2 4-5 4H4V8z"/><path d="M16 8h4M16 12h5M16 16h4"/></>
+  // Bloque motor visto de perfil, con sus aletas
+  motor: (
+    <g fill="currentColor" stroke="none">
+      <path d="M6.5 9.5h1.2V8h2.1v1.5h2.4l1.9-1.9h1.6v1.9h1.8v1.5h1.6v3.4h-1.6v1.6h-4.1l-1.9-1.9H9.8v1.9H7.7v-1.9H6.5v-1.7H4.8v-2.9h1.7z"/>
+    </g>
+  ),
+  // Aceitera con gota
+  aceite: (
+    <g fill="currentColor" stroke="none">
+      <path d="M4.2 13.6c2.6-.9 4.4-3 8.1-3 1.5 0 2.7.3 3.7.9l3.4-1.4v1.4l-2.5 1.3c.5.6.8 1.3.9 2.1H8.6c-.2-1-.9-1.7-1.9-1.9-.9-.2-1.9.1-2.5.6z"/>
+      <path d="M17.4 6.2c0 .8-.6 1.4-1.4 1.4s-1.4-.6-1.4-1.4c0-.9 1.4-2.6 1.4-2.6s1.4 1.7 1.4 2.6z"/>
+    </g>
+  ),
+  // Termómetro sobre olas de refrigerante
+  temp: (
+    <g fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
+      <path d="M12 4.5v7.2"/><circle cx="12" cy="13.6" r="2.4" fill="currentColor" stroke="none"/>
+      <path d="M12 4.5a1.6 1.6 0 011.6 1.6v5.9a2.4 2.4 0 11-3.2 0V6.1A1.6 1.6 0 0112 4.5z"/>
+      <path d="M9.6 6.6h-1.4M9.6 8.8h-1.4M9.6 11h-1.4"/>
+      <path d="M3 18.4c1-.9 2-.9 3 0s2 .9 3 0 2-.9 3 0 2 .9 3 0 2-.9 3 0"/>
+    </g>
+  ),
+  // Batería con bornes + y −
+  bateria: (
+    <g fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
+      <rect x="2.8" y="7.6" width="18.4" height="9.6" rx="1.2"/>
+      <path d="M7 7.6V5.8h3v1.8M14 7.6V5.8h3v1.8"/>
+      <path d="M6.4 12.4h3.2M8 10.8v3.2M14.4 12.4h3.2"/>
+    </g>
+  ),
+  // Freno: círculo con paréntesis laterales y signo de exclamación
+  freno: (
+    <g fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
+      <circle cx="12" cy="12" r="5.4"/>
+      <path d="M4.4 8.2a8 8 0 000 7.6M19.6 8.2a8 8 0 010 7.6"/>
+      <path d="M12 9.2v3.4"/><circle cx="12" cy="14.9" r=".9" fill="currentColor" stroke="none"/>
+    </g>
+  ),
+  // Ocupante con cinturón y bolsa de aire desplegada
+  airbag: (
+    <g fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="7.6" cy="7.4" r="2.2" fill="currentColor" stroke="none"/>
+      <path d="M4.6 18.4v-3.2c0-1.6 1.1-2.8 2.7-3l3.2-.5"/>
+      <path d="M10.5 18.4H5"/>
+      <circle cx="16.6" cy="13.4" r="4.2"/>
+      <path d="M13.4 8.6l1.6 1.6M19.8 8.6l-1.6 1.6M16.6 7v2.2"/>
+    </g>
+  ),
+  // ABS: círculo con las letras y paréntesis
+  abs: (
+    <g fill="none" stroke="currentColor" strokeWidth="1.6">
+      <circle cx="12" cy="12" r="5.6"/>
+      <path d="M4.2 8.2a8 8 0 000 7.6M19.8 8.2a8 8 0 010 7.6" strokeLinecap="round"/>
+      <text x="12" y="14.3" fontSize="5.4" fontWeight="700" textAnchor="middle"
+            fill="currentColor" stroke="none">ABS</text>
+    </g>
+  ),
+  // Neumático en corte con signo de exclamación (presión)
+  neumatico: (
+    <g fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
+      <path d="M5.4 16.4V10c0-2.6 2.9-4.6 6.6-4.6s6.6 2 6.6 4.6v6.4"/>
+      <path d="M4 18.6h16"/>
+      <path d="M5.4 16.4l-1.2 2.2M18.6 16.4l1.2 2.2"/>
+      <path d="M12 8.8v3.2"/><circle cx="12" cy="14.3" r=".9" fill="currentColor" stroke="none"/>
+    </g>
+  ),
+  // Luz alta: haz recto de líneas paralelas
+  luces: (
+    <g fill="currentColor" stroke="none">
+      <path d="M9.4 6.6c2.9 0 5.2 2.4 5.2 5.4s-2.3 5.4-5.2 5.4H7.6V6.6z"/>
+      <rect x="2" y="7.4" width="4.2" height="1.5" rx=".7"/>
+      <rect x="2" y="11.2" width="4.2" height="1.5" rx=".7"/>
+      <rect x="2" y="15" width="4.2" height="1.5" rx=".7"/>
+      <rect x="16.4" y="7.4" width="5.6" height="1.5" rx=".7"/>
+      <rect x="16.4" y="11.2" width="5.6" height="1.5" rx=".7"/>
+      <rect x="16.4" y="15" width="5.6" height="1.5" rx=".7"/>
+    </g>
+  )
 }
 
 const INVENTARIO = [
@@ -229,8 +300,35 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
       estado: 'completada', creado_por: perfil.id
     }).select().single()
 
+    if (error) { setGuardando(false); return alert('Error al registrar la inspección: ' + error.message) }
+
+    // ---- Trabajo de taller ----
+    // Antes la inspección no lo creaba, así que el vehículo aparecía en ClickUp
+    // sin datos y quedaba "por designar". Ahora nace aquí, con el vehículo, el
+    // cliente y lo que pidió el cliente, para que llegue identificado.
+    let trabajoId = null
+    if (vehiculoId) {
+      const titulo = [
+        veh?.patente || formatPatente(d.patente),
+        veh?.marca || d.marca, veh?.modelo || d.modelo
+      ].filter(Boolean).join(' ').trim()
+      const { data: tj, error: eTj } = await supabase.from('trabajos_taller').insert({
+        empresa_id: perfil.empresa_id,
+        vehiculo_id: vehiculoId, cliente_id: clienteId,
+        titulo: titulo || 'Ingreso de vehículo',
+        servicio_solicitado: d.trabajo_a_realizar.trim() || null,
+        observaciones_cliente: d.observaciones_cliente.trim() || null,
+        // Nace por designar a propósito: el jefe de taller decide el técnico.
+        // La diferencia con antes es que ahora llega con toda la información.
+        estado: 'por_designar', prioridad: 'normal',
+        km_ingreso: parseInt(d.km, 10) || null,
+        inspeccion_id: insp.id
+      }).select('id').maybeSingle()
+      if (eTj) console.error('No se pudo crear el trabajo de taller:', eTj.message)
+      else trabajoId = tj?.id || null
+    }
+
     setGuardando(false)
-    if (error) return alert('Error al registrar la inspección: ' + error.message)
 
     // Documento oficial, ya con la firma subida a Storage
     imprimirInspeccion(datosDoc({ numero: insp.id.slice(0, 8).toUpperCase(), firmaUrl }))
@@ -238,6 +336,9 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
     const siluetaInfo = SILUETAS.find((s) => s.key === silueta)
     onCompletada({
       inspeccion_id: insp.id,
+      trabajo_id: trabajoId,
+      vehiculo_id: vehiculoId,
+      cliente_id: clienteId,
       patente: veh?.patente || formatPatente(d.patente),
       marca: veh?.marca || '', modelo: veh?.modelo || '',
       tipo_vehiculo: veh?.tipo_vehiculo || siluetaInfo?.tipoVehiculo || '',
@@ -361,8 +462,7 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
                           background: on ? l.color + '18' : '#fff',
                           color: on ? l.color : '#94a3b8'
                         }}>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"
-                             strokeLinecap="round" strokeLinejoin="round" className="w-7 h-7">
+                        <svg viewBox="0 0 24 24" className="w-8 h-8">
                           {ICONO_LUZ[l.icono]}
                         </svg>
                         <span className="text-[10px] leading-tight text-center"
