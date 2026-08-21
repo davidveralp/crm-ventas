@@ -251,10 +251,13 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
         const { data: cli, error: eCli } = await supabase.from('clientes').insert({
           empresa_id: perfil.empresa_id,
           nombre: d.nombre.trim() || '(sin nombre)', apellidos: d.apellidos.trim() || null,
-          rut: d.rut.trim() || null, telefono: d.telefono.trim() || null,
+          rut: d.rut.trim() ? formatRut(d.rut) : null,
+          telefono: d.telefono.trim() ? fmtFonoOT(d.telefono) : null,
           email: d.email?.trim() || null, direccion: d.direccion?.trim() || null,
           ciudad: d.ciudad?.trim() || null,
-          vendedor_id: perfil.id, estado: 'nuevo'
+          // `clientes` no tiene columna `estado`, sino `estado_id` hacia
+          // pipeline_estados. Se deja en null, como hace el alta desde Clientes.
+          vendedor_id: perfil.id
         }).select('id').single()
         if (eCli) throw new Error('No se pudo crear el cliente: ' + eCli.message)
         clienteId = cli.id

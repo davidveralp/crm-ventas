@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
+import { formatRut, fmtFonoOT } from '../lib/helpers'
 import InspeccionIngreso from '../components/InspeccionIngreso'
 
 /* ============================================================================
@@ -39,10 +40,12 @@ export default function NuevoCliente() {
     const { data, error } = await supabase.from('clientes').insert({
       empresa_id: perfil.empresa_id,
       nombre: c.nombre.trim() || '(sin nombre)', apellidos: c.apellidos.trim() || null,
-      rut: c.rut.trim() || null, telefono: c.telefono.trim() || null,
+      rut: c.rut.trim() ? formatRut(c.rut) : null,
+      telefono: c.telefono.trim() ? fmtFonoOT(c.telefono) : null,
       email: c.email.trim() || null, direccion: c.direccion.trim() || null,
       ciudad: c.ciudad.trim() || null,
-      vendedor_id: perfil.id, estado: 'nuevo',
+      // Sin `estado`: la columna real es `estado_id` (pipeline_estados).
+      vendedor_id: perfil.id,
       // Sin vehículo asociado la ficha está incompleta: se marca para poder
       // encontrarla después y completarla, en vez de que se pierda entre las demás.
       ficha_incompleta: true
