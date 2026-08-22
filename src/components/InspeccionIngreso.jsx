@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { formatPatente, patenteLimpia, formatRut, fmtFonoOT, TRACCIONES, TRANSMISIONES, TRANSMISION_LABEL } from '../lib/helpers'
+import { formatPatente, patenteLimpia, formatRut, fmtFonoOT,
+  OT_MARCAS, OT_MODELOS, OT_SVC_GRUPOS, svcAplicaAVehiculo, TRACCIONES, TRANSMISIONES, TRANSMISION_LABEL } from '../lib/helpers'
 import { imprimirInspeccion } from '../lib/inspeccionPDF'
 
 // v77 · Inspección de ingreso — formulario de página única (antes 7 pasos).
@@ -127,6 +128,7 @@ const INVENTARIO = [
 
 export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, comoPagina = false }) {
   const [guardando, setGuardando] = useState(false)
+  const [avisoClickUp, setAvisoClickUp] = useState('')
 
   // ---- sección 1: datos generales ----
   const [busca, setBusca] = useState('')
@@ -194,6 +196,20 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
   const [checklist, setChecklist] = useState([])
   const [nuevoItem, setNuevoItem] = useState('')
   const [obsAsesor, setObsAsesor] = useState('')
+  /* Agrega o quita un servicio del texto de "Trabajo a realizar". Se trabaja
+     sobre texto y no sobre una lista para que el asesor pueda matizar lo que
+     pidió el cliente ("cambio de aceite, dice que suena adelante"). */
+  const alternarServicio = (sv) => {
+    const partes = d.trabajo_a_realizar.split(/\s*[·,]\s*/).map((x) => x.trim()).filter(Boolean)
+    const i = partes.findIndex((x) => x === sv)
+    if (i >= 0) partes.splice(i, 1)
+    else partes.push(sv)
+    setD({ ...d, trabajo_a_realizar: partes.join(' · ') })
+  }
+
+  // Tipo de vehículo elegido (para filtrar servicios que no apliquen)
+  const tipoVehSel = SILUETAS.find((x) => x.key === silueta)?.tipoVehiculo || null
+
   const agregarItem = () => { if (!nuevoItem.trim()) return; setChecklist((c) => [...c, { item: nuevoItem.trim(), estado: null }]); setNuevoItem('') }
   const marcarItem = (i, estado) => setChecklist((c) => c.map((x, j) => j === i ? { ...x, estado } : x))
   const quitarItem = (i) => setChecklist((c) => c.filter((_, j) => j !== i))
@@ -335,13 +351,20 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
         // técnico asignado. Nace en "por designar", que es justamente ese estado.
         if (trabajoId) {
           try {
-            const { error: eCu } = await supabase.functions.invoke('clickup-sync', {
+            const { data: rCu, error: eCu } = await supabase.functions.invoke('clickup-sync', {
               body: { accion: 'crear', trabajo_id: trabajoId }
             })
-            if (eCu) console.error('ClickUp no recibió el ingreso:', eCu.message)
+            // El error se MUESTRA, no solo se registra en consola. Antes fallaba
+            // en silencio y no había forma de saber por qué no llegaba a ClickUp.
+            const msg = eCu?.message || rCu?.error
+            if (msg) {
+              setAvisoClickUp(String(msg))
+              console.error('ClickUp no recibió el ingreso:', msg, rCu)
+            }
           } catch (e) {
-            // Que ClickUp falle no debe impedir la recepción del vehículo.
-            console.error('ClickUp no disponible:', e?.message || e)
+            // Que ClickUp falle no impide la recepción, pero sí se informa.
+            setAvisoClickUp(e?.message || String(e))
+            console.error('ClickUp no disponible:', e)
           }
         }
       }
@@ -429,8 +452,39 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
                   <div className="rounded-lg bg-paper p-3 space-y-2">
                     <p className="text-xs font-semibold text-slate-500 uppercase">Datos del vehículo</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <input className="input" placeholder="Marca" value={d.marca} onChange={(e) => setD({ ...d, marca: e.target.value.toUpperCase() })} />
-                      <input className="input" placeholder="Modelo (sin cilindrada ni tracción)" value={d.modelo} onChange={(e) => setD({ ...d, modelo: e.target.value.toUpperCase() })} />
+                      <div>
+                        <select className="input" value={OT_MARCAS.includes(d.marca) ? d.marca : (d.marca ? '__otra__' : '')}
+                                onChange={(e) => setD({ ...d, marca: e.target.value === '__otra__' ? ' ' : e.target.value, modelo: '' })}>
+                          <option value="">Marca…</option>
+                          {OT_MARCAS.map((m) => <option key={m}>{m}</option>)}
+                          <option value="__otra__">Otra…</option>
+                        </select>
+                        {d.marca && !OT_MARCAS.includes(d.marca) && (
+                          <input className="input mt-1.5" placeholder="Escribe la marca" value={d.marca.trim()}
+                                 onChange={(e) => setD({ ...d, marca: e.target.value.toUpperCase() })} />
+                        )}
+                      </div>
+                      <div>
+                        {/* Toyota, Nissan y Mazda tienen catálogo de modelos por
+                            ser las que más entran. El resto va como texto libre. */}
+                        {OT_MODELOS[d.marca] ? (
+                          <>
+                            <select className="input" value={OT_MODELOS[d.marca].includes(d.modelo) ? d.modelo : (d.modelo ? '__otro__' : '')}
+                                    onChange={(e) => setD({ ...d, modelo: e.target.value === '__otro__' ? ' ' : e.target.value })}>
+                              <option value="">Modelo…</option>
+                              {OT_MODELOS[d.marca].map((m) => <option key={m}>{m}</option>)}
+                              <option value="__otro__">Otro…</option>
+                            </select>
+                            {d.modelo && !OT_MODELOS[d.marca].includes(d.modelo) && (
+                              <input className="input mt-1.5" placeholder="Escribe el modelo" value={d.modelo.trim()}
+                                     onChange={(e) => setD({ ...d, modelo: e.target.value.toUpperCase() })} />
+                            )}
+                          </>
+                        ) : (
+                          <input className="input" placeholder="Modelo (sin cilindrada ni tracción)" value={d.modelo}
+                                 onChange={(e) => setD({ ...d, modelo: e.target.value.toUpperCase() })} />
+                        )}
+                      </div>
                       <input className="input" placeholder="Versión (GL, Sport…)" value={d.version} onChange={(e) => setD({ ...d, version: e.target.value })} />
                       <input className="input" placeholder="Cilindrada (2.0)" value={d.cilindrada} onChange={(e) => setD({ ...d, cilindrada: e.target.value })} />
                       <input className="input" type="number" placeholder="Año" value={d.anio} onChange={(e) => setD({ ...d, anio: e.target.value })} />
@@ -455,7 +509,36 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
                   <button type="button" onClick={() => setD({ ...d, ingreso_grua: false })} className={`px-4 py-1.5 rounded-lg border text-sm ${!d.ingreso_grua ? 'bg-deep text-white border-deep' : 'border-slate-200'}`}>No</button>
                 </div>
               </div>
-              <div><label className="label">Trabajo a realizar</label><textarea className="input" rows="2" value={d.trabajo_a_realizar} onChange={(e) => setD({ ...d, trabajo_a_realizar: e.target.value })} /></div>
+              <div className="sm:col-span-2">
+                <label className="label">Trabajo a realizar</label>
+                {/* Mismo catálogo que "Solicitar revisión" de la ficha del
+                    cliente: se toca el servicio y se agrega al texto. Escribir
+                    a mano sigue siendo posible para lo que no esté en la lista. */}
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {OT_SVC_GRUPOS.map((g) => (
+                    <div key={g.bu} className="w-full">
+                      <p className="text-[10px] font-semibold text-slate-400 uppercase mb-1">{g.bu}</p>
+                      <div className="flex flex-wrap gap-1.5 mb-1.5">
+                        {g.items.filter((sv) => svcAplicaAVehiculo(sv, tipoVehSel)).map((sv) => {
+                          const puesto = d.trabajo_a_realizar.includes(sv)
+                          return (
+                            <button key={sv} type="button" onClick={() => alternarServicio(sv)}
+                              className="text-[11px] px-2 py-1 rounded-lg border transition-colors"
+                              style={puesto
+                                ? { background: '#111922', color: '#fff', borderColor: '#111922' }
+                                : { background: '#fff', color: '#64748b', borderColor: '#e2e8f0' }}>
+                              {puesto ? '✓ ' : '+ '}{sv}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <textarea className="input" rows="2" value={d.trabajo_a_realizar}
+                          placeholder="Toca los servicios de arriba o escribe lo que pide el cliente"
+                          onChange={(e) => setD({ ...d, trabajo_a_realizar: e.target.value })} />
+              </div>
               <div><label className="label">Observaciones del cliente</label><textarea className="input" rows="2" value={d.observaciones_cliente} onChange={(e) => setD({ ...d, observaciones_cliente: e.target.value })} /></div>
             </div>
           )}
@@ -664,6 +747,12 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
           <button type="button" className="btn-soft" onClick={onCancelar}>Cancelar</button>
           <div className="flex items-center gap-2 flex-wrap">
             {!puedeAvanzar && <span className="text-xs text-slate-400">Falta patente y kilometraje</span>}
+            {avisoClickUp && (
+              <span className="text-[11px] px-2 py-1 rounded max-w-xs"
+                    style={{ background: '#fdf6e3', color: '#8a6d1f' }}>
+                El ingreso se guardó, pero ClickUp no lo recibió: {avisoClickUp}
+              </span>
+            )}
             <button type="button" className="btn-soft" onClick={vistaPrevia}>Vista previa</button>
             <button type="button" className="btn-primary" disabled={!puedeAvanzar || guardando} onClick={registrar}>
               {guardando ? 'Registrando…' : '✓ Registrar e imprimir'}

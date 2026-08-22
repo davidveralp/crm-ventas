@@ -312,6 +312,21 @@ export const OT_TIPO_DOCUMENTO = ['Boleta', 'Factura', 'Sin Documento']
 export const OT_SVC_TALLER = ['MAN X PAUTA','MAN BASICA','EMBRAGUE','AMORTIGUADOR','SUSPENSION','CORREAS','DISTRIBUCION','REFRIGERACION','A/C RECARGA','A/C REPARACION','INYECCION','DPF','MOTOR REPARACION','MOTOR REEMPLAZO','ADMISION EGR','ALTERNADOR','ARRANQUE','ENCENDIDO','ELECTRONICA MOTOR','ABS','AIR BAG','DIRECCION','FRENOS','TREN DELANTERO','TREN TRASERO','EJES','TRACCION 4X4','DIAGNOSTICO','OTROS TALLER']
 export const OT_SVC_SR = ['REV EXPRESS','REV PREVENTIVA','CAMBIO DE ACEITE','FILTROS','VULCANIZACION','BALANCEO','ESCANER','ALINEACION','AMPOLLETAS','PLUMILLAS','ACCESORIOS','OTROS SERVICIO RÁPIDO']
 export const OT_SVC_DYP = ['DESABOLLADURA Y PINTURA','SINIESTRO ROBO','LIMPIEZA VEHICULO','LIMPIEZA DE MOTOR','LAVADO DE TAPIZ','PULIDO Y ENCERADO','OTROS DYP']
+/* Modelos por marca para las tres marcas que más entran al taller. Sirven como
+   sugerencia en la recepción: el campo sigue admitiendo texto libre para los
+   modelos que no estén en la lista, y para el resto de las marcas.
+   Van SIN cilindrada, tracción ni versión: esos son campos aparte (v63). */
+export const OT_MODELOS = {
+  Toyota: ['Yaris', 'Yaris Sport', 'Corolla', 'Corolla Cross', 'Hilux', 'RAV4', 'Land Cruiser',
+           'Land Cruiser Prado', '4Runner', 'Fortuner', 'Rush', 'Raize', 'Hiace', 'Prius',
+           'Avanza', 'Etios', 'Tacoma', 'Urban Cruiser', 'C-HR', 'Camry', 'Highlander'],
+  Nissan: ['Versa', 'Sentra', 'March', 'Note', 'Tiida', 'Kicks', 'Qashqai', 'X-Trail',
+           'Murano', 'Pathfinder', 'Navara', 'NP300', 'Frontier', 'Terrano', 'Juke',
+           'Almera', 'Urvan', 'Patrol'],
+  Mazda: ['Mazda 2', 'Mazda 3', 'Mazda 6', 'CX-3', 'CX-30', 'CX-5', 'CX-9', 'CX-60',
+          'BT-50', 'MX-5', 'Mazda 2 Sport']
+}
+
 export const OT_SVC_GRUPOS = [
   { bu: 'Taller Mecánico', items: OT_SVC_TALLER },
   { bu: 'Servicio Rápido', items: OT_SVC_SR },
