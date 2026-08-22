@@ -102,7 +102,7 @@ export default function ClienteDetalle() {
     setFpGuardando(false)
     if (error) return alert('Error: ' + error.message + '\n(¿Ejecutaste la migración 35?)')
     await supabase.from('notificaciones').insert({
-      empresa_id: perfil.empresa_id, rol: 'coordinador_adquisiciones',
+      empresa_id: perfil.empresa_id, rol_destino: 'coordinador_adquisiciones',
       titulo: 'Nueva solicitud de presupuesto (comercial)',
       cuerpo: `${nombreCompleto(cliente)} · ${[modalPresup.marca, modalPresup.modelo].filter(Boolean).join(' ')} · ${fp.items.length} ítem(s) sugeridos`,
       url: '/presupuestos'
@@ -1351,15 +1351,15 @@ function PresupAsesor({ p, cliente, margenes, perfil, trabajos = [], vehiculos =
     }
     const titulo = [v?.patente && formatPatente(v.patente), v?.marca, v?.modelo, nombreCompleto(cliente)].filter(Boolean).join(' ')
     await supabase.from('notificaciones').insert([
-      { empresa_id: perfil.empresa_id, rol: 'coordinador_adquisiciones', titulo: 'Presupuesto APROBADO · gestionar compra de repuestos', cuerpo: titulo, url: '/presupuestos' },
-      { empresa_id: perfil.empresa_id, rol: 'jefe_taller', titulo: 'Presupuesto aprobado por el cliente (respaldo ✓)', cuerpo: titulo, url: '/taller' }
+      { empresa_id: perfil.empresa_id, rol_destino: 'coordinador_adquisiciones', titulo: 'Presupuesto APROBADO · gestionar compra de repuestos', cuerpo: titulo, url: '/presupuestos' },
+      { empresa_id: perfil.empresa_id, rol_destino: 'jefe_taller', titulo: 'Presupuesto aprobado por el cliente (respaldo ✓)', cuerpo: titulo, url: '/taller' }
     ])
     setDecidiendo(false); onChange?.()
   }
   async function rechazar() {
     if (!confirm('¿Registrar que el cliente RECHAZÓ este presupuesto?')) return
     await supabase.from('presupuestos_taller').update({ estado: 'rechazado', resuelto_en: new Date().toISOString() }).eq('id', p.id)
-    await supabase.from('notificaciones').insert({ empresa_id: perfil.empresa_id, rol: 'jefe_taller', titulo: 'Presupuesto RECHAZADO por el cliente', cuerpo: [v?.marca, v?.modelo, nombreCompleto(cliente)].filter(Boolean).join(' '), url: '/taller' })
+    await supabase.from('notificaciones').insert({ empresa_id: perfil.empresa_id, rol_destino: 'jefe_taller', titulo: 'Presupuesto RECHAZADO por el cliente', cuerpo: [v?.marca, v?.modelo, nombreCompleto(cliente)].filter(Boolean).join(' '), url: '/taller' })
     onChange?.()
   }
   const cobrables = (p.items || []).map((x, i) => ({ ...x, i })).filter((x) => !x.en_stock)

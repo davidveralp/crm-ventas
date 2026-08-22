@@ -387,7 +387,9 @@ export default function NuevaOT() {
     // v23: solicitud de anulación → notifica a administración para registrarla como nula
     if (f.solicitar_anular) {
       await supabase.from('notificaciones').insert({
-        empresa_id: perfil.empresa_id, rol: 'admin',
+        // La columna es `rol_destino`, no `rol`: con `rol` este insert fallaba
+        // y la solicitud de anulación nunca llegaba a administración.
+        empresa_id: perfil.empresa_id, rol_destino: 'admin',
         titulo: `Solicitud de anulación · OT ${fila.ot_numero || 's/n'}`,
         cuerpo: `${f.propietario} · ${patFmt} · Motivo indicado por el asesor: ${f.motivo_anulacion.trim()}. Regístrala como "OT nula" en Control de OT.`,
         url: '/control-ot'
