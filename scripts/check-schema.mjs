@@ -45,9 +45,19 @@ for (const f of fs.readdirSync(dirSql).filter((x) => x.endsWith('.sql'))) {
 
 /* ---- 2. Columnas que el frontend escribe ---- */
 const archivos = []
+/* Se ignoran directorios que no forman parte del código vivo: copias de
+   respaldo y, sobre todo, un `src/src` anidado. Ese caso ocurrió de verdad:
+   al descomprimir un zip dentro de `src/` quedó una copia antigua en el
+   repositorio, y el verificador reportaba errores ya corregidos, frenando el
+   despliegue en Vercel por un archivo que nadie usaba. */
+const IGNORAR = ['src', 'node_modules', 'dist', 'build', '.git', 'backup', 'old', 'copia']
 const recorrer = (d) => {
   for (const e of fs.readdirSync(d, { withFileTypes: true })) {
     const p = path.join(d, e.name)
+    if (e.isDirectory() && IGNORAR.includes(e.name.toLowerCase())) {
+      console.warn(`  ⓘ omitido: ${path.relative(raiz, p)} (directorio duplicado o de respaldo)`)
+      continue
+    }
     if (e.isDirectory()) recorrer(p)
     else if (/\.jsx?$/.test(e.name)) archivos.push(p)
   }
