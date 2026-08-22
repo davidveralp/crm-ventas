@@ -177,6 +177,10 @@ Deno.serve(async (req) => {
         method: 'POST', headers: await cuHeaders(),
         body: JSON.stringify({
           name: tituloDe(t),
+          // El estado no se enviaba, así que ClickUp aplicaba el primero de su
+          // lista. Ahora se manda explícito: un ingreso nace en "por designar"
+          // y debe verse así en el tablero desde el primer momento.
+          status: ESTADO_CRM_A_CLICKUP[t.estado] || 'por designar',
           priority: PRIORIDAD_CRM_A_CLICKUP[t.prioridad] || 3,
           due_date: t.fecha_limite ? new Date(t.fecha_limite).getTime() : undefined,
           custom_fields: [

@@ -328,7 +328,23 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
         inspeccion_id: insp.id
       }).select('id').maybeSingle()
       if (eTj) console.error('No se pudo crear el trabajo de taller:', eTj.message)
-      else trabajoId = tj?.id || null
+      else {
+        trabajoId = tj?.id || null
+        // Tarjeta espejo en ClickUp desde el ingreso, no recién al solicitar
+        // revisión: así el taller ve todo lo que entró aunque aún no tenga
+        // técnico asignado. Nace en "por designar", que es justamente ese estado.
+        if (trabajoId) {
+          try {
+            const { error: eCu } = await supabase.functions.invoke('clickup-sync', {
+              body: { accion: 'crear', trabajo_id: trabajoId }
+            })
+            if (eCu) console.error('ClickUp no recibió el ingreso:', eCu.message)
+          } catch (e) {
+            // Que ClickUp falle no debe impedir la recepción del vehículo.
+            console.error('ClickUp no disponible:', e?.message || e)
+          }
+        }
+      }
     }
 
     setGuardando(false)
