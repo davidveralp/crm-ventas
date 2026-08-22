@@ -76,6 +76,7 @@ async function firmaValida(rawBody: string, firmaRecibida: string): Promise<bool
 // en ClickUp — se dejan en "por designar" allá y no se empujan como
 // cambio de estado hasta que el CRM avance a un estado con equivalente.
 const ESTADO_CRM_A_CLICKUP: Record<string, string> = {
+  agenda: 'agenda',                    // v91: faltaba, y es el más usado en ClickUp
   por_designar: 'por designar',
   en_reparacion: 'en reparación',
   servicio_externo: 'en rep. servicio externo',
@@ -103,6 +104,11 @@ const EMPRESA_ID = '00000000-0000-0000-0000-000000000001'
 // (obtenidos vía la API de ClickUp — ver docs/ACTUALIZACION_v21.md v42)
 const CAMPO_DATOS_CLIENTE = '61ad3618-8fe4-49e8-9b74-9beae1e15ec5'
 const CAMPO_OBSERVACIONES = 'd2337ca4-7808-42ee-972a-40bfc0f83fec'
+// Progreso: campo automático de ClickUp. Lo calcula a partir de subtareas,
+// listas de control y comentarios asignados, así que NO se escribe desde el
+// CRM: solo se lee para reflejarlo en el tablero.
+const CAMPO_PROGRESO = 'bc7e20f6-6b4c-4286-8ada-4b4b4b5616cb'
+const CAMPO_SUGERENCIAS = 'd75b0b10-d458-42af-8d6a-33122d317104'
 
 // v42.1: CORS — sin esto, el navegador bloquea el preflight OPTIONS antes
 // de que el POST real llegue a la función (causa exacta del 4xx visto en
@@ -394,7 +400,8 @@ Deno.serve(async (req) => {
     }
 
     const { data: t } = await service.from('trabajos_taller')
-      .select('id, estado, prioridad, fecha_limite').eq('clickup_task_id', body.task_id).maybeSingle()
+      .select('id, estado, prioridad, fecha_limite, progreso_clickup, sugerencias_clickup')
+      .eq('clickup_task_id', body.task_id).maybeSingle()
     if (!t) return json({ ok: true, ignorado: 'tarea sin trabajo vinculado' })
 
     const campos: Record<string, unknown> = {}
@@ -410,6 +417,27 @@ Deno.serve(async (req) => {
       if (h.field === 'due_date' && h.after) {
         campos.fecha_limite = new Date(Number(h.after)).toISOString().slice(0, 10)
       }
+    }
+
+    // v91: Progreso y Sugerencias. ClickUp calcula el progreso solo, a partir
+    // de subtareas y listas de control, y NO lo manda en history_items: hay que
+    // consultarlo. Se hace en cualquier evento, porque marcar una subtarea
+    // cambia el porcentaje sin cambiar el estado de la tarjeta.
+    try {
+      const rt = await fetch(`https://api.clickup.com/api/v2/task/${body.task_id}`,
+        { headers: { Authorization: CLICKUP_TOKEN } })
+      if (rt.ok) {
+        const tarea = await rt.json()
+        const cf = (tarea.custom_fields || []) as Array<Record<string, any>>
+        const prog = cf.find((f) => f.id === CAMPO_PROGRESO)
+        const pct = prog?.value?.percent_complete
+        if (typeof pct === 'number') campos.progreso_clickup = Math.round(pct)
+        const sug = cf.find((f) => f.id === CAMPO_SUGERENCIAS)?.value
+        if (typeof sug === 'string' && sug.trim()) campos.sugerencias_clickup = sug.trim()
+      }
+    } catch (e) {
+      // El progreso es informativo: si no se puede leer, el resto igual se aplica.
+      console.error('No se pudo leer el progreso de ClickUp:', (e as Error).message)
     }
     // v48.1: guard anti-eco. El CRM empuja un cambio → ClickUp dispara el
     // webhook de vuelta → antes se reescribía el mismo valor en la base

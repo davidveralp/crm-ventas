@@ -628,14 +628,45 @@ function Detalle({ t, onClose, tareas, presups, tecnicos, nombreDe, diags, marge
               {t.clientes.telefono && <div className="text-sm text-slate-500">{t.clientes.telefono}</div>}
             </div>
           )}
-          <div className="rounded-lg bg-paper p-3">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[11px] font-semibold text-slate-400 uppercase">Progreso</span>
-              <span className="text-xs font-semibold text-ink">{progreso}%</span>
+          <div className="rounded-lg bg-paper p-3 space-y-2">
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[11px] font-semibold text-slate-400 uppercase">Progreso · CRM</span>
+                <span className="text-xs font-semibold text-ink">{progreso}%</span>
+              </div>
+              <div className="h-2 rounded bg-mist overflow-hidden">
+                <div className="h-full rounded bg-didial-red" style={{ width: `${progreso}%` }} />
+              </div>
+              <p className="text-[10px] text-slate-400 mt-0.5">Tareas y listas de control del CRM</p>
             </div>
-            <div className="h-2 rounded bg-mist overflow-hidden">
-              <div className="h-full rounded bg-didial-red" style={{ width: `${progreso}%` }} />
-            </div>
+
+            {/* v91: progreso que calcula ClickUp desde sus subtareas y checklists.
+                Se muestran los dos porque miden cosas distintas: si difieren
+                mucho, hay trabajo registrado en un lado y no en el otro. */}
+            {t.progreso_clickup != null && (
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] font-semibold text-slate-400 uppercase">Progreso · ClickUp</span>
+                  <span className="text-xs font-semibold text-ink">{t.progreso_clickup}%</span>
+                </div>
+                <div className="h-2 rounded bg-mist overflow-hidden">
+                  <div className="h-full rounded" style={{ width: `${t.progreso_clickup}%`, background: '#7b68ee' }} />
+                </div>
+                {Math.abs(t.progreso_clickup - progreso) > 25 && (
+                  <p className="text-[10px] mt-0.5" style={{ color: '#b8860b' }}>
+                    Diferencia de {Math.abs(t.progreso_clickup - progreso)} puntos con el CRM:
+                    hay avance registrado en un solo lado.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {t.sugerencias_clickup && (
+              <div className="pt-1 border-t border-slate-200">
+                <span className="text-[11px] font-semibold text-slate-400 uppercase">Sugerencias (ClickUp)</span>
+                <p className="text-xs text-slate-600 mt-0.5">{t.sugerencias_clickup}</p>
+              </div>
+            )}
           </div>
         </div>
 

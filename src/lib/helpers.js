@@ -373,6 +373,10 @@ export const OT_ENCUESTA = [
 // MÓDULO TALLER — pipeline operativo, tareas y notificaciones
 // ====================================================================
 export const ESTADOS_TALLER = {
+  // v91: "agenda" existe en ClickUp desde antes y es el estado MÁS usado
+  // (7 de 18 tarjetas), pero el CRM no lo conocía: esas tarjetas llegaban sin
+  // estado equivalente. Es el vehículo agendado que todavía no ingresa.
+  agenda:           { label: 'Agenda',                  color: '#e93d82' },
   por_designar:     { label: 'Por designar',            color: '#94a3b8' },
   revision:         { label: 'En revisión / diagnóstico', color: '#7A5C8E' },
   esperando_aprobacion: { label: 'Presupuesto en cliente', color: '#C98A1B' },
