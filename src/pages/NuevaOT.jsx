@@ -337,8 +337,7 @@ export default function NuevaOT() {
       estado_vehiculo: f.estado_vehiculo, fecha_entrega: f.fecha_entrega || null,
       tipo_documento: f.tipo_documento, nro_documento: f.nro_documento.trim(),
       sucursal: f.sucursal, email_asesor: perfil?.email || '',
-      encuesta_aplica: f.encuesta_aplica,
-      enc_p1: f.enc_p1, enc_p2: f.enc_p2, enc_p3: f.enc_p3, enc_p4: f.enc_p4, enc_conocio: conocioFinal(),
+      enc_conocio: conocioFinal(),
       presup_solicito: f.presup_solicito, presup_numero: f.presup_numero.trim(),
       presup_aprueba: f.presup_aprueba, presup_detalle: f.presup_detalle.trim(),
       direccion: f.direccion.trim(), direccion_ref: f.direccion_ref.trim()
@@ -731,45 +730,18 @@ export default function NuevaOT() {
           </Campo>
           <Campo label="Detalle de Presupuestos" full><input className="input" value={f.presup_detalle} onChange={(e) => set('presup_detalle', e.target.value)} /></Campo>
         </>}
-        <Campo label="¿Aplica Encuesta?">
-          <select className="input" value={f.encuesta_aplica} onChange={(e) => set('encuesta_aplica', e.target.value)}>
-            <option>No</option><option>Sí</option>
-          </select>
-        </Campo>
-        {f.encuesta_aplica === 'Sí' && <>
-          {OT_ENCUESTA.map((q) => (
-            <div key={q.k} className="sm:col-span-2">
-              <div className="text-sm font-medium text-ink mb-1.5">
-                <span className="text-deep font-bold mr-1">{q.n}.</span>{q.titulo}
-              </div>
-              <div className="flex gap-1.5">
-                {[1, 2, 3, 4, 5, 6, 7].map((n) => (
-                  <button type="button" key={n} onClick={() => set(q.k, String(n))}
-                    className={`w-9 h-9 rounded-lg border text-sm font-semibold transition ${String(n) === f[q.k]
-                      ? 'bg-deep text-white border-deep' : 'bg-white text-slate-500 border-slate-200 hover:border-deep'}`}>{n}</button>
-                ))}
-              </div>
-              <div className="flex justify-between text-[11px] text-slate-400 mt-1">
-                <span>1 — {q.izq}</span><span>7 — {q.der}</span>
-              </div>
-            </div>
-          ))}
-          <div className="sm:col-span-2">
-            <label className="label">5. ¿Cómo conoció DIDIAL? <span className="text-slate-400 font-normal">(mide nuestras estrategias de marketing)</span></label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-3 gap-2">
-              {OT_CONOCIO.map((c) => (
-                <button type="button" key={c.v} onClick={() => set('enc_conocio', c.v)}
-                  className={`px-3 py-2 rounded-lg border text-sm transition text-center ${f.enc_conocio === c.v
-                    ? 'bg-deep text-white border-deep font-semibold' : 'bg-white text-slate-600 border-slate-200 hover:border-deep'}`}>
-                  {c.e} {c.v}
-                </button>
-              ))}
-            </div>
-            {f.enc_conocio === 'Otro' && (
-              <input className="input mt-2" value={f.conocioOtro} onChange={(e) => set('conocioOtro', e.target.value)} placeholder="Especifica cómo nos conoció…" autoFocus />
-            )}
-          </div>
-        </>}
+        {/* v93: la encuesta ya no se captura aquí. Preguntarle al cliente cara
+            a cara produce respuestas condescendientes —de ahí el NPS de +100 del
+            panel, que es sesgo y no dato—. Ahora se envía por correo al día
+            siguiente de la entrega y se responde sin el asesor delante. */}
+        <div className="sm:col-span-2 rounded-lg p-3" style={{ background: '#f1f5f9' }}>
+          <p className="text-sm font-medium text-ink">Encuesta de satisfacción</p>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Se envía sola por correo al día siguiente de registrar la entrega, desde
+            <strong> Mis vehículos → Pendientes de cierre</strong>. Las respuestas se ven
+            en Informes → Postventa.
+          </p>
+        </div>
       </Seccion>
 
       {msg && (

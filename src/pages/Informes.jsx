@@ -7,6 +7,7 @@ import * as XLSX from 'xlsx'
 import PanelOperativo from './PanelOperativo'
 import MapaClientes from './MapaClientes'
 import OportunidadesInforme from './OportunidadesInforme'
+import Postventa from './Postventa'
 
 export default function Informes() {
   const [d, setD] = useState(null)
@@ -167,6 +168,7 @@ export default function Informes() {
       <button onClick={() => setVista('operativo')} className={`px-3 py-1.5 ${vista === 'operativo' ? 'bg-deep text-white' : 'text-slate-500'}`}>Panel operativo</button>
       <button onClick={() => setVista('comercial')} className={`px-3 py-1.5 ${vista === 'comercial' ? 'bg-deep text-white' : 'text-slate-500'}`}>Comercial</button>
       <button onClick={() => setVista('oportunidades')} className={`px-3 py-1.5 ${vista === 'oportunidades' ? 'bg-deep text-white' : 'text-slate-500'}`}>Venta cruzada</button>
+      <button onClick={() => setVista('postventa')} className={`px-3 py-1.5 ${vista === 'postventa' ? 'bg-deep text-white' : 'text-slate-500'}`}>Postventa</button>
       <button onClick={() => setVista('mapa')} className={`px-3 py-1.5 ${vista === 'mapa' ? 'bg-deep text-white' : 'text-slate-500'}`}>Mapa de clientes</button>
     </div>
   )
@@ -194,6 +196,19 @@ export default function Informes() {
         <Tabs />
       </div>
       <OportunidadesInforme />
+    </div>
+  )
+
+  if (vista === 'postventa') return (
+    <div className="space-y-6">
+      <div className="flex items-end justify-between flex-wrap gap-3 no-print">
+        <div>
+          <h1 className="text-xl font-bold text-ink">Informes</h1>
+          <p className="text-sm text-slate-500">Postventa · opinión del cliente</p>
+        </div>
+        <Tabs />
+      </div>
+      <Postventa />
     </div>
   )
 

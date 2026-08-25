@@ -32,6 +32,7 @@ const GRUPOS = [
     { to: '/taller', label: 'Taller', icon: 'taller', feature: 'taller', roles: ['admin', 'jefe_taller', 'tecnico', 'coordinador_adquisiciones', 'encargado_bodega', 'asistente_bodega', 'supervisor'] },
     { to: '/presupuestos', label: 'Presupuestos', icon: 'presupuestos', feature: 'crm', roles: ['admin', 'jefe_taller', 'coordinador_adquisiciones', 'asistente_administrativo', 'supervisor'] },
     { to: '/nuevo-cliente', label: 'Nuevo cliente', icon: 'clientes', feature: 'ot' },
+    { to: '/cierres', label: 'Mis vehículos', icon: 'taller', feature: 'ot' },
     { to: '/vehiculos', label: 'Vehículos', icon: 'taller', feature: 'ot' },
     { to: '/control-ot', label: 'Control OT', icon: 'datos', feature: 'ot' }
   ]},
@@ -61,7 +62,7 @@ const MOVIL = [
   { to: '/', label: 'Inicio', icon: 'dashboard' },
   { to: '/nuevo-cliente', label: 'Ingreso', icon: 'clientes', feature: 'ot' },
   { to: '/taller', label: 'Taller', icon: 'taller', feature: 'ot' },
-  { to: '/presupuestos', label: 'Presup.', icon: 'presupuestos', feature: 'crm' },
+  { to: '/cierres', label: 'Mis autos', icon: 'taller', feature: 'ot' },
   { to: '/calendario', label: 'Agenda', icon: 'calendario', feature: 'agenda' }
 ]
 

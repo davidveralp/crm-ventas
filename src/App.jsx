@@ -14,6 +14,8 @@ import Configuracion from './pages/Configuracion'
 import Taller from './pages/Taller'
 import Vehiculos from './pages/Vehiculos'
 import NuevoCliente from './pages/NuevoCliente'
+import CierreAsesor from './pages/CierreAsesor'
+import EncuestaPublica from './pages/EncuestaPublica'
 import ControlOT from './pages/ControlOT'
 import Agenda from './pages/Agenda'
 import Calendario from './pages/Calendario'
@@ -31,6 +33,8 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      {/* Pública: el cliente la abre desde el correo, sin cuenta */}
+      <Route path="/encuesta" element={<EncuestaPublica />} />
       <Route path="/"            element={conLayout(<Dashboard />)} />
       <Route path="/perfil"      element={conLayout(<Perfil />)} />
       <Route path="/clientes"    element={conLayout(<Clientes />)} />
@@ -51,6 +55,7 @@ export default function App() {
       <Route path="/nueva-ot"    element={conLayout(<NuevaOT />)} />
       <Route path="/taller"      element={conLayout(<Taller />)} />
       <Route path="/nuevo-cliente" element={conLayout(<NuevoCliente />)} />
+      <Route path="/cierres"       element={conLayout(<CierreAsesor />)} />
       <Route path="/vehiculos"     element={conLayout(<Vehiculos />)} />
       <Route path="/vehiculos/:id" element={conLayout(<Vehiculos />)} />
       <Route path="/control-ot"  element={conLayout(<ControlOT />)} />
