@@ -40,7 +40,9 @@ function TallerInterno() {
   const [presups, setPresups] = useState([])
   const [diags, setDiags] = useState([])
   const [oports, setOports] = useState([])
-  const [radarDe, setRadarDe] = useState(null)   // trabajo cuyo RADAR se está capturando
+  const [radarDe, setRadarDe] = useState(null)
+  const [importando, setImportando] = useState(false)
+  const [resImport, setResImport] = useState('')   // trabajo cuyo RADAR se está capturando
   const [margenes, setMargenes] = useState({ repuesto: 35, lubricante: 30, filtro: 30, consumible: 25, ajuste_asesor_pct: 10 })
   const [usuarios, setUsuarios] = useState([])
   // En móvil el kanban obliga a desplazarse lateralmente entre 10 columnas de
@@ -55,6 +57,26 @@ function TallerInterno() {
 
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t) }, [])
   useEffect(() => { cargar() }, [])
+
+  async function importarClickUp() {
+    setImportando(true); setResImport('')
+    try {
+      const { data, error } = await supabase.functions.invoke('clickup-sync', { body: { accion: 'importar' } })
+      if (error || data?.error) {
+        setResImport('No se pudo importar: ' + (data?.error || error.message))
+      } else {
+        setResImport(
+          `${data.total} tarjetas revisadas · ${data.creadas} trabajos creados · ` +
+          `${data.vinculadas} enlazadas · ${data.a_bandeja} a la bandeja · ${data.ya_estaban} ya estaban.`
+        )
+        if (data.detalle?.length) console.log('Detalle de la importación:', data.detalle)
+        cargar()
+      }
+    } catch (e) {
+      setResImport('No se pudo importar: ' + (e?.message || e))
+    }
+    setImportando(false)
+  }
 
   async function cargar() {
     const [t, ta, pr, us, dg, op, mg] = await Promise.all([
@@ -335,6 +357,29 @@ function TallerInterno() {
           ))}
         </div>
       </div>
+
+      {/* v92: importación de las tarjetas que ya existían en ClickUp antes de
+          la integración. No tienen vínculo con ningún trabajo, así que el
+          webhook las ignora: hay que traerlas una vez. */}
+      {esJefe && (
+        <div className="card p-3 flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <p className="text-sm font-semibold text-ink">Importar tarjetas de ClickUp</p>
+            <p className="text-[11px] text-slate-400">
+              Trae las tarjetas creadas directamente en ClickUp que aún no están en el CRM.
+              Las que tengan una patente reconocible se vinculan solas; el resto va a la bandeja.
+            </p>
+            {resImport && (
+              <p className="text-[11px] mt-1 px-2 py-1 rounded" style={{ background: '#e8f6ee', color: '#1f7a45' }}>
+                {resImport}
+              </p>
+            )}
+          </div>
+          <button className="btn-soft text-sm shrink-0" disabled={importando} onClick={importarClickUp}>
+            {importando ? 'Importando…' : '⇩ Importar de ClickUp'}
+          </button>
+        </div>
+      )}
 
       {esJefe && <BandejaClickUp perfil={perfil} onVinculado={cargar} />}
 

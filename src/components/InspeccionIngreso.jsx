@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { formatPatente, patenteLimpia, formatRut, fmtFonoOT,
-  OT_MARCAS, OT_MODELOS, OT_SVC_GRUPOS, svcAplicaAVehiculo, TRACCIONES, TRANSMISIONES, TRANSMISION_LABEL } from '../lib/helpers'
+  OT_MARCAS, OT_MODELOS, OT_SVC_GRUPOS, svcAplicaAVehiculo, TRACCIONES,
+  OT_TIPO_INGRESO, OT_TIPO_CLIENTE, OT_CONOCIO, OT_ES_GARANTIA, sucursalDeAsesor, TRANSMISIONES, TRANSMISION_LABEL } from '../lib/helpers'
 import { imprimirInspeccion } from '../lib/inspeccionPDF'
 
 // v77 · Inspección de ingreso — formulario de página única (antes 7 pasos).
@@ -130,12 +131,32 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
   const [guardando, setGuardando] = useState(false)
   const [avisoClickUp, setAvisoClickUp] = useState('')
 
+  // La sucursal se deduce del rol del asesor (asesor_toyota → Toyota), igual
+  // que en Nueva OT. Se puede cambiar, pero por defecto es la que corresponde.
+  useEffect(() => {
+    const suc = sucursalDeAsesor(perfil)
+    if (suc && !d.sucursal) setD((x) => ({ ...x, sucursal: suc }))
+  }, [perfil]) // eslint-disable-line
+
   // ---- sección 1: datos generales ----
   const [busca, setBusca] = useState('')
   const [veh, setVeh] = useState(null)
   const [d, setD] = useState({
     patente: '', km: '', fecha: new Date().toISOString().slice(0, 10), fecha_probable_entrega: '',
     ingreso_grua: false, trabajo_a_realizar: '', observaciones_cliente: '',
+    // v92 · Campos del proceso del asesor que corresponden al MOMENTO DEL
+    // INGRESO. Los de cierre (documento, monto, encuesta, estado del vehículo)
+    // se quedan en Nueva OT: pedirlos acá sería preguntar por algo que todavía
+    // no ocurrió.
+    tipo_ingreso: 'Normal',      // OT_TIPO_INGRESO
+    sucursal: '',                // Toyota | Multimarca | DyP — define la meta
+    tipo_cliente: 'Particular',  // OT_TIPO_CLIENTE
+    contacto_nombre: '',         // quién trae el auto si no es el dueño
+    dueno_nombre: '',            // dueño cuando difiere de quien paga
+    aseguradora: '',
+    enc_conocio: '',             // cómo conoció DIDIAL — solo si es cliente nuevo
+    autoriza_movilizacion: true, // política 1 del documento firmado
+    autoriza_contacto: true,     // habilita campañas de fidelización
     nombre: '', apellidos: '', rut: '', telefono: '', email: '', direccion: '', ciudad: '',
     marca: '', modelo: '', version: '', anio: '', color: '', chasis: '', cilindrada: '', traccion: '', transmision: ''
   })
@@ -271,6 +292,8 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
           telefono: d.telefono.trim() ? fmtFonoOT(d.telefono) : null,
           email: d.email?.trim() || null, direccion: d.direccion?.trim() || null,
           ciudad: d.ciudad?.trim() || null,
+          tipo: d.tipo_cliente || null,
+          contacto_nombre: d.contacto_nombre?.trim() || null,
           // `clientes` no tiene columna `estado`, sino `estado_id` hacia
           // pipeline_estados. Se deja en null, como hace el alta desde Clientes.
           vendedor_id: perfil.id
@@ -290,6 +313,9 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
           cilindrada: d.cilindrada?.trim() || null,
           traccion: d.traccion || null, transmision: d.transmision || null,
           tipo_vehiculo: siluetaTipo,
+          chasis: d.chasis?.trim() || null,
+          aseguradora: d.aseguradora?.trim() || null,
+          dueno_nombre: d.dueno_nombre?.trim() || null,
           km_ultimo: parseInt(d.km, 10) || null, km_actual_estimado: parseInt(d.km, 10) || null
         }).select('id').single()
         if (eVeh) throw new Error('No se pudo crear el vehículo: ' + eVeh.message)
@@ -313,6 +339,10 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
       empresa_id: perfil.empresa_id, cliente_id: clienteId, vehiculo_id: vehiculoId,
       km: parseInt(d.km, 10) || null, fecha: d.fecha, fecha_probable_entrega: d.fecha_probable_entrega || null,
       ingreso_grua: d.ingreso_grua, trabajo_a_realizar: d.trabajo_a_realizar.trim(),
+      tipo_ingreso: d.tipo_ingreso, sucursal: d.sucursal || null,
+      tipo_cliente: d.tipo_cliente, conocio: d.enc_conocio || null,
+      autoriza_movilizacion: d.autoriza_movilizacion,
+      autoriza_contacto: d.autoriza_contacto,
       observaciones_cliente: d.observaciones_cliente.trim(), observaciones_asesor: obsAsesor.trim(),
       luces_advertencia: luces, inventario, nivel_combustible: combustible,
       tipo_silueta: silueta, danos, checklist, fotos, firma_url: firmaUrl,
@@ -339,7 +369,11 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
         observaciones_cliente: d.observaciones_cliente.trim() || null,
         // Nace por designar a propósito: el jefe de taller decide el técnico.
         // La diferencia con antes es que ahora llega con toda la información.
-        estado: 'por_designar', prioridad: 'normal',
+        // Garantía y siniestro entran con prioridad alta: son los casos donde
+        // la demora cuesta más, sea en credibilidad o en costo de grúa.
+        estado: 'por_designar',
+        prioridad: OT_ES_GARANTIA(d.tipo_ingreso) || d.ingreso_grua ? 'alta' : 'normal',
+        sucursal: d.sucursal || null,
         km_ingreso: parseInt(d.km, 10) || null,
         inspeccion_id: insp.id
       }).select('id').maybeSingle()
@@ -540,6 +574,100 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
                           onChange={(e) => setD({ ...d, trabajo_a_realizar: e.target.value })} />
               </div>
               <div><label className="label">Observaciones del cliente</label><textarea className="input" rows="2" value={d.observaciones_cliente} onChange={(e) => setD({ ...d, observaciones_cliente: e.target.value })} /></div>
+
+              {/* ---- Proceso del asesor en la recepción ----
+                   Estos campos definen cómo se clasifica la OT y a qué meta
+                   comercial suma. Antes se llenaban recién en Nueva OT, cuando
+                   el cliente ya se había ido y había que recordar lo que dijo. */}
+              <div className="sm:col-span-2 rounded-lg bg-paper p-3 space-y-3">
+                <p className="text-xs font-semibold text-slate-500 uppercase">Clasificación del ingreso</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="label">Tipo de ingreso</label>
+                    <select className="input" value={d.tipo_ingreso}
+                            onChange={(e) => setD({ ...d, tipo_ingreso: e.target.value })}>
+                      {OT_TIPO_INGRESO.map((x) => <option key={x}>{x}</option>)}
+                    </select>
+                    {OT_ES_GARANTIA(d.tipo_ingreso) && (
+                      <p className="text-[10px] mt-1" style={{ color: '#b8860b' }}>
+                        Cuenta como garantía en los indicadores. Tope: 3 por sucursal al mes.
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="label">Sucursal</label>
+                    <select className="input" value={d.sucursal}
+                            onChange={(e) => setD({ ...d, sucursal: e.target.value })}>
+                      <option value="">Seleccionar…</option>
+                      <option>Toyota</option><option>Multimarca</option><option>DyP</option>
+                    </select>
+                    <p className="text-[10px] text-slate-400 mt-1">Define a qué meta suma la venta.</p>
+                  </div>
+                  <div>
+                    <label className="label">Tipo de cliente</label>
+                    <select className="input" value={d.tipo_cliente}
+                            onChange={(e) => setD({ ...d, tipo_cliente: e.target.value })}>
+                      {OT_TIPO_CLIENTE.map((x) => <option key={x}>{x}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Quién trae el auto y quién es el dueño: en la OT en papel son
+                    campos distintos y el CRM los perdía. */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="label">Quién trae el vehículo</label>
+                    <input className="input" placeholder="Si no es el titular" value={d.contacto_nombre}
+                           onChange={(e) => setD({ ...d, contacto_nombre: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="label">Dueño del vehículo</label>
+                    <input className="input" placeholder="Si no es quien paga" value={d.dueno_nombre}
+                           onChange={(e) => setD({ ...d, dueno_nombre: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="label">Aseguradora</label>
+                    <input className="input" placeholder="Si aplica" value={d.aseguradora}
+                           onChange={(e) => setD({ ...d, aseguradora: e.target.value })} />
+                  </div>
+                </div>
+
+                {/* El origen solo se pregunta al cliente nuevo: al que ya viene
+                    hace años, preguntarle cómo nos conoció es incómodo. */}
+                {!veh && (
+                  <div>
+                    <label className="label">¿Cómo conoció DIDIAL?</label>
+                    <select className="input" value={d.enc_conocio}
+                            onChange={(e) => setD({ ...d, enc_conocio: e.target.value })}>
+                      <option value="">Seleccionar…</option>
+                      {OT_CONOCIO.map((x) => <option key={x}>{x}</option>)}
+                    </select>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Es el único momento en que se puede preguntar sin incomodar.
+                    </p>
+                  </div>
+                )}
+
+                {/* Autorizaciones: la primera es la política que el cliente firma
+                    en el documento; la segunda habilita las campañas. */}
+                <div className="space-y-1.5">
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input type="checkbox" checked={d.autoriza_movilizacion}
+                           onChange={(e) => setD({ ...d, autoriza_movilizacion: e.target.checked })} />
+                    Autoriza movilizar el vehículo para pruebas en ruta
+                  </label>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input type="checkbox" checked={d.autoriza_contacto}
+                           onChange={(e) => setD({ ...d, autoriza_contacto: e.target.checked })} />
+                    Autoriza contacto para recordatorios de mantención
+                  </label>
+                  {!d.autoriza_contacto && (
+                    <p className="text-[10px]" style={{ color: '#b8860b' }}>
+                      Sin autorización queda fuera de las campañas de fidelización.
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 

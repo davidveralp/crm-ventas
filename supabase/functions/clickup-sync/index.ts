@@ -161,6 +161,94 @@ Deno.serve(async (req) => {
   }
   const service = createClient(SB_URL, SB_SERVICE_KEY)
 
+  // ============== 0) IMPORTAR lo que ya existe en ClickUp =============
+  // Las tarjetas creadas directamente en ClickUp antes de la integración no
+  // tienen `clickup_task_id` en la base, así que el webhook las ignora: no hay
+  // trabajo al que aplicarles el cambio. Esta acción las trae de una vez.
+  //
+  // Criterio, el mismo de la autovinculación (v49): si la patente del título
+  // identifica a UN solo vehículo, se vincula o se crea el trabajo. Si no, va a
+  // la bandeja para que una persona decida. No se inventan datos.
+  if (body.accion === 'importar') {
+    const auth = req.headers.get('Authorization') || ''
+    if (!auth) return json({ error: 'Falta Authorization' }, 401)
+    const userClient = createClient(SB_URL, SB_SERVICE_KEY, { global: { headers: { Authorization: auth } } })
+    const { data: { user } } = await userClient.auth.getUser()
+    if (!user) return json({ error: 'No autenticado' }, 401)
+    if (!CLICKUP_TOKEN) return json({ error: 'Falta el secret CLICKUP_API_TOKEN' }, 500)
+
+    const resp = await fetch(
+      `${CLICKUP_API}/list/${CLICKUP_LIST_ID}/task?subtasks=false&include_closed=false`,
+      { headers: { Authorization: CLICKUP_TOKEN } })
+    if (!resp.ok) return json({ error: 'ClickUp respondió ' + resp.status, detalle: await resp.text() }, 502)
+    const { tasks = [] } = await resp.json()
+
+    const r = { total: tasks.length, vinculadas: 0, creadas: 0, a_bandeja: 0, ya_estaban: 0, detalle: [] as string[] }
+
+    for (const tarea of tasks) {
+      // ¿Ya está vinculada?
+      const { data: yaHay } = await service.from('trabajos_taller')
+        .select('id').eq('clickup_task_id', tarea.id).maybeSingle()
+      if (yaHay) { r.ya_estaban++; continue }
+
+      const estadoCrm = ESTADO_CLICKUP_A_CRM[(tarea.status?.status || '').toLowerCase()] || 'por_designar'
+      const prioridad = PRIORIDAD_CLICKUP_A_CRM[Number(tarea.priority?.id)] || 'normal'
+      const fechaLim = tarea.due_date ? new Date(Number(tarea.due_date)).toISOString().slice(0, 10) : null
+      const cf = (tarea.custom_fields || []) as Array<Record<string, any>>
+      const pct = cf.find((f) => f.id === CAMPO_PROGRESO)?.value?.percent_complete
+      const sug = cf.find((f) => f.id === CAMPO_SUGERENCIAS)?.value
+
+      const patente = extraerPatente(tarea.name)
+      let vehiculo: Record<string, any> | null = null
+      if (patente) {
+        const pnorm = patente.replace(/[^A-Z0-9]/g, '')
+        const { data: vehs } = await service.from('vehiculos')
+          .select('id, cliente_id, patente, marca, modelo').eq('patente_norm', pnorm).limit(2)
+        if (vehs && vehs.length === 1) vehiculo = vehs[0]
+      }
+
+      if (vehiculo) {
+        // ¿Tiene ya un trabajo abierto sin tarjeta espejo? Se enlazan.
+        const { data: abierto } = await service.from('trabajos_taller')
+          .select('id, clickup_task_id').eq('vehiculo_id', vehiculo.id)
+          .is('clickup_task_id', null)
+          .not('estado', 'in', '("completada","listo_entrega")').limit(1).maybeSingle()
+
+        if (abierto) {
+          await service.from('trabajos_taller').update({
+            clickup_task_id: tarea.id, estado: estadoCrm, prioridad,
+            fecha_limite: fechaLim,
+            progreso_clickup: typeof pct === 'number' ? Math.round(pct) : null,
+            sugerencias_clickup: typeof sug === 'string' ? sug : null
+          }).eq('id', abierto.id)
+          r.vinculadas++; r.detalle.push(`${vehiculo.patente}: enlazado a trabajo existente`)
+        } else {
+          const { error: eIns } = await service.from('trabajos_taller').insert({
+            empresa_id: EMPRESA_ID, vehiculo_id: vehiculo.id, cliente_id: vehiculo.cliente_id,
+            titulo: tarea.name,
+            observaciones_cliente: tarea.text_content || tarea.description || null,
+            estado: estadoCrm, prioridad, fecha_limite: fechaLim,
+            clickup_task_id: tarea.id,
+            progreso_clickup: typeof pct === 'number' ? Math.round(pct) : null,
+            sugerencias_clickup: typeof sug === 'string' ? sug : null
+          })
+          if (eIns) { r.detalle.push(`${vehiculo.patente}: error — ${eIns.message}`) }
+          else { r.creadas++; r.detalle.push(`${vehiculo.patente}: trabajo creado (${estadoCrm})`) }
+        }
+      } else {
+        // Sin patente única: decide una persona desde la bandeja.
+        await service.from('clickup_tareas_pendientes').upsert({
+          clickup_task_id: tarea.id, titulo: tarea.name,
+          descripcion: tarea.text_content || tarea.description || null,
+          patente_candidata: patente, estado: 'pendiente'
+        }, { onConflict: 'clickup_task_id' })
+        r.a_bandeja++
+        r.detalle.push(`${tarea.name.slice(0, 40)}: a bandeja${patente ? ' (patente ' + patente + ' no encontrada o repetida)' : ' (sin patente en el título)'}`)
+      }
+    }
+    return json({ ok: true, ...r })
+  }
+
   // ============== 1) DESDE EL CRM: crear o actualizar en ClickUp ======
   if (body.accion === 'crear' || body.accion === 'actualizar') {
     const auth = req.headers.get('Authorization') || ''
