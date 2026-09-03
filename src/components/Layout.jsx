@@ -40,6 +40,7 @@ const GRUPOS = [
     { to: '/clientes',   label: 'Clientes',   icon: 'clientes',   feature: 'crm' },
     { to: '/pipeline',   label: 'Pipeline',   icon: 'pipeline',   feature: 'crm' },
     { to: '/gestiones',  label: 'Gestiones',  icon: 'gestiones',  feature: 'crm' },
+    { to: '/generador', label: 'Generador de piezas', icon: 'campanas', feature: 'campanas' },
     { to: '/campanas',   label: 'Campañas',   icon: 'campanas',   feature: 'campanas' },
     { to: '/calendario', label: 'Calendario', icon: 'calendario', feature: 'agenda', alerta: true },
     { to: '/nueva-ot',   label: 'Nueva OT',   icon: 'nuevaot',    feature: 'ot' }

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Didial · Generador de Piezas Publicitarias</title>
+<link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTQiIGZpbGw9IiMxMjE2MUMiLz48cGF0aCBkPSJNMTMgMTNoMjBhMTkgMTkgMCAwIDEgMCAzOEgxM3ogTTI0IDI0aDlhOCA4IDAgMCAxIDAgMTZoLTl6IiBmaWxsPSIjRTAzQTJGIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiLz48cGF0aCBkPSJNMTguNSAxOC41aDE0LjVhMTMuNSAxMy41IDAgMCAxIDAgMjdIMTguNXoiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI0ZGRkZGRiIgc3Ryb2tlLXdpZHRoPSIyLjIiLz48cGF0aCBkPSJNMTAgMTVxMjItOCA0NCAwIiBmaWxsPSJub25lIiBzdHJva2U9IiNGRkQxMDAiIHN0cm9rZS13aWR0aD0iMy40IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz48L3N2Zz4=">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header>
+  <img id="logoCabecera" class="marca-logo" alt="Didial">
+  <div class="sub">Generador de piezas publicitarias · 1080 × 1350</div>
+  <div class="spacer"></div>
+  <nav>
+    <button class="tab on" data-panel="panelGen">Generador</button>
+    <button class="tab" data-panel="panelVeh">Vehículos</button>
+    <button class="tab" data-panel="panelCamp">Campañas</button>
+    <button class="tab" data-panel="panelRec">Recursos</button>
+    <button class="tab" data-panel="panelHist">Historial</button>
+    <button class="tab" data-panel="panelDatos">Datos</button>
+  </nav>
+</header>
+
+<main>
+  <div id="izq">
+    <div class="panel on" id="panelGen"></div>
+    <div class="panel" id="panelVeh"></div>
+    <div class="panel" id="panelCamp"></div>
+    <div class="panel" id="panelRec"></div>
+    <div class="panel" id="panelHist"></div>
+    <div class="panel" id="panelDatos"></div>
+  </div>
+
+  <div id="der">
+    <div class="previsualizacion">
+      <div class="barra">
+        <span class="dim">PREVISUALIZACIÓN · 1080 × 1350 px · 4:5</span>
+        <span class="spacer"></span>
+      </div>
+      <canvas id="lienzo" width="1080" height="1350"></canvas>
+      <div id="validacion"></div>
+      <div class="acciones">
+        <button id="btnPng">GENERAR PNG</button>
+        <button id="btnPdf" class="sec">PDF</button>
+        <button id="btnPng3" class="sec">PNG 3× (impresión)</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="script.js"></script>
+</body>
+</html>

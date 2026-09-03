@@ -24,6 +24,10 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        // El generador de piezas pesa 2,4 MB (49 fotos + 3 tipografías) y solo
+        // lo usa quien arma campañas. Precachearlo obligaría a TODOS a
+        // descargarlo al abrir la app. Se excluye: se carga cuando se visita.
+        globIgnores: ['generador/**'],
 
         /* CAUSA DE LA PANTALLA EN BLANCO AL PRIMER INGRESO
            Con `autoUpdate`, tras un despliegue nuevo el service worker seguía
