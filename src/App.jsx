@@ -25,9 +25,16 @@ import Campanas from './pages/Campanas'
 import Presupuestos from './pages/Presupuestos'
 import Datos from './pages/Datos'
 import Usuarios from './pages/Usuarios'
+import CapturaError from './components/CapturaError'
 
 const conLayout = (el) => (
-  <ProtectedRoute><Layout>{el}</Layout></ProtectedRoute>
+  <ProtectedRoute>
+    <Layout>
+      {/* Si la página lanza un error al renderizar, se muestra el detalle en
+          lugar de dejar la pantalla en blanco. El menú sigue funcionando. */}
+      <CapturaError>{el}</CapturaError>
+    </Layout>
+  </ProtectedRoute>
 )
 
 export default function App() {
