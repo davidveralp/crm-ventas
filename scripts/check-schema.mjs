@@ -103,6 +103,28 @@ for (const f of archivos) {
   }
 }
 
+/* ---- 2b. Catálogos de objetos renderizados como texto ----
+   React lanza el error #31 ("objects are not valid as a React child") y la
+   pantalla queda en blanco. Pasó con OT_CONOCIO, que es [{v, e}] y se usó como
+   si fuera una lista de strings. ESLint no lo detecta: sintácticamente es
+   válido. */
+const catalogosObjeto = new Set()
+try {
+  const h = fs.readFileSync(path.join(dirSrc, 'lib', 'helpers.js'), 'utf8')
+  for (const m of h.matchAll(/export const (\w+)\s*=\s*\[\s*\{/g)) catalogosObjeto.add(m[1])
+} catch { /* sin helpers.js no hay nada que revisar */ }
+
+for (const f of archivos) {
+  const src = fs.readFileSync(f, 'utf8')
+  for (const cat of catalogosObjeto) {
+    // CAT.map((x) => <tag ...>{x}</tag>)  ← renderiza el objeto entero
+    const re2 = new RegExp(cat + '\\.map\\(\\(\\s*(\\w+)\\s*\\)\\s*=>\\s*<[^>]*>\\{\\1\\}', 'g')
+    if (re2.test(src)) {
+      problemas.push({ archivo: path.relative(raiz, f), tabla: 'React', col: `${cat} renderizado como texto (es lista de objetos)` })
+    }
+  }
+}
+
 /* ---- 3. Resultado ---- */
 const unicos = [...new Map(problemas.map((p) => [p.tabla + '.' + p.col, p])).values()]
 if (!unicos.length) {

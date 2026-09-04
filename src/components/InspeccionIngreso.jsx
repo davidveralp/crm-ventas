@@ -645,7 +645,12 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
                     <select className="input" value={d.enc_conocio}
                             onChange={(e) => setD({ ...d, enc_conocio: e.target.value })}>
                       <option value="">Seleccionar…</option>
-                      {OT_CONOCIO.map((x) => <option key={x}>{x}</option>)}
+                      {/* OT_CONOCIO es [{v, e}] — valor y emoji—, no una lista
+                          de textos. Renderizar el objeto entero provocaba el
+                          error #31 de React y dejaba la pantalla en blanco. */}
+                      {OT_CONOCIO.map((x) => (
+                        <option key={x.v} value={x.v}>{x.e} {x.v}</option>
+                      ))}
                     </select>
                     <p className="text-[10px] text-slate-400 mt-1">
                       Es el único momento en que se puede preguntar sin incomodar.
