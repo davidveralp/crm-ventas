@@ -94,7 +94,12 @@ export default function NuevaOT() {
   // David Rivera y Matías Ponce = Multimarca; roles asesor_toyota /
   // asesor_multimarca definen la suya). Admin y otros roles pueden elegir.
   const sucursalFija = sucursalDeAsesor(perfil)
-  useEffect(() => { if (sucursalFija) set('sucursal', sucursalFija) }, [sucursalFija])
+  // Antes este efecto usaba `set`, declarado más abajo: React lo registra
+  // durante el render y `set` aún no existe. Se escribe con setF directo,
+  // que sí está disponible desde el useState de arriba.
+  useEffect(() => {
+    if (sucursalFija) setF((x) => ({ ...x, sucursal: sucursalFija }))
+  }, [sucursalFija])
 
   useEffect(() => {
     if (!perfil?.empresa_id) return

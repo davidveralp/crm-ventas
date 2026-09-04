@@ -37,6 +37,9 @@ export default function TareasCampana({ perfil, esAdmin }) {
     }
   }
 
+  // Va antes del useMemo que la usa: el cuerpo del memo se ejecuta durante
+  // el render, así que la función debe existir ya.
+  const nomCli = (t) => [t.clientes?.nombre, t.clientes?.apellidos].filter(Boolean).join(' ') || '—'
   const campanas = useMemo(() => {
     const m = {}
     ;(tareas || []).forEach((t) => { if (t.campanas?.nombre) m[t.campana_id] = t.campanas.nombre })
@@ -57,7 +60,6 @@ export default function TareasCampana({ perfil, esAdmin }) {
     )
   }, [tareas, fEstado, fCampana, fVendedor, busca, esAdmin, perfil?.id])
 
-  const nomCli = (t) => [t.clientes?.nombre, t.clientes?.apellidos].filter(Boolean).join(' ') || '—'
   const diasSin = (t) => t.clientes?.ultima_visita
     ? Math.floor((Date.now() - new Date(t.clientes.ultima_visita)) / 864e5) + 'd' : '—'
 

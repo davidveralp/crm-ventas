@@ -45,13 +45,17 @@ export default defineConfig({
 
         /* El navegador debe revalidar el HTML contra el servidor en cada carga:
            es lo que evita servir un index apuntando a archivos inexistentes. */
-        navigateFallbackDenylist: [/^\/api/],
+        // El generador es una app estática aparte dentro de public/. Sin
+        // excluirlo, el service worker responde su navegación con el index.html
+        // del CRM y el iframe queda en blanco.
+        navigateFallbackDenylist: [/^\/api/, /^\/generador/],
 
         runtimeCaching: [
           {
             /* index.html siempre desde la red, con la caché solo como respaldo
                si no hay conexión. */
-            urlPattern: ({ request }) => request.mode === 'navigate',
+            urlPattern: ({ request, url }) =>
+              request.mode === 'navigate' && !url.pathname.startsWith('/generador'),
             handler: 'NetworkFirst',
             options: {
               cacheName: 'html-navegacion',

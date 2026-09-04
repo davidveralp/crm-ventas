@@ -131,13 +131,6 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
   const [guardando, setGuardando] = useState(false)
   const [avisoClickUp, setAvisoClickUp] = useState('')
 
-  // La sucursal se deduce del rol del asesor (asesor_toyota → Toyota), igual
-  // que en Nueva OT. Se puede cambiar, pero por defecto es la que corresponde.
-  useEffect(() => {
-    const suc = sucursalDeAsesor(perfil)
-    if (suc && !d.sucursal) setD((x) => ({ ...x, sucursal: suc }))
-  }, [perfil]) // eslint-disable-line
-
   // ---- sección 1: datos generales ----
   const [busca, setBusca] = useState('')
   const [veh, setVeh] = useState(null)
@@ -160,6 +153,18 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
     nombre: '', apellidos: '', rut: '', telefono: '', email: '', direccion: '', ciudad: '',
     marca: '', modelo: '', version: '', anio: '', color: '', chasis: '', cilindrada: '', traccion: '', transmision: ''
   })
+
+  // La sucursal se deduce del rol del asesor (asesor_toyota → Toyota), igual
+  // que en Nueva OT. Se puede cambiar, pero por defecto es la que corresponde.
+  //
+  // Va DESPUÉS de declarar `d`: aunque el cuerpo del efecto corra más tarde,
+  // React lo registra durante el render, y `d` no existe todavía si el efecto
+  // se escribe antes. Eso lanzaba "Cannot access 'd' before initialization" y
+  // dejaba la pantalla en blanco al abrir Nuevo cliente.
+  useEffect(() => {
+    const suc = sucursalDeAsesor(perfil)
+    if (suc) setD((x) => (x.sucursal ? x : { ...x, sucursal: suc }))
+  }, [perfil])
 
   async function buscarVehiculo(entrada) {
     // Mismo formato que Nueva OT: se normaliza mientras se escribe, así el

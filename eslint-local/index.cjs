@@ -27,11 +27,29 @@ module.exports = {
                 ids.forEach((n) => { if (!declaradas.has(n)) declaradas.set(n, i) })
               })
             })
-            // Ahora: cada inicializador de nivel superior no puede usar algo declarado después
+            // Ahora: ni los inicializadores ni las llamadas a hooks de nivel
+            // superior pueden usar algo declarado después.
             cuerpo.body.forEach((sent, i) => {
+              // Llamada suelta: useEffect(...), useMemo(...) — no son asignaciones
+              if (sent.type === 'ExpressionStatement') {
+                const ex = sent.expression
+                const HOOKS = ['useEffect','useLayoutEffect','useMemo','useCallback']
+                if (ex?.type === 'CallExpression' && ex.callee?.type === 'Identifier'
+                    && HOOKS.includes(ex.callee.name)) {
+                  revisar(ex, i)
+                }
+                return
+              }
               if (sent.type !== 'VariableDeclaration') return
               sent.declarations.forEach((d) => {
                 if (!d.init) return
+                visitarNodo(d.init, i)
+              })
+            })
+
+            function revisar(nodo, i) { visitarNodo(nodo, i) }
+
+            function visitarNodo(raiz, i) {
                 const visitar = (n, dentroDeFuncion) => {
                   if (!n || typeof n.type !== 'string') return
                   let esFn = /FunctionExpression|ArrowFunctionExpression|FunctionDeclaration/.test(n.type)
@@ -57,6 +75,11 @@ module.exports = {
                     if (n.type === 'Property' && k === 'key' && !n.computed) continue
                     const v = n[k]
                     const INMEDIATOS = ['map','filter','reduce','forEach','find','findIndex','some','every','sort','flatMap']
+                    const HOOKS = ['useEffect','useLayoutEffect','useMemo','useCallback']
+                    if (n.type === 'CallExpression' && k === 'arguments' &&
+                        n.callee?.type === 'Identifier' && HOOKS.includes(n.callee.name)) {
+                      v.forEach((c) => { if (c) c.__inmediato = true })
+                    }
                     if (n.type === 'CallExpression' && k === 'arguments' &&
                         n.callee?.type === 'MemberExpression' &&
                         INMEDIATOS.includes(n.callee.property?.name)) {
@@ -66,9 +89,8 @@ module.exports = {
                     else if (v && typeof v.type === 'string') visitar(v, dentroDeFuncion || esFn)
                   }
                 }
-                visitar(d.init, false)
-              })
-            })
+                visitar(raiz, false)
+            }
           }
         }
       }
