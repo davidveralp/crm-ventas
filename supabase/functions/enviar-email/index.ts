@@ -42,8 +42,9 @@ Deno.serve(async (req) => {
     const { data: perfil } = await service.from('usuarios').select('rol, empresa_id').eq('id', uid).single()
     if (!perfil || perfil.rol !== 'admin') return json({ error: 'Solo un administrador puede enviar emails' }, 403)
 
-    const { asunto, cuerpo, es_html, destinatarios, cliente_ids, segmento, dias_recientes, campana_id } = await req.json()
-    if (!asunto || !cuerpo) return json({ error: 'Faltan asunto o cuerpo' }, 400)
+    const { asunto, cuerpo, es_html, destinatarios, cliente_ids, segmento, dias_recientes, campana_id,
+            solo_pendientes } = await req.json()
+    if (!asunto || !cuerpo) return json({ error: 'La campaña no tiene asunto o mensaje' }, 400)
 
     // Remitente configurado por empresa (config sobre código)
     const { data: emp } = await service.from('empresas')
@@ -79,10 +80,38 @@ Deno.serve(async (req) => {
       if (dias_recientes) q = q.gte('creado_en', new Date(Date.now() - dias_recientes * 864e5).toISOString())
     }
     const { data: clientes } = await q.limit(2000)
-    const dest = listaFinal.length
+    let dest = listaFinal.length
       ? listaFinal
       : (clientes || []).filter((x) => x.email && x.email.includes('@'))
-    if (!dest.length) return json({ ok: true, enviados: 0, motivo: 'Sin destinatarios con email' })
+
+    // Reenvío solo a los que NO recibieron. Necesario porque Brevo puede
+    // aceptar unos lotes y rechazar otros (pasó con la restricción por IP:
+    // 50 salieron y 64 no). Sin esto, reintentar duplica el correo a quienes
+    // ya lo tenían.
+    let yaRecibieron = 0
+    if (solo_pendientes && campana_id) {
+      const { data: previos } = await service.from('email_envios')
+        .select('email, cliente_id, estado, email_blasts!inner(campana_id)')
+        .eq('email_blasts.campana_id', campana_id)
+        .eq('estado', 'enviado')
+      // Se comparan correos normalizados: el mismo cliente puede figurar con
+      // el correo escrito de otra forma en un envío anterior.
+      const entregados = new Set(
+        (previos || []).map((p: any) => String(p.email || '').trim().toLowerCase()).filter(Boolean)
+      )
+      const antes = dest.length
+      dest = dest.filter((d: any) => !entregados.has(String(d.email || '').trim().toLowerCase()))
+      yaRecibieron = antes - dest.length
+    }
+
+    if (!dest.length) {
+      return json({
+        ok: true, enviados: 0,
+        motivo: yaRecibieron
+          ? `Todos los destinatarios (${yaRecibieron}) ya habían recibido esta campaña`
+          : 'Sin destinatarios con email'
+      })
+    }
 
     const brevoKey = Deno.env.get('BREVO_API_KEY')
     if (!brevoKey) return json({ error: 'Falta BREVO_API_KEY en los secrets' }, 500)
@@ -111,6 +140,7 @@ Deno.serve(async (req) => {
     </div>`
 
     let enviados = 0
+    const errores: string[] = []
     const filas: Record<string, unknown>[] = []
     for (let i = 0; i < dest.length; i += 50) {
       const lote = dest.slice(i, i + 50)
@@ -132,6 +162,14 @@ Deno.serve(async (req) => {
         })
       })
       const j = await r.json().catch(() => ({}))
+      // Brevo devuelve el motivo en `message` o `code`. Sin registrarlo, un
+      // rechazo (remitente no validado, cuota agotada, clave inválida) quedaba
+      // como "rebote" sin explicación y no había forma de saber qué pasó.
+      if (!r.ok) {
+        const motivo = j?.message || j?.code || `Brevo respondió ${r.status}`
+        errores.push(String(motivo))
+        console.error('Brevo rechazó el lote:', r.status, JSON.stringify(j))
+      }
       const ids: string[] = j.messageIds || (j.messageId ? [j.messageId] : [])
       lote.forEach((d, idx) => {
         filas.push({
@@ -146,7 +184,21 @@ Deno.serve(async (req) => {
     if (filas.length) await service.from('email_envios').insert(filas)
     await service.from('email_blasts').update({ enviados }).eq('id', blast.id)
 
-    return json({ ok: true, enviados, total: dest.length, blast_id: blast.id })
+    // Si no salió ni un correo, no es un éxito con cero: es un fallo. Se
+    // responde con error para que el frontend muestre el motivo de Brevo.
+    if (enviados === 0 && dest.length > 0) {
+      return json({
+        error: 'Brevo no aceptó ningún envío: ' + (errores[0] || 'sin detalle'),
+        enviados: 0, total: dest.length, blast_id: blast.id
+      }, 502)
+    }
+
+    return json({
+      ok: true, enviados, total: dest.length, blast_id: blast.id,
+      omitidos: yaRecibieron || undefined,
+      // Envío parcial: algunos lotes fallaron y conviene saberlo
+      advertencia: errores.length ? `${dest.length - enviados} no salieron: ${errores[0]}` : undefined
+    })
   } catch (e) {
     return json({ error: String((e as Error).message || e) }, 500)
   }

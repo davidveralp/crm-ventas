@@ -566,3 +566,24 @@ export const svcAplicaAVehiculo = (servTV, vehTV) => {
   const a = String(servTV).toUpperCase(), b = String(vehTV).toUpperCase()
   return a === b || a.includes(b) || b.includes(a)
 }
+
+/**
+ * Motivo real de un error de Edge Function.
+ *
+ * `supabase.functions.invoke` deja `data` en null cuando la respuesta es 4xx o
+ * 5xx, y `error.message` solo dice "Edge Function returned a non-2xx status
+ * code" — que no sirve para diagnosticar nada. El motivo viene en el CUERPO de
+ * la respuesta, accesible por `error.context`.
+ */
+export async function motivoEdgeFunction(error, data) {
+  if (data?.error) return data.error
+  try {
+    const j = await error?.context?.json?.()
+    if (j?.error) return j.error
+  } catch { /* el cuerpo no era JSON */ }
+  try {
+    const t = await error?.context?.text?.()
+    if (t) return t.slice(0, 300)
+  } catch { /* sin cuerpo legible */ }
+  return error?.message || 'error desconocido'
+}

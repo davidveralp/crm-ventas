@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { Pill, Modal } from '../components/UI'
-import { SEGMENTOS, VENTANAS, segLabel, ESTADOS_CAMPANA, estadoCampanaLabel, estadoCampanaColor } from '../lib/helpers'
+import { SEGMENTOS, VENTANAS, segLabel, ESTADOS_CAMPANA, estadoCampanaLabel, estadoCampanaColor, motivoEdgeFunction } from '../lib/helpers'
 
 const ESTADO_COLOR = Object.fromEntries(Object.entries(ESTADOS_CAMPANA).map(([k, v]) => [k, v.color]))
 const CANALES = { whatsapp: 'WhatsApp', llamada: 'Llamada', email: 'Email', sms: 'SMS' }
@@ -174,12 +174,25 @@ export default function Campanas() {
       (sinVend ? ` ${sinVend} cliente(s) sin vendedor quedaron sin asignar: reasígnalos o vuelve a cargar eligiendo un asesor.` : ''))
   }
 
-  async function enviarEmail() {
+  // Cuántos ya recibieron esta campaña, para saber si ofrecer el reenvío parcial
+  const [yaEnviados, setYaEnviados] = useState(0)
+  useEffect(() => {
+    if (!sel?.id) { setYaEnviados(0); return }
+    supabase.from('email_envios')
+      .select('id, email_blasts!inner(campana_id)', { count: 'exact', head: true })
+      .eq('email_blasts.campana_id', sel.id).eq('estado', 'enviado')
+      .then(({ count }) => setYaEnviados(count || 0))
+  }, [sel?.id])
+
+  async function enviarEmail(soloPendientes = false) {
     if (sel.estado !== 'activa') {
       setResultadoEnvio('Solo las campañas activas pueden enviar emails. Activa la campaña primero.')
       return
     }
-    if (!confirm('¿Enviar esta campaña por email a los clientes del segmento con correo registrado?')) return
+    const pregunta = soloPendientes
+      ? '¿Reenviar solo a quienes NO recibieron esta campaña? Los que ya la recibieron se omiten.'
+      : '¿Enviar esta campaña por email a los clientes del segmento con correo registrado?'
+    if (!confirm(pregunta)) return
     setEnviando(true); setResultadoEnvio('')
     const { data, error } = await supabase.functions.invoke('enviar-email', {
       body: {
@@ -189,16 +202,34 @@ export default function Campanas() {
         cliente_ids: sel.criterio ? coincidencias.map((c) => c.id) : null,
         segmento: sel.segmento || null,
         dias_recientes: sel.dias_recientes || null,
-        campana_id: sel.id
+        campana_id: sel.id,
+        solo_pendientes: soloPendientes
       }
     })
     setEnviando(false)
+    if (sel?.id) {
+      const { count } = await supabase.from('email_envios')
+        .select('id, email_blasts!inner(campana_id)', { count: 'exact', head: true })
+        .eq('email_blasts.campana_id', sel.id).eq('estado', 'enviado')
+      setYaEnviados(count || 0)
+    }
     if (error || data?.error) {
-      setResultadoEnvio('Error: ' + (data?.error || error.message) +
-        '. Verifica que la función enviar-email y la clave de Brevo estén configuradas.')
+      // `functions.invoke` deja `data` en null cuando la respuesta es 4xx/5xx,
+      // y `error.message` solo dice "non-2xx status code". El motivo real viene
+      // en el CUERPO de la respuesta, que hay que leer aparte.
+      setResultadoEnvio('No se pudo enviar: ' + await motivoEdgeFunction(error, data))
       return
     }
-    setResultadoEnvio(`Enviados: ${data.enviados} de ${data.total || data.enviados} correos. Su resultado (aperturas, clics) se mide en Email marketing → Reportes.`)
+    if (data.enviados === 0 && data.motivo) {
+      setResultadoEnvio(data.motivo)
+    } else {
+      setResultadoEnvio(
+        `Enviados: ${data.enviados} de ${data.total || data.enviados} correos.` +
+        (data.omitidos ? ` Se omitieron ${data.omitidos} que ya la habían recibido.` : '') +
+        (data.advertencia ? ` ⚠ ${data.advertencia}` : '') +
+        ' El resultado (aperturas, clics) se mide en Email marketing → Reportes.'
+      )
+    }
     cargar()
   }
 
@@ -292,9 +323,21 @@ export default function Campanas() {
                   {cargandoAsesores ? 'Cargando…' : 'Cargar a asesores'}
                 </button>
                 {sel.canal === 'email' && (
-                  <button className="btn-soft" onClick={enviarEmail} disabled={enviando}>
-                    {enviando ? 'Enviando…' : 'Enviar por email (Brevo)'}
-                  </button>
+                  <>
+                    <button className="btn-soft" onClick={() => enviarEmail(false)} disabled={enviando}>
+                      {enviando ? 'Enviando…' : 'Enviar por email (Brevo)'}
+                    </button>
+                    {/* Reenvío parcial: aparece cuando la campaña ya tuvo envíos.
+                        Brevo puede aceptar unos lotes y rechazar otros, y sin
+                        esto reintentar duplicaría el correo a quienes ya lo
+                        recibieron. */}
+                    {yaEnviados > 0 && (
+                      <button className="btn-soft" onClick={() => enviarEmail(true)} disabled={enviando}
+                              title={`${yaEnviados} ya recibieron esta campaña`}>
+                        {enviando ? 'Enviando…' : `Reenviar solo a los que faltan`}
+                      </button>
+                    )}
+                  </>
                 )}
                 {['borrador', 'pausada', 'finalizada', 'completada'].includes(sel.estado) && (
                   <button className="btn-primary" onClick={() => cambiarEstado(sel.id, 'activa')}>Activar</button>

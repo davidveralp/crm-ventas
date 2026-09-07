@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
-import { SEGMENTOS, fmtFecha, ESTADOS_EMAIL } from '../lib/helpers'
+import { SEGMENTOS, fmtFecha, ESTADOS_EMAIL, motivoEdgeFunction } from '../lib/helpers'
 
 const pct = (n, d) => d ? Math.round((n / d) * 100) : 0
 
@@ -46,7 +46,7 @@ function CampanasEmail() {
       body: { asunto: sel.asunto || sel.nombre, cuerpo: sel.mensaje_plantilla || '', es_html: true, destinatarios, campana_id: sel.id }
     })
     setEnviando(false)
-    if (error || data?.error) { setMsg('Error: ' + (data?.error || error.message)); return }
+    if (error || data?.error) { setMsg('No se pudo enviar: ' + await motivoEdgeFunction(error, data)); return }
     setMsg(`✓ Enviados: ${data.enviados} de ${data.total}. Sigue los resultados en Reportes.`)
   }
 
@@ -155,7 +155,7 @@ function Enviar() {
       body: { asunto, cuerpo, segmento: segmento || null }
     })
     setEnviando(false)
-    if (error || data?.error) { setMsg('Error: ' + (data?.error || error.message)); return }
+    if (error || data?.error) { setMsg('No se pudo enviar: ' + await motivoEdgeFunction(error, data)); return }
     setMsg(`Enviados: ${data.enviados} de ${data.total}. Revisa la pestaña Reportes para ver su evolución.`)
     setAsunto(''); setCuerpo('')
   }
