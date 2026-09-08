@@ -91,7 +91,7 @@ export default function NuevoCliente() {
       <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-sm">
         <button onClick={() => setModo('ingreso')}
           className={`px-3 py-2 ${modo === 'ingreso' ? 'bg-deep text-white' : 'text-slate-500'}`}>
-          Ingreso con vehículo
+          Nuevo Ingreso
         </button>
         <button onClick={() => setModo('solo_cliente')}
           className={`px-3 py-2 ${modo === 'solo_cliente' ? 'bg-deep text-white' : 'text-slate-500'}`}>

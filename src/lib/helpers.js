@@ -310,7 +310,7 @@ export const OT_TIPO_DOCUMENTO = ['Boleta', 'Factura', 'Sin Documento']
 // pedir tareas al taller y al elaborar presupuestos, filtrado por la
 // categoría (ver OT_SVC_CATEGORIA) y por el tipo de vehículo.
 export const OT_SVC_TALLER = ['MAN X PAUTA','MAN BASICA','EMBRAGUE','AMORTIGUADOR','SUSPENSION','CORREAS','DISTRIBUCION','REFRIGERACION','A/C RECARGA','A/C REPARACION','INYECCION','DPF','MOTOR REPARACION','MOTOR REEMPLAZO','ADMISION EGR','ALTERNADOR','ARRANQUE','ENCENDIDO','ELECTRONICA MOTOR','ABS','AIR BAG','DIRECCION','FRENOS','TREN DELANTERO','TREN TRASERO','EJES','TRACCION 4X4','DIAGNOSTICO','OTROS TALLER']
-export const OT_SVC_SR = ['REV EXPRESS','REV PREVENTIVA','CAMBIO DE ACEITE','FILTROS','VULCANIZACION','BALANCEO','ESCANER','ALINEACION','AMPOLLETAS','PLUMILLAS','ACCESORIOS','OTROS SERVICIO RÁPIDO']
+export const OT_SVC_SR = ['REV EXPRESS','REV PREVENTIVA','CAMBIO DE ACEITE','FILTROS','VULCANIZACION','BALANCEO','ESCANER','ALINEACION','AMPOLLETAS','PLUMILLAS','ACCESORIOS','PACK MANTENCIÓN 360°','PURIFICACIÓN DE AIRE (AIRLIFE)','OTROS SERVICIO RÁPIDO']
 export const OT_SVC_DYP = ['DESABOLLADURA Y PINTURA','SINIESTRO ROBO','LIMPIEZA VEHICULO','LIMPIEZA DE MOTOR','LAVADO DE TAPIZ','PULIDO Y ENCERADO','OTROS DYP']
 /* Modelos por marca para las tres marcas que más entran al taller. Sirven como
    sugerencia en la recepción: el campo sigue admitiendo texto libre para los
@@ -586,4 +586,60 @@ export async function motivoEdgeFunction(error, data) {
     if (t) return t.slice(0, 300)
   } catch { /* sin cuerpo legible */ }
   return error?.message || 'error desconocido'
+}
+
+
+/* ============================================================================
+   Nuevo Ingreso · catálogos de la revisión de recepción
+   ----------------------------------------------------------------------------
+   Los ítems reemplazan al inventario del vehículo. El cambio de fondo: el
+   inventario protegía al taller de un reclamo; esta lista busca DETECTAR
+   necesidades mientras el cliente está presente. Es la primera instancia de
+   venta cruzada, antes del RADAR.
+   ========================================================================== */
+
+export const COMBUSTIBLES = ['Bencina', 'Diésel', 'Híbrido', 'Eléctrico', 'Gas']
+
+/* Niveles: se responden con una escala corta y comparable entre fluidos. */
+export const NIVEL_OPCIONES = [
+  { v: 'ok', label: 'Correcto', sev: 'ok' },
+  { v: 'bajo', label: 'Bajo', sev: 'pronto' },
+  { v: 'muy_bajo', label: 'Muy bajo', sev: 'critico' },
+  { v: 'vacio', label: 'Vacío', sev: 'critico' },
+  { v: 'na', label: 'No aplica', sev: 'na' }
+]
+
+export const NIVELES_FLUIDOS = [
+  'Refrigerante', 'Limpiaparabrisas', 'Aceite motor',
+  'Dirección hidráulica', 'Líquido de frenos'
+]
+
+/* Ítems de revisión. `cond` marca los que solo se responden si son accesibles:
+   pedirle al asesor que desmonte una rueda en la recepción no es realista. */
+export const REVISION_INGRESO = [
+  { k: 'luces',        t: 'Revisión de luces',
+    ops: [['ok', 'Todas buenas', 'ok'], ['falla', 'Alguna quemada', 'pronto'], ['varias', 'Varias falladas', 'critico']] },
+  { k: 'plumillas',    t: 'Estado de plumillas',
+    ops: [['ok', 'Buen estado', 'ok'], ['gastadas', 'Gastadas', 'pronto'], ['malas', 'Deben cambiarse', 'critico']] },
+  { k: 'filtro_aire',  t: 'Filtro de aire', cond: 'solo si es de fácil extracción',
+    ops: [['ok', 'Limpio', 'ok'], ['sucio', 'Sucio', 'pronto'], ['muy_sucio', 'Muy sucio', 'critico'], ['na', 'No revisado', 'na']] },
+  { k: 'filtro_polen', t: 'Filtro de polen', cond: 'solo si es de fácil extracción',
+    ops: [['ok', 'Limpio', 'ok'], ['sucio', 'Sucio', 'pronto'], ['muy_sucio', 'Muy sucio', 'critico'], ['na', 'No revisado', 'na']] },
+  { k: 'fugas',        t: 'Posibles fugas (aceite, refrigerante)',
+    ops: [['no', 'Sin fugas', 'ok'], ['leve', 'Humedad / fuga leve', 'pronto'], ['si', 'Fuga evidente', 'critico']] },
+  { k: 'past_del',     t: 'Vida útil pastillas delanteras', cond: 'solo si es visible sin desmontar',
+    ops: [['alta', 'Sobre 70%', 'ok'], ['media', '30% a 70%', 'pronto'], ['baja', 'Bajo 30%', 'critico'], ['na', 'No visible', 'na']] },
+  { k: 'disco_del',    t: 'Estado de discos delanteros', cond: 'solo si es visible sin desmontar',
+    ops: [['ok', 'Buen estado', 'ok'], ['desgaste', 'Con desgaste', 'pronto'], ['malo', 'Delgado o rayado', 'critico'], ['na', 'No visible', 'na']] },
+  { k: 'past_tra',     t: 'Vida útil pastillas traseras', cond: 'solo si es visible sin desmontar',
+    ops: [['alta', 'Sobre 70%', 'ok'], ['media', '30% a 70%', 'pronto'], ['baja', 'Bajo 30%', 'critico'], ['na', 'No visible', 'na']] },
+  { k: 'disco_tra',    t: 'Estado de discos traseros', cond: 'solo si es visible sin desmontar',
+    ops: [['ok', 'Buen estado', 'ok'], ['desgaste', 'Con desgaste', 'pronto'], ['malo', 'Delgado o rayado', 'critico'], ['na', 'No visible', 'na']] },
+  { k: 'freno_mano',   t: 'Freno de mano (recorrido)',
+    ops: [['ok', 'Normal (3 a 5 clics)', 'ok'], ['largo', 'Largo', 'pronto'], ['muy_largo', 'Muy largo / no sujeta', 'critico']] }
+]
+
+/* Color por severidad, compartido por la revisión y el RADAR. */
+export const SEV_COLOR = {
+  ok: '#1f9d57', pronto: '#e0a020', critico: '#e0382b', na: '#94a3b8'
 }

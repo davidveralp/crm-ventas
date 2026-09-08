@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { formatPatente, patenteLimpia, formatRut, fmtFonoOT,
   OT_MARCAS, OT_MODELOS, OT_SVC_GRUPOS, svcAplicaAVehiculo, TRACCIONES,
+  REVISION_INGRESO, NIVELES_FLUIDOS, NIVEL_OPCIONES, SEV_COLOR, COMBUSTIBLES, TIPOS_VEHICULO,
+  
   OT_TIPO_INGRESO, OT_TIPO_CLIENTE, OT_CONOCIO, OT_ES_GARANTIA, sucursalDeAsesor, TRANSMISIONES, TRANSMISION_LABEL } from '../lib/helpers'
 import { imprimirInspeccion } from '../lib/inspeccionPDF'
 
-// v77 · Inspección de ingreso — formulario de página única (antes 7 pasos).
+// v77 · Nuevo Ingreso — formulario de página única (antes 7 pasos).
 // Paso previo a Nueva OT. Al terminar, crea
 // el registro de inspección (fotos, firma, diagrama de daños marcado) y
 // entrega los datos ya listos para prellenar el formulario de Nueva OT.
@@ -40,82 +42,79 @@ const LUCES = [
    imágenes para que tomen el color al encenderse y no pesen en la carga.
    `fill="currentColor"` en las siluetas macizas, trazo en el resto. */
 const ICONO_LUZ = {
-  // Bloque motor visto de perfil, con sus aletas
+  // Motor: bloque con aletas laterales, silueta maciza
   motor: (
     <g fill="currentColor" stroke="none">
-      <path d="M6.5 9.5h1.2V8h2.1v1.5h2.4l1.9-1.9h1.6v1.9h1.8v1.5h1.6v3.4h-1.6v1.6h-4.1l-1.9-1.9H9.8v1.9H7.7v-1.9H6.5v-1.7H4.8v-2.9h1.7z"/>
+      <path d="M3.6 10.2h1.7V8.6h2.5V6.9h2.2v1.7h2.6l2.1-2.1h2.4v2.1h1.6v1.6h1.7v4.2h-1.7v1.7h-4l-2.1-2.1h-2.8v2.1H7.8v-1.7H5.3v-1.7H3.6z"/>
     </g>
   ),
-  // Aceitera con gota
+  // Aceitera clásica con gota
   aceite: (
     <g fill="currentColor" stroke="none">
-      <path d="M4.2 13.6c2.6-.9 4.4-3 8.1-3 1.5 0 2.7.3 3.7.9l3.4-1.4v1.4l-2.5 1.3c.5.6.8 1.3.9 2.1H8.6c-.2-1-.9-1.7-1.9-1.9-.9-.2-1.9.1-2.5.6z"/>
-      <path d="M17.4 6.2c0 .8-.6 1.4-1.4 1.4s-1.4-.6-1.4-1.4c0-.9 1.4-2.6 1.4-2.6s1.4 1.7 1.4 2.6z"/>
+      <path d="M2.6 14.9c1.3-2 3.4-3.3 6.2-3.3 1.9 0 3.4.5 4.6 1.4l4-2.6 1 1.3-3.2 2.4c.5.7.8 1.5.9 2.4H7.9c-.3-1.1-1.2-1.8-2.4-1.8-1 0-1.9.4-2.5 1.1z"/>
+      <path d="M16.6 5.4c0 .9-.7 1.6-1.6 1.6s-1.6-.7-1.6-1.6c0-1 1.6-3 1.6-3s1.6 2 1.6 3z"/>
     </g>
   ),
-  // Termómetro sobre olas de refrigerante
+  // Termómetro sobre olas
   temp: (
-    <g fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
-      <path d="M12 4.5v7.2"/><circle cx="12" cy="13.6" r="2.4" fill="currentColor" stroke="none"/>
-      <path d="M12 4.5a1.6 1.6 0 011.6 1.6v5.9a2.4 2.4 0 11-3.2 0V6.1A1.6 1.6 0 0112 4.5z"/>
-      <path d="M9.6 6.6h-1.4M9.6 8.8h-1.4M9.6 11h-1.4"/>
-      <path d="M3 18.4c1-.9 2-.9 3 0s2 .9 3 0 2-.9 3 0 2 .9 3 0 2-.9 3 0"/>
+    <g fill="currentColor" stroke="none">
+      <path d="M12 3.2c-1 0-1.8.8-1.8 1.8v6.9c-.9.6-1.5 1.6-1.5 2.8 0 1.8 1.5 3.3 3.3 3.3s3.3-1.5 3.3-3.3c0-1.2-.6-2.2-1.5-2.8V5c0-1-.8-1.8-1.8-1.8z"/>
+      <rect x="16" y="5.4" width="4.4" height="1.5" rx=".7"/>
+      <rect x="16" y="8.4" width="3.2" height="1.5" rx=".7"/>
+      <rect x="16" y="11.4" width="4.4" height="1.5" rx=".7"/>
+      <path d="M2 19.6c1-1 2.2-1 3.2 0s2.2 1 3.2 0 2.2-1 3.2 0 2.2 1 3.2 0 2.2-1 3.2 0 2.2 1 3.2 0" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
     </g>
   ),
-  // Batería con bornes + y −
+  // Batería rectangular con bornes
   bateria: (
-    <g fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
-      <rect x="2.8" y="7.6" width="18.4" height="9.6" rx="1.2"/>
-      <path d="M7 7.6V5.8h3v1.8M14 7.6V5.8h3v1.8"/>
-      <path d="M6.4 12.4h3.2M8 10.8v3.2M14.4 12.4h3.2"/>
+    <g fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round">
+      <rect x="2.6" y="7.4" width="18.8" height="9.8" rx="1"/>
+      <path d="M6.6 7.4V5.6h3.2v1.8M14.2 7.4V5.6h3.2v1.8"/>
+      <path d="M6 12.3h3.4M7.7 10.6v3.4M14.6 12.3H18"/>
     </g>
   ),
-  // Freno: círculo con paréntesis laterales y signo de exclamación
+  // Freno: círculo con exclamación y paréntesis
   freno: (
-    <g fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
-      <circle cx="12" cy="12" r="5.4"/>
-      <path d="M4.4 8.2a8 8 0 000 7.6M19.6 8.2a8 8 0 010 7.6"/>
-      <path d="M12 9.2v3.4"/><circle cx="12" cy="14.9" r=".9" fill="currentColor" stroke="none"/>
+    <g fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round">
+      <circle cx="12" cy="12" r="5.2"/>
+      <path d="M3.9 7.6a8.6 8.6 0 000 8.8M20.1 7.6a8.6 8.6 0 010 8.8"/>
+      <path d="M12 9.1v3.3"/><circle cx="12" cy="14.9" r="1" fill="currentColor" stroke="none"/>
     </g>
   ),
-  // Ocupante con cinturón y bolsa de aire desplegada
+  // Airbag: ocupante y bolsa desplegada
   airbag: (
-    <g fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="7.6" cy="7.4" r="2.2" fill="currentColor" stroke="none"/>
-      <path d="M4.6 18.4v-3.2c0-1.6 1.1-2.8 2.7-3l3.2-.5"/>
-      <path d="M10.5 18.4H5"/>
-      <circle cx="16.6" cy="13.4" r="4.2"/>
-      <path d="M13.4 8.6l1.6 1.6M19.8 8.6l-1.6 1.6M16.6 7v2.2"/>
+    <g fill="currentColor" stroke="none">
+      <circle cx="6.6" cy="7.6" r="2.4"/>
+      <path d="M4 18.6v-3c0-1.5 1-2.6 2.5-2.9l2.6-.5 1.4 2.4-2.6 1.3v2.7z"/>
+      <path d="M10 18.6h1.6l1.4-2.6-2.2-1.1z"/>
+      <circle cx="17" cy="13.4" r="4.4"/>
     </g>
   ),
-  // ABS: círculo con las letras y paréntesis
+  // ABS dentro del disco
   abs: (
-    <g fill="none" stroke="currentColor" strokeWidth="1.6">
-      <circle cx="12" cy="12" r="5.6"/>
-      <path d="M4.2 8.2a8 8 0 000 7.6M19.8 8.2a8 8 0 010 7.6" strokeLinecap="round"/>
-      <text x="12" y="14.3" fontSize="5.4" fontWeight="700" textAnchor="middle"
+    <g fill="none" stroke="currentColor" strokeWidth="1.8">
+      <circle cx="12" cy="12" r="5.4"/>
+      <path d="M3.8 7.6a8.6 8.6 0 000 8.8M20.2 7.6a8.6 8.6 0 010 8.8" strokeLinecap="round"/>
+      <text x="12" y="14.2" fontSize="5" fontWeight="700" textAnchor="middle"
             fill="currentColor" stroke="none">ABS</text>
     </g>
   ),
-  // Neumático en corte con signo de exclamación (presión)
+  // Neumático en corte con exclamación (TPMS)
   neumatico: (
-    <g fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
-      <path d="M5.4 16.4V10c0-2.6 2.9-4.6 6.6-4.6s6.6 2 6.6 4.6v6.4"/>
-      <path d="M4 18.6h16"/>
-      <path d="M5.4 16.4l-1.2 2.2M18.6 16.4l1.2 2.2"/>
-      <path d="M12 8.8v3.2"/><circle cx="12" cy="14.3" r=".9" fill="currentColor" stroke="none"/>
+    <g fill="currentColor" stroke="none">
+      <path d="M5 17.6V11c0-2.9 3.1-5 7-5s7 2.1 7 5v6.6h-2.2V11c0-1.6-2.1-2.9-4.8-2.9S7.2 9.4 7.2 11v6.6z"/>
+      <path d="M4 18.4h16v1.7H4z"/>
+      <path d="M11 9.4h2v3.6h-2z"/><circle cx="12" cy="15.2" r="1.1"/>
     </g>
   ),
-  // Luz alta: haz recto de líneas paralelas
+  // Luz alta: haz recto
   luces: (
     <g fill="currentColor" stroke="none">
-      <path d="M9.4 6.6c2.9 0 5.2 2.4 5.2 5.4s-2.3 5.4-5.2 5.4H7.6V6.6z"/>
-      <rect x="2" y="7.4" width="4.2" height="1.5" rx=".7"/>
-      <rect x="2" y="11.2" width="4.2" height="1.5" rx=".7"/>
-      <rect x="2" y="15" width="4.2" height="1.5" rx=".7"/>
-      <rect x="16.4" y="7.4" width="5.6" height="1.5" rx=".7"/>
-      <rect x="16.4" y="11.2" width="5.6" height="1.5" rx=".7"/>
-      <rect x="16.4" y="15" width="5.6" height="1.5" rx=".7"/>
+      <path d="M8.8 5.8c3.4 0 6.1 2.8 6.1 6.2s-2.7 6.2-6.1 6.2H6.9V5.8z"/>
+      <rect x="16.4" y="6.4" width="5.8" height="1.7" rx=".8"/>
+      <rect x="16.4" y="9.5" width="5.8" height="1.7" rx=".8"/>
+      <rect x="16.4" y="12.6" width="5.8" height="1.7" rx=".8"/>
+      <rect x="16.4" y="15.7" width="5.8" height="1.7" rx=".8"/>
     </g>
   )
 }
@@ -144,6 +143,10 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
     tipo_ingreso: 'Normal',      // OT_TIPO_INGRESO
     sucursal: '',                // Toyota | Multimarca | DyP — define la meta
     tipo_cliente: 'Particular',  // OT_TIPO_CLIENTE
+    razon_social: '',            // solo empresa
+    tipo_vehiculo: '', combustible: '',
+    solicita_presupuesto: false, detalle_presupuesto: '',
+    tipo_servicio: '',
     contacto_nombre: '',         // quién trae el auto si no es el dueño
     dueno_nombre: '',            // dueño cuando difiere de quien paga
     aseguradora: '',
@@ -180,9 +183,12 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
 
   // ---- sección 2: luces + inventario ----
   const [luces, setLuces] = useState([])
-  const [inventario, setInventario] = useState({})
+  // v100: la revisión de recepción reemplaza al inventario. El inventario
+  // protegía al taller de un reclamo; esto detecta necesidades con el cliente
+  // presente, que es la primera instancia de venta cruzada.
+  const [revision, setRevision] = useState({})   // clave -> {v, sev}
+  const [niveles, setNiveles] = useState({})     // fluido -> valor
   const toggleLuz = (k) => setLuces((l) => l.includes(k) ? l.filter((x) => x !== k) : [...l, k])
-  const toggleInv = (k) => setInventario((i) => ({ ...i, [k]: !i[k] }))
 
   // ---- sección 3: combustible ----
   const [combustible, setCombustible] = useState(4) // 0(E) .. 8(F)
@@ -273,7 +279,7 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
       telefono: cli?.telefono || d.telefono,
       trabajo: d.trabajo_a_realizar, observacionesCliente: d.observaciones_cliente,
       observacionesAsesor: obsAsesor,
-      luces, inventario, combustible, danos, checklist, fotos,
+      luces, revision, niveles, combustible, danos, checklist, fotos,
       asesor: perfil?.nombre || '',
       ...extra
     }
@@ -349,7 +355,9 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
       autoriza_movilizacion: d.autoriza_movilizacion,
       autoriza_contacto: d.autoriza_contacto,
       observaciones_cliente: d.observaciones_cliente.trim(), observaciones_asesor: obsAsesor.trim(),
-      luces_advertencia: luces, inventario, nivel_combustible: combustible,
+      luces_advertencia: luces, nivel_combustible: combustible,
+      // v100: la revisión sustituye al inventario. Se guarda como jsonb.
+      revision_recepcion: revision, niveles_fluidos: niveles,
       tipo_silueta: silueta, danos, checklist, fotos, firma_url: firmaUrl,
       estado: 'completada', creado_por: perfil.id
     }).select().single()
@@ -409,6 +417,26 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
       }
     }
 
+    // Si el cliente pidió presupuesto, va directo al encargado. Antes esto se
+    // pedía de palabra y se perdía entre la recepción y el mesón.
+    if (d.solicita_presupuesto && d.detalle_presupuesto.trim()) {
+      await supabase.from('notificaciones').insert({
+        empresa_id: perfil.empresa_id,
+        rol_destino: 'coordinador_adquisiciones',
+        titulo: `Cotizar · ${formatPatente(d.patente)}`,
+        cuerpo: `${[d.marca, d.modelo].filter(Boolean).join(' ')} · ${d.detalle_presupuesto.trim()}`,
+        url: '/presupuestos'
+      })
+      if (vehiculoId) {
+        await supabase.from('presupuestos_taller').insert({
+          empresa_id: perfil.empresa_id, vehiculo_id: vehiculoId, cliente_id: clienteId,
+          trabajo_id: trabajoId, estado: 'solicitado', origen: 'vehiculo',
+          solicitud: d.detalle_presupuesto.trim(),
+          items: [], solicitado_por: perfil.id
+        })
+      }
+    }
+
     setGuardando(false)
 
     // Documento oficial, ya con la firma subida a Storage
@@ -443,7 +471,7 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
         : 'bg-white sm:rounded-xl w-full max-w-3xl h-[100dvh] sm:h-[94vh] flex flex-col'}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
           <div>
-            <h2 className="text-lg font-bold text-ink">Inspección de ingreso</h2>
+            <h2 className="text-lg font-bold text-ink">Nuevo Ingreso</h2>
             <p className="text-xs text-slate-400">Formulario completo · desplázate hacia abajo</p>
           </div>
           <button type="button" onClick={onCancelar} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
@@ -475,7 +503,18 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
                   <div className="rounded-lg bg-paper p-3 space-y-2">
                     <p className="text-xs font-semibold text-slate-500 uppercase">Datos del cliente</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <input className="input" placeholder="Nombre(s)" value={d.nombre} onChange={(e) => setD({ ...d, nombre: e.target.value })} />
+                      <select className="input sm:col-span-2" value={d.tipo_cliente}
+                              onChange={(e) => setD({ ...d, tipo_cliente: e.target.value })}>
+                        {OT_TIPO_CLIENTE.map((x) => <option key={x}>{x}</option>)}
+                      </select>
+                      {d.tipo_cliente === 'Empresa' && (
+                        <input className="input sm:col-span-2" placeholder="Razón social"
+                               value={d.razon_social}
+                               onChange={(e) => setD({ ...d, razon_social: e.target.value })} />
+                      )}
+                      <input className="input"
+                             placeholder={d.tipo_cliente === 'Empresa' ? 'Nombre del contacto' : 'Nombre(s)'}
+                             value={d.nombre} onChange={(e) => setD({ ...d, nombre: e.target.value })} />
                       <input className="input" placeholder="Apellidos" value={d.apellidos} onChange={(e) => setD({ ...d, apellidos: e.target.value })} />
                       <input className="input" placeholder="12.345.678-9" value={d.rut}
                              onChange={(e) => setD({ ...d, rut: e.target.value })}
@@ -536,6 +575,16 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
                         <option value="">Transmisión…</option>
                         {TRANSMISIONES.map((t) => <option key={t} value={t}>{TRANSMISION_LABEL[t] || t}</option>)}
                       </select>
+                      <select className="input" value={d.tipo_vehiculo}
+                              onChange={(e) => setD({ ...d, tipo_vehiculo: e.target.value })}>
+                        <option value="">Tipo de vehículo…</option>
+                        {TIPOS_VEHICULO.map((t) => <option key={t}>{t}</option>)}
+                      </select>
+                      <select className="input" value={d.combustible}
+                              onChange={(e) => setD({ ...d, combustible: e.target.value })}>
+                        <option value="">Combustible…</option>
+                        {COMBUSTIBLES.map((c) => <option key={c}>{c}</option>)}
+                      </select>
                       <input className="input sm:col-span-2" placeholder="N° de chasis (VIN)" value={d.chasis} onChange={(e) => setD({ ...d, chasis: e.target.value.toUpperCase() })} />
                     </div>
                   </div>
@@ -580,6 +629,54 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
               </div>
               <div><label className="label">Observaciones del cliente</label><textarea className="input" rows="2" value={d.observaciones_cliente} onChange={(e) => setD({ ...d, observaciones_cliente: e.target.value })} /></div>
 
+              {/* ---- ¿Solicita presupuesto? ----
+                   Si el cliente quiere cotización, el detalle va directo al
+                   encargado de presupuestos. Es el paso que hoy se hacía de
+                   palabra y se perdía. */}
+              <div className="sm:col-span-2 rounded-lg border-2 p-3"
+                   style={{ borderColor: d.solicita_presupuesto ? '#2f6fb0' : '#e2e8f0' }}>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={d.solicita_presupuesto}
+                         onChange={(e) => setD({ ...d, solicita_presupuesto: e.target.checked })} />
+                  <span className="text-sm font-medium text-ink">El cliente solicita presupuesto</span>
+                </label>
+                {d.solicita_presupuesto && (
+                  <div className="mt-2">
+                    <label className="label">¿Qué hay que cotizar?</label>
+                    <textarea className="input" rows="2"
+                      placeholder="Detalle para el encargado de presupuestos. Sé específico: repuestos, mano de obra, alternativas…"
+                      value={d.detalle_presupuesto}
+                      onChange={(e) => setD({ ...d, detalle_presupuesto: e.target.value })} />
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Se envía a Víctor Tello al registrar el ingreso. El compromiso son 15 minutos.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* ---- Ingreso al taller ---- */}
+              <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Tipo de servicio</label>
+                  <select className="input" value={d.tipo_servicio}
+                          onChange={(e) => setD({ ...d, tipo_servicio: e.target.value })}>
+                    <option value="">Seleccionar…</option>
+                    {OT_SVC_GRUPOS.map((g) => (
+                      <optgroup key={g.bu} label={g.bu}>
+                        {g.items.map((sv) => <option key={sv}>{sv}</option>)}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-end">
+                  <label className="flex items-center gap-2 cursor-pointer pb-2">
+                    <input type="checkbox" checked={d.ingreso_grua}
+                           onChange={(e) => setD({ ...d, ingreso_grua: e.target.checked })} />
+                    <span className="text-sm">El vehículo ingresó en grúa</span>
+                  </label>
+                </div>
+              </div>
+
               {/* ---- Proceso del asesor en la recepción ----
                    Estos campos definen cómo se clasifica la OT y a qué meta
                    comercial suma. Antes se llenaban recién en Nueva OT, cuando
@@ -599,43 +696,8 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
                       </p>
                     )}
                   </div>
-                  <div>
-                    <label className="label">Sucursal</label>
-                    <select className="input" value={d.sucursal}
-                            onChange={(e) => setD({ ...d, sucursal: e.target.value })}>
-                      <option value="">Seleccionar…</option>
-                      <option>Toyota</option><option>Multimarca</option><option>DyP</option>
-                    </select>
-                    <p className="text-[10px] text-slate-400 mt-1">Define a qué meta suma la venta.</p>
-                  </div>
-                  <div>
-                    <label className="label">Tipo de cliente</label>
-                    <select className="input" value={d.tipo_cliente}
-                            onChange={(e) => setD({ ...d, tipo_cliente: e.target.value })}>
-                      {OT_TIPO_CLIENTE.map((x) => <option key={x}>{x}</option>)}
-                    </select>
-                  </div>
                 </div>
 
-                {/* Quién trae el auto y quién es el dueño: en la OT en papel son
-                    campos distintos y el CRM los perdía. */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="label">Quién trae el vehículo</label>
-                    <input className="input" placeholder="Si no es el titular" value={d.contacto_nombre}
-                           onChange={(e) => setD({ ...d, contacto_nombre: e.target.value })} />
-                  </div>
-                  <div>
-                    <label className="label">Dueño del vehículo</label>
-                    <input className="input" placeholder="Si no es quien paga" value={d.dueno_nombre}
-                           onChange={(e) => setD({ ...d, dueno_nombre: e.target.value })} />
-                  </div>
-                  <div>
-                    <label className="label">Aseguradora</label>
-                    <input className="input" placeholder="Si aplica" value={d.aseguradora}
-                           onChange={(e) => setD({ ...d, aseguradora: e.target.value })} />
-                  </div>
-                </div>
 
                 {/* El origen solo se pregunta al cliente nuevo: al que ya viene
                     hace años, preguntarle cómo nos conoció es incómodo. */}
@@ -714,15 +776,65 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
                   })}
                 </div>
               </div>
+              {/* ---- Revisión de recepción ----
+                   Reemplaza al inventario. Cada ítem responde con una opción
+                   de color, igual que el RADAR, para que el asesor pueda
+                   mostrarle el resultado al cliente en el momento. */}
               <div>
-                <label className="label mb-2">Inventario presente</label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-2 text-sm">
-                  {INVENTARIO.map((it) => (
-                    <label key={it} className="flex items-center gap-1.5 cursor-pointer">
-                      <input type="checkbox" checked={!!inventario[it]} onChange={() => toggleInv(it)} />
-                      {it}
-                    </label>
-                  ))}
+                <label className="label mb-1">Revisión de recepción</label>
+                <p className="text-[11px] text-slate-400 mb-2">
+                  Lo que detectes acá es la primera oportunidad de venta, antes del RADAR.
+                </p>
+                <div className="space-y-2">
+                  {REVISION_INGRESO.map((it) => {
+                    const r = revision[it.k]
+                    return (
+                      <div key={it.k} className="rounded-lg border p-2"
+                           style={{ borderColor: r ? SEV_COLOR[r.sev] + '66' : '#e2e8f0' }}>
+                        <div className="text-sm font-medium text-ink">
+                          {it.t}
+                          {it.cond && <span className="text-[10px] text-slate-400 font-normal"> · {it.cond}</span>}
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 mt-1.5">
+                          {it.ops.map(([v, label, sev]) => {
+                            const on = r?.v === v
+                            const c = SEV_COLOR[sev]
+                            return (
+                              <button key={v} type="button"
+                                onClick={() => setRevision((x) => ({ ...x, [it.k]: on ? undefined : { v, sev } }))}
+                                className="px-2.5 rounded-lg text-xs border-2 transition-colors"
+                                style={{ minHeight: '38px',
+                                         background: on ? c : '#fff',
+                                         color: on ? '#fff' : c,
+                                         borderColor: on ? c : c + '55',
+                                         fontWeight: on ? 600 : 400 }}>
+                                {label}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* Niveles: mismo criterio para los cinco fluidos, así se
+                    comparan entre sí y se responden rápido. */}
+                <div className="mt-3 rounded-lg border border-slate-200 p-2">
+                  <div className="text-sm font-medium text-ink mb-2">Niveles de fluidos</div>
+                  <div className="space-y-1.5">
+                    {NIVELES_FLUIDOS.map((fl) => (
+                      <div key={fl} className="flex items-center gap-2">
+                        <span className="text-sm text-slate-600 flex-1 min-w-0 truncate">{fl}</span>
+                        <select className="input w-40 shrink-0" style={{ minHeight: '38px' }}
+                                value={niveles[fl] || ''}
+                                onChange={(e) => setNiveles((x) => ({ ...x, [fl]: e.target.value }))}>
+                          <option value="">Sin revisar</option>
+                          {NIVEL_OPCIONES.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>

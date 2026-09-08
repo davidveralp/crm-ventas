@@ -23,17 +23,22 @@ export function imprimirInspeccion(datos) {
     numero, fecha: fch, patente, marca, modelo, anio, color, km, chasis,
     cliente, rut, direccion, email, telefono, dueno,
     trabajo, observacionesCliente, observacionesAsesor,
-    luces = [], inventario = {}, combustible = 4, danos = [], checklist = {},
+    luces = [], revision = {}, niveles = {}, combustible = 4, danos = [], checklist = {},
     firmaUrl, fotos = [], asesor
   } = datos
 
-  const inv = Object.entries(inventario).filter(([, v]) => v).map(([k]) => k)
+  // Solo se imprimen los puntos con hallazgo: una lista de once "todo bien"
+  // no aporta al documento y lo alarga sin motivo.
+  const hallazgos = Object.entries(revision)
+    .filter(([, v]) => v && v.sev && v.sev !== 'ok' && v.sev !== 'na')
+    .map(([k, v]) => `${k}: ${v.v}`)
+  const nivelesMal = Object.entries(niveles).filter(([, v]) => v && v !== 'ok' && v !== 'na')
   const chkFilas = Object.entries(checklist)
     .map(([k, v]) => `<tr><td>${esc(k)}</td><td class="c">${v === true || v === 'ok' ? '✓' : v === false || v === 'mal' ? '✕' : '—'}</td></tr>`)
     .join('')
 
   const html = `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
-<title>Inspección de ingreso${numero ? ' N° ' + esc(numero) : ''}</title>
+<title>Nuevo Ingreso${numero ? ' N° ' + esc(numero) : ''}</title>
 <style>
   @page { size: letter portrait; margin: 12mm 14mm; }
   * { box-sizing: border-box; }
@@ -79,7 +84,7 @@ export function imprimirInspeccion(datos) {
     </div>
     <div>
       <div class="doc">
-        INSPECCIÓN DE INGRESO${numero ? ' N° ' + esc(numero) : ''}<br>
+        NUEVO INGRESO${numero ? ' N° ' + esc(numero) : ''}<br>
         FECHA: ${esc(fecha(fch) || new Date().toLocaleDateString('es-CL'))}
       </div>
       <div class="pag">Página: 1</div>
@@ -121,8 +126,12 @@ export function imprimirInspeccion(datos) {
       <div class="chips">${luces.length ? luces.map((l) => `<span>${esc(l)}</span>`).join('') : '<span>Ninguna</span>'}</div>
     </div>
     <div class="box">
-      <h4>Inventario recibido</h4>
-      <div class="chips">${inv.length ? inv.map((i) => `<span>${esc(i)}</span>`).join('') : '<span>Sin elementos declarados</span>'}</div>
+      <h4>Revisión de recepción</h4>
+      <div class="chips">${hallazgos.length
+        ? hallazgos.map((i) => `<span>${esc(i)}</span>`).join('')
+        : '<span>Sin observaciones</span>'}</div>
+      ${nivelesMal.length ? `<h4 style="margin-top:5px">Niveles a atender</h4>
+      <div class="chips">${nivelesMal.map(([k, v]) => `<span>${esc(k)}: ${esc(v)}</span>`).join('')}</div>` : ''}
     </div>
   </div>
 
