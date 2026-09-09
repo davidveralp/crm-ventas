@@ -48,14 +48,15 @@ export default defineConfig({
         // El generador es una app estática aparte dentro de public/. Sin
         // excluirlo, el service worker responde su navegación con el index.html
         // del CRM y el iframe queda en blanco.
-        navigateFallbackDenylist: [/^\/api/, /^\/generador/],
+        navigateFallbackDenylist: [/^\/api/, /^\/generador/, /^\/privacidad/],
 
         runtimeCaching: [
           {
             /* index.html siempre desde la red, con la caché solo como respaldo
                si no hay conexión. */
             urlPattern: ({ request, url }) =>
-              request.mode === 'navigate' && !url.pathname.startsWith('/generador'),
+              request.mode === 'navigate' && !url.pathname.startsWith('/generador')
+              && !url.pathname.startsWith('/privacidad'),
             handler: 'NetworkFirst',
             options: {
               cacheName: 'html-navegacion',
