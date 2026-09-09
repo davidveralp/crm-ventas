@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { fmtCLP, formatPatente, ESTADOS_TALLER, OT_TIPO_DOCUMENTO, motivoEdgeFunction } from '../lib/helpers'
+import { fmtCLP, formatPatente, ESTADOS_TALLER, OT_TIPO_DOCUMENTO, motivoEdgeFunction,
+  enviarASheet } from '../lib/helpers'
+import { imprimirSalidaOT } from '../lib/salidaOT'
 
 /* ============================================================================
    Panel del asesor · seguimiento en taller y cierre de entrega
@@ -17,6 +19,15 @@ import { fmtCLP, formatPatente, ESTADOS_TALLER, OT_TIPO_DOCUMENTO, motivoEdgeFun
 
 const fecha = (d) => d ? new Date(d).toLocaleDateString('es-CL', { day: '2-digit', month: 'short' }) : '—'
 const dias = (d) => d ? Math.floor((Date.now() - new Date(d)) / 86400000) : 0
+
+/* Los cuatro tipos de línea de una OT. El ejemplo se usa como texto de ayuda
+   para que el asesor sepa qué nivel de detalle se espera. */
+const TIPOS_LINEA = [
+  ['repuesto', 'Repuestos', 'Ej: Filtro de aceite Toyota 90915-YZZE1'],
+  ['servicio', 'Mano de obra y servicios', 'Ej: Cambio de aceite y filtro'],
+  ['insumo', 'Insumos y lubricantes', 'Ej: Aceite 5W30 sintético'],
+  ['servicio_externo', 'Servicios externos', 'Ej: Rectificado de discos']
+]
 
 export default function CierreAsesor() {
   const { perfil, esAdmin } = useAuth()
@@ -211,22 +222,82 @@ function ModalCierre({ trabajo, perfil, onCerrar, onGuardado, irVehiculo }) {
   })
   const [guardando, setGuardando] = useState(false)
   const [err, setErr] = useState('')
+  const [lineas, setLineas] = useState([])
+  // URL del Web App de la planilla: la OT cerrada se envía ahí, que sigue
+  // siendo la base histórica del negocio.
+  const [sheetUrl, setSheetUrl] = useState('')
+  useEffect(() => {
+    supabase.from('empresa_config').select('valor')
+      .eq('empresa_id', perfil.empresa_id).eq('clave', 'ot_sheet_url').maybeSingle()
+      .then(({ data }) => setSheetUrl(data?.valor || ''))
+  }, [perfil?.empresa_id])
 
+  const num = (x) => Number(String(x).replace(/[^0-9.]/g, '')) || 0
   const n = (x) => parseInt(String(x).replace(/[^0-9]/g, ''), 10) || 0
-  const total = n(f.monto_repuestos) + n(f.monto_lubricantes) + n(f.monto_mano_obra)
-              + n(f.monto_servicio_ext) - n(f.descuento)
+
+  const bruto = lineas.reduce((a, l) => a + num(l.cantidad) * num(l.precio_unit), 0)
+  const total = bruto - n(f.descuento)
+
+  const agregar = (tipo) => setLineas((x) => [...x, {
+    id: 'l' + Date.now() + Math.random().toString(36).slice(2, 6),
+    tipo, codigo: '', detalle: '', cantidad: '1', precio_unit: ''
+  }])
+  const editar = (id, campo, valor) =>
+    setLineas((x) => x.map((l) => (l.id === id ? { ...l, [campo]: valor } : l)))
+
+  // Si el trabajo ya tenía líneas guardadas (cierre a medias), se recuperan.
+  useEffect(() => {
+    if (!listo) return
+    supabase.from('ot_detalle').select('*').eq('trabajo_id', trabajo.id).order('orden')
+      .then(({ data }) => {
+        if (data?.length) {
+          setLineas(data.map((l) => ({
+            id: l.id, tipo: l.tipo, codigo: l.codigo || '', detalle: l.detalle,
+            cantidad: String(l.cantidad), precio_unit: String(l.precio_unit)
+          })))
+        }
+      })
+  }, [trabajo.id, listo])
 
   async function cerrar() {
     if (!f.nro_documento.trim()) { setErr('Falta el número de documento.'); return }
+    const validas = lineas.filter((l) => l.detalle.trim() && num(l.precio_unit) > 0)
+    if (!validas.length) { setErr('Agrega al menos una línea con descripción y precio.'); return }
     if (total <= 0) { setErr('El total debe ser mayor a cero.'); return }
     setGuardando(true); setErr('')
+
+    // Correlativo desde la secuencia de la base: dos cierres simultáneos no
+    // pueden obtener el mismo número, cosa que sí pasaría contando filas.
+    let otNumero = trabajo.ot_numero
+    if (!otNumero) {
+      const { data: nro, error: eNro } = await supabase.rpc('siguiente_ot_numero')
+      if (eNro) { setGuardando(false); setErr('No se pudo generar el número de OT: ' + eNro.message); return }
+      otNumero = nro
+    }
+
+    // El detalle se reemplaza completo: es más simple y seguro que conciliar
+    // altas, bajas y ediciones línea por línea.
+    await supabase.from('ot_detalle').delete().eq('trabajo_id', trabajo.id)
+    const { error: eDet } = await supabase.from('ot_detalle').insert(
+      validas.map((l, i) => ({
+        empresa_id: perfil.empresa_id, trabajo_id: trabajo.id,
+        tipo: l.tipo, codigo: l.codigo?.trim() || null, detalle: l.detalle.trim(),
+        cantidad: num(l.cantidad) || 1, precio_unit: num(l.precio_unit), orden: i
+      }))
+    )
+    if (eDet) { setGuardando(false); setErr('No se pudo guardar el detalle: ' + eDet.message); return }
+
+    const sub = (t) => validas.filter((l) => l.tipo === t)
+      .reduce((a, l) => a + num(l.cantidad) * num(l.precio_unit), 0)
+
     const { error } = await supabase.from('trabajos_taller').update({
+      ot_numero: otNumero,
       cierre_estado: 'cerrado',
       estado: 'completada',
       tipo_documento: f.tipo_documento,
       nro_documento: f.nro_documento.trim(),
-      monto_repuestos: n(f.monto_repuestos), monto_lubricantes: n(f.monto_lubricantes),
-      monto_mano_obra: n(f.monto_mano_obra), monto_servicio_ext: n(f.monto_servicio_ext),
+      monto_repuestos: sub('repuesto'), monto_lubricantes: sub('insumo'),
+      monto_mano_obra: sub('servicio'), monto_servicio_ext: sub('servicio_externo'),
       descuento: n(f.descuento), monto_total: total,
       entregado_en: new Date().toISOString(), entregado_por: perfil.id,
       retira_nombre: f.retira_nombre.trim() || null,
@@ -234,6 +305,39 @@ function ModalCierre({ trabajo, perfil, onCerrar, onGuardado, irVehiculo }) {
     }).eq('id', trabajo.id)
     setGuardando(false)
     if (error) { setErr('No se pudo cerrar: ' + error.message); return }
+
+    // Documento de salida para el cliente
+    imprimirSalidaOT({
+      otNumero, fechaIngreso: trabajo.creado_en, fechaEntrega: new Date().toISOString(),
+      patente: trabajo.vehiculos?.patente ? formatPatente(trabajo.vehiculos.patente) : '',
+      marca: trabajo.vehiculos?.marca, modelo: trabajo.vehiculos?.modelo,
+      cliente: trabajo.clientes ? `${trabajo.clientes.nombre || ''} ${trabajo.clientes.apellidos || ''}`.trim() : '',
+      telefono: trabajo.clientes?.telefono, email: trabajo.clientes?.email,
+      km: trabajo.km_ingreso,
+      servicioPrincipal: trabajo.servicio_solicitado,
+      observacionesEntrega: f.observaciones_entrega, retiraNombre: f.retira_nombre,
+      detalle: validas.map((l) => ({ ...l, cantidad: num(l.cantidad), precio_unit: num(l.precio_unit) })),
+      descuento: n(f.descuento), tipoDocumento: f.tipo_documento,
+      nroDocumento: f.nro_documento, asesor: perfil?.nombre
+    })
+
+    // La OT va a la planilla, que sigue siendo la base histórica del negocio.
+    if (sheetUrl) {
+      enviarASheet(sheetUrl, {
+        ot: otNumero, fecha: new Date().toISOString().slice(0, 10),
+        patente: trabajo.vehiculos?.patente || '',
+        marca: trabajo.vehiculos?.marca || '', modelo: trabajo.vehiculos?.modelo || '',
+        propietario: trabajo.clientes ? `${trabajo.clientes.nombre || ''} ${trabajo.clientes.apellidos || ''}`.trim() : '',
+        telefono: trabajo.clientes?.telefono || '', km: trabajo.km_ingreso || '',
+        servicio: trabajo.servicio_solicitado || '',
+        repuestos: sub('repuesto'), manoObra: sub('servicio'),
+        lubricantes: sub('insumo'), serviciosExternos: sub('servicio_externo'),
+        descuento: n(f.descuento), total,
+        documento: f.tipo_documento, nroDocumento: f.nro_documento,
+        asesor: perfil?.nombre || ''
+      }).catch(() => { /* la planilla no debe bloquear la entrega */ })
+    }
+
     onGuardado()
   }
 
@@ -299,16 +403,66 @@ function ModalCierre({ trabajo, perfil, onCerrar, onGuardado, irVehiculo }) {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              {campoMonto('monto_repuestos', 'Repuestos')}
-              {campoMonto('monto_lubricantes', 'Lubricantes')}
-              {campoMonto('monto_mano_obra', 'Mano de obra')}
-              {campoMonto('monto_servicio_ext', 'Servicio externo')}
-              {campoMonto('descuento', 'Descuento')}
-              <div>
-                <label className="label">Total</label>
-                <div className="input bg-mist/60 font-semibold text-ink flex items-center">
-                  {fmtCLP(total)}
+            {/* ---- Detalle por línea ----
+                 Antes se guardaba "repuestos $85.000" y no había forma de saber
+                 qué repuesto ni a qué precio. Con el detalle se puede calcular
+                 margen por línea, descontar de bodega y explicarle el cobro al
+                 cliente sin recurrir a la memoria del asesor. */}
+            <div className="space-y-3">
+              {TIPOS_LINEA.map(([tipo, titulo, ejemplo]) => {
+                const ls = lineas.filter((l) => l.tipo === tipo)
+                const sub = ls.reduce((a, l) => a + (num(l.cantidad) * num(l.precio_unit)), 0)
+                return (
+                  <div key={tipo} className="rounded-lg border border-slate-200 p-2">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-sm font-medium text-ink">{titulo}</span>
+                      <span className="text-xs text-slate-500">{sub ? fmtCLP(sub) : ''}</span>
+                    </div>
+
+                    {ls.map((l) => (
+                      <div key={l.id} className="grid grid-cols-12 gap-1.5 mb-1.5 items-start">
+                        {tipo === 'repuesto' && (
+                          <input className="input col-span-3" placeholder="Código" value={l.codigo || ''}
+                                 style={{ minHeight: '38px' }}
+                                 onChange={(e) => editar(l.id, 'codigo', e.target.value)} />
+                        )}
+                        <input className={tipo === 'repuesto' ? 'input col-span-9' : 'input col-span-12'}
+                               placeholder={ejemplo} value={l.detalle}
+                               style={{ minHeight: '38px' }}
+                               onChange={(e) => editar(l.id, 'detalle', e.target.value)} />
+                        <input className="input col-span-3" inputMode="decimal" placeholder="Cant."
+                               value={l.cantidad} style={{ minHeight: '38px' }}
+                               onChange={(e) => editar(l.id, 'cantidad', e.target.value.replace(/[^0-9.]/g, ''))} />
+                        <input className="input col-span-4" inputMode="numeric" placeholder="Precio unit."
+                               value={l.precio_unit} style={{ minHeight: '38px' }}
+                               onChange={(e) => editar(l.id, 'precio_unit', e.target.value.replace(/[^0-9]/g, ''))} />
+                        <div className="col-span-4 flex items-center justify-end text-sm font-medium text-ink"
+                             style={{ minHeight: '38px' }}>
+                          {fmtCLP(num(l.cantidad) * num(l.precio_unit))}
+                        </div>
+                        <button type="button" className="col-span-1 text-slate-400 text-lg leading-none"
+                                style={{ minHeight: '38px' }}
+                                onClick={() => setLineas((x) => x.filter((y) => y.id !== l.id))}>×</button>
+                      </div>
+                    ))}
+
+                    <button type="button" className="text-xs text-blue-700 font-medium"
+                            onClick={() => agregar(tipo)}>+ Agregar {titulo.toLowerCase()}</button>
+                  </div>
+                )
+              })}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Descuento</label>
+                  <input className="input" inputMode="numeric" value={f.descuento}
+                         onChange={(e) => setF({ ...f, descuento: e.target.value.replace(/[^0-9]/g, '') })} />
+                </div>
+                <div>
+                  <label className="label">Total</label>
+                  <div className="input bg-mist/60 font-semibold text-ink flex items-center">
+                    {fmtCLP(total)}
+                  </div>
                 </div>
               </div>
             </div>
