@@ -31,6 +31,7 @@ const GRUPOS = [
   { titulo: 'Operación', items: [
     { to: '/taller', label: 'Taller', icon: 'taller', feature: 'taller', roles: ['admin', 'jefe_taller', 'tecnico', 'coordinador_adquisiciones', 'encargado_bodega', 'asistente_bodega', 'supervisor'] },
     { to: '/presupuestos', label: 'Presupuestos', icon: 'presupuestos', feature: 'crm', roles: ['admin', 'jefe_taller', 'coordinador_adquisiciones', 'asistente_administrativo', 'supervisor'] },
+    { to: '/recepcion', label: 'Recepción', icon: 'calendario', feature: 'ot' },
     { to: '/nuevo-cliente', label: 'Nuevo cliente', icon: 'clientes', feature: 'ot' },
     { to: '/cierres', label: 'Mis vehículos', icon: 'taller', feature: 'ot' },
     { to: '/vehiculos', label: 'Vehículos', icon: 'taller', feature: 'ot' },
