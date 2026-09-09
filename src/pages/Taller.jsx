@@ -6,6 +6,8 @@ import { notificar } from '../lib/notificar'
 
 import PresupuestoTallerCard from '../components/PresupuestoTallerCard'
 import BandejaClickUp from '../components/BandejaClickUp'
+import PanelVehiculo from '../components/PanelVehiculo'
+import RadarInspeccion from '../components/RadarInspeccion'
 import {
   ESTADOS_TALLER, PRIORIDADES_TALLER, ESTADOS_PRESUP_TALLER, fmtCrono, fmtCLP,
   SECCIONES_PRESUP, seccionDe
@@ -782,9 +784,13 @@ function Detalle({ t, onClose, tareas, presups, tecnicos, nombreDe, diags, marge
                     {x.estado === 'terminada' && <span className="font-mono text-[11px] text-slate-400">{fmtCrono(x.tiempo_seg)}</span>}
                     <select className="text-xs border border-slate-200 rounded px-1 py-0.5 max-w-[110px]" value={x.tecnico_id || ''} disabled={!esJefe}
                             onChange={(e) => acciones.asignarTarea(x, e.target.value || null)}>
-                      <option value="">Sin asignar</option>
+                      {/* Si viene de ClickUp y el asignado no está en el CRM,
+                          se muestra igual su nombre: saber que lo hizo "Felipe
+                          Alcota" sirve más que un "Sin asignar" vacío. */}
+                      <option value="">{x.tecnico_nombre && !x.tecnico_id ? x.tecnico_nombre + ' (ClickUp)' : 'Sin asignar'}</option>
                       {tecnicos.map((u) => <option key={u.id} value={u.id}>{u.nombre.split(' ')[0]}</option>)}
                     </select>
+                    {x.clickup_task_id && <span className="text-[10px] text-slate-300" title="Sincronizada con ClickUp">CU</span>}
                     {esJefe && x.estado !== 'terminada' && <button onClick={() => acciones.eliminarTarea(x)} className="text-slate-300 hover:text-red-500 text-sm">✕</button>}
                   </div>
                   {x.estado !== 'terminada' && (mia || esJefe) && (
@@ -799,7 +805,7 @@ function Detalle({ t, onClose, tareas, presups, tecnicos, nombreDe, diags, marge
                       </>}
                     </div>
                   )}
-                  {x.observacion && <div className="mt-1.5 pl-6 text-xs text-slate-500">💬 {x.observacion} <span className="text-slate-300">— {nombreDe(x.tecnico_id)}</span></div>}
+                  {x.observacion && <div className="mt-1.5 pl-6 text-xs text-slate-500">💬 {x.observacion} <span className="text-slate-300">— {nombreDe(x.tecnico_id) || x.tecnico_nombre || 'sin identificar'}</span></div>}
                 </div>
               )
             })}

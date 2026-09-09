@@ -125,6 +125,42 @@ function json(data: unknown, status = 200) {
 // v43: intenta extraer una patente del título de una tarea creada en
 // ClickUp (texto libre, sin formato fijo). Es solo una SUGERENCIA — el
 // jefe de taller la confirma o corrige antes de vincular/crear nada.
+/** Trae las subtareas de una tarjeta y las guarda como tareas del trabajo,
+ *  con el técnico asignado y las observaciones del mecánico. */
+async function importarSubtareas(taskId: string, trabajoId: string) {
+  try {
+    const r = await fetch(`${CLICKUP_API}/task/${taskId}?include_subtasks=true`,
+      { headers: { Authorization: CLICKUP_TOKEN } })
+    if (!r.ok) return
+    const t = await r.json()
+    const subs = t.subtasks || []
+
+    for (const [i, sub] of subs.entries()) {
+      // El nombre del asignado en ClickUp se cruza con el catálogo de usuarios
+      // del CRM por correo, que es el único identificador estable entre ambos.
+      const correo = sub.assignees?.[0]?.email?.toLowerCase()
+      let tecnicoId = null
+      if (correo) {
+        const { data: u } = await service.from('usuarios')
+          .select('id').ilike('email', correo).maybeSingle()
+        tecnicoId = u?.id || null
+      }
+
+      await service.from('tareas_taller').upsert({
+        empresa_id: EMPRESA_ID, trabajo_id: trabajoId,
+        titulo: sub.name,
+        estado: (sub.status?.status || '').toLowerCase().includes('complete') ? 'terminada' : 'pendiente',
+        tecnico_id: tecnicoId,
+        tecnico_nombre: sub.assignees?.[0]?.username || null,
+        observacion: sub.text_content || sub.description || null,
+        clickup_task_id: sub.id, orden: i
+      }, { onConflict: 'clickup_task_id' })
+    }
+  } catch (e) {
+    console.error('No se pudieron importar las subtareas:', (e as Error).message)
+  }
+}
+
 function extraerPatente(titulo: string): string | null {
   const m = (titulo || '').toUpperCase().match(/\b([A-Z]{2}\s?[A-Z]{2}\s?\d{2}|[A-Z]{2}\s?\d{4})\b/)
   return m ? m[1].replace(/\s+/g, ' ').trim() : null
@@ -177,8 +213,10 @@ Deno.serve(async (req) => {
     if (!user) return json({ error: 'No autenticado' }, 401)
     if (!CLICKUP_TOKEN) return json({ error: 'Falta el secret CLICKUP_API_TOKEN' }, 500)
 
+    // subtasks=true: las subtareas son las tareas del mecánico. Sin ellas solo
+    // llega la tarjeta del vehículo y se pierde quién hizo qué.
     const resp = await fetch(
-      `${CLICKUP_API}/list/${CLICKUP_LIST_ID}/task?subtasks=false&include_closed=false`,
+      `${CLICKUP_API}/list/${CLICKUP_LIST_ID}/task?subtasks=true&include_closed=false`,
       { headers: { Authorization: CLICKUP_TOKEN } })
     if (!resp.ok) return json({ error: 'ClickUp respondió ' + resp.status, detalle: await resp.text() }, 502)
     const { tasks = [] } = await resp.json()
@@ -235,6 +273,11 @@ Deno.serve(async (req) => {
           if (eIns) { r.detalle.push(`${vehiculo.patente}: error — ${eIns.message}`) }
           else { r.creadas++; r.detalle.push(`${vehiculo.patente}: trabajo creado (${estadoCrm})`) }
         }
+        // Subtareas: son las tareas que los mecánicos marcan en ClickUp.
+        // Sin traerlas, el CRM muestra la tarjeta pero no el trabajo real.
+        const idTrabajo = abierto?.id || (await service.from('trabajos_taller')
+          .select('id').eq('clickup_task_id', tarea.id).maybeSingle()).data?.id
+        if (idTrabajo) await importarSubtareas(tarea.id, idTrabajo)
       } else {
         // Sin patente única: decide una persona desde la bandeja.
         await service.from('clickup_tareas_pendientes').upsert({
