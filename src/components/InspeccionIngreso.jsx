@@ -134,6 +134,7 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
   // ---- sección 1: datos generales ----
   const [busca, setBusca] = useState('')
   const [veh, setVeh] = useState(null)
+  const [errBusca, setErrBusca] = useState('')
   const [d, setD] = useState({
     patente: '', km: '', fecha: new Date().toISOString().slice(0, 10), fecha_probable_entrega: '',
     ingreso_grua: false, trabajo_a_realizar: '', observaciones_cliente: '',
@@ -176,11 +177,16 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
     const q = formatPatente(entrada)
     setBusca(q); setD({ ...d, patente: q })
     if (patenteLimpia(q).length < 5) { setVeh(null); return }
-    const { data } = await supabase.from('vehiculos')
+    const { data, error: eBusca } = await supabase.from('vehiculos')
       .select(`id, patente, marca, modelo, version, cilindrada, anio, color, chasis,
-               traccion, transmision, tipo_vehiculo, combustible, km_ultimo, cliente_id,
+               traccion, transmision, tipo_vehiculo, km_ultimo, cliente_id,
                clientes(id, nombre, apellidos, rut, telefono, email, ciudad, direccion, tipo, contacto_nombre)`)
       .ilike('patente_norm', `%${patenteLimpia(q)}%`).limit(1)
+    // Si la consulta falla (una columna mal escrita, por ejemplo), Supabase
+    // devuelve error y data vacío. Sin distinguirlo, toda patente parecería
+    // nueva y se perdería la precarga sin que nadie lo note.
+    if (eBusca) { console.error('Búsqueda de patente falló:', eBusca.message); setErrBusca(eBusca.message) }
+    else setErrBusca('')
     const v = data?.[0] || null
     setVeh(v)
 
@@ -197,7 +203,6 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
         anio: v.anio || x.anio, color: v.color || x.color, chasis: v.chasis || x.chasis,
         traccion: v.traccion || x.traccion, transmision: v.transmision || x.transmision,
         tipo_vehiculo: v.tipo_vehiculo || x.tipo_vehiculo,
-        combustible: v.combustible || x.combustible,
         // El km NO se precarga: es el dato que cambia en cada visita y
         // arrastrarlo del registro anterior lo dejaría desactualizado.
         nombre: c.nombre || x.nombre, apellidos: c.apellidos || x.apellidos,
@@ -306,10 +311,11 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
       cliente: cli ? [cli.nombre, cli.apellidos].filter(Boolean).join(' ') : [d.nombre, d.apellidos].filter(Boolean).join(' '),
       rut: cli?.rut || d.rut, direccion: cli?.direccion || '', email: cli?.email || '',
       telefono: cli?.telefono || d.telefono,
-      // El documento que firma el cliente muestra SOLO el servicio principal.
-      // Los adicionales y los desperfectos sumados son información interna de
-      // venta cruzada: no corresponde imprimirlos en el acta de recepción.
+      // El documento lleva el servicio principal Y los adicionales: el cliente
+      // los aceptó y deben quedar por escrito. Lo que NO aparece es la etiqueta
+      // "venta cruzada", que es lenguaje interno y no corresponde mostrarle.
       trabajo: d.tipo_servicio || d.trabajo_a_realizar,
+      serviciosAdicionales: d.extras || [],
       observacionesCliente: d.observaciones_cliente,
       observacionesAsesor: obsAsesor,
       luces, revision, niveles, combustible, danos, checklist, fotos,
@@ -533,7 +539,8 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
                 <input className="input uppercase" autoFocus value={busca} maxLength={10}
                        onChange={(e) => buscarVehiculo(e.target.value)} placeholder="Ej: GH TY 34" />
                 {veh && <p className="text-xs text-green-600 mt-1">✓ {veh.marca} {veh.modelo} · {[veh.clientes?.nombre, veh.clientes?.apellidos].filter(Boolean).join(' ')} — valida los datos con el cliente</p>}
-                {!veh && patenteLimpia(busca).length >= 5 && <p className="text-xs text-slate-400 mt-1">Patente nueva — completa los datos del cliente y del vehículo.</p>}
+                {!veh && !errBusca && patenteLimpia(busca).length >= 5 && <p className="text-xs text-slate-400 mt-1">Patente nueva — completa los datos del cliente y del vehículo.</p>}
+                {errBusca && <p className="text-xs mt-1" style={{ color: '#b8860b' }}>No se pudo consultar: {errBusca}</p>}
                 {/* La fecha de ingreso es la de hoy y no se edita: es el dato
                     que fija el inicio del cómputo de permanencia. */}
                 <p className="text-[11px] text-slate-400 mt-1">
@@ -542,8 +549,9 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
               </div>
           {true && (
             <div className="space-y-3">
-              {(veh || patenteLimpia(busca).length >= 5) && (
-                <>
+              {/* Los bloques van SIEMPRE visibles: con patente conocida se
+                  precargan para validar, y sin ella se llenan a mano. */}
+              <>
                   <div className="rounded-lg bg-paper p-3 space-y-2">
                     <p className="text-xs font-semibold text-slate-500 uppercase">
                       Datos del cliente
@@ -637,8 +645,7 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
                       <input className="input sm:col-span-2" placeholder="N° de chasis (VIN)" value={d.chasis} onChange={(e) => setD({ ...d, chasis: e.target.value.toUpperCase() })} />
                     </div>
                   </div>
-                </>
-              )}
+              </>
               <div>
                 <label className="label">Ingreso en grúa</label>
                 <div className="flex gap-2">

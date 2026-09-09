@@ -22,7 +22,7 @@ export function imprimirInspeccion(datos) {
   const {
     numero, fecha: fch, patente, marca, modelo, anio, color, km, chasis,
     cliente, rut, direccion, email, telefono, dueno,
-    trabajo, observacionesCliente, observacionesAsesor,
+    trabajo, serviciosAdicionales = [], observacionesCliente, observacionesAsesor,
     luces = [], revision = {}, niveles = {}, combustible = 4, danos = [], checklist = {},
     firmaUrl, fotos = [], asesor
   } = datos
@@ -111,6 +111,12 @@ export function imprimirInspeccion(datos) {
 
   <h3>Cliente Solicita:</h3>
   <div class="txt">${esc(trabajo || '')}${observacionesCliente ? '\n' + esc(observacionesCliente) : ''}</div>
+
+  ${serviciosAdicionales.length ? `
+  <h3>Servicios adicionales</h3>
+  <table>
+    ${serviciosAdicionales.map((sv, i) => `<tr><td style="width:20px" class="c">${i + 1}</td><td>${esc(sv)}</td></tr>`).join('')}
+  </table>` : ''}
 
   <h3>Estado del vehículo al ingreso</h3>
   <div class="cols">
