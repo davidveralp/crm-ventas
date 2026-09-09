@@ -43,79 +43,97 @@ const LUCES = [
    imágenes para que tomen el color al encenderse y no pesen en la carga.
    `fill="currentColor"` en las siluetas macizas, trazo en el resto. */
 const ICONO_LUZ = {
-  // Motor: bloque con aletas laterales, silueta maciza
+  /* Trazados según ISO 2575, la norma que usan todos los fabricantes.
+     Se dibujan como SVG y no como imágenes para que tomen el color al
+     encenderse, escalen sin pixelarse y no dependan de licencias de terceros. */
+
+  // Bloque de motor de perfil con sus aletas
   motor: (
     <g fill="currentColor" stroke="none">
-      <path d="M3.6 10.2h1.7V8.6h2.5V6.9h2.2v1.7h2.6l2.1-2.1h2.4v2.1h1.6v1.6h1.7v4.2h-1.7v1.7h-4l-2.1-2.1h-2.8v2.1H7.8v-1.7H5.3v-1.7H3.6z"/>
+      <path d="M2.6 10.4h1.5V8.7h1.6V7.1h3.1v1.6h2.4l2.6-2.4h1.9v2.4h1.5V7.1h1.6v2.1h2.2v5.6h-2.2v2.1h-1.6v-1.6h-1.5v2.4h-1.9l-2.6-2.4H8.8v1.6H5.7v-1.6H4.1v-1.7H2.6z"/>
     </g>
   ),
-  // Aceitera clásica con gota
+
+  // Aceitera con gota cayendo
   aceite: (
     <g fill="currentColor" stroke="none">
-      <path d="M2.6 14.9c1.3-2 3.4-3.3 6.2-3.3 1.9 0 3.4.5 4.6 1.4l4-2.6 1 1.3-3.2 2.4c.5.7.8 1.5.9 2.4H7.9c-.3-1.1-1.2-1.8-2.4-1.8-1 0-1.9.4-2.5 1.1z"/>
-      <path d="M16.6 5.4c0 .9-.7 1.6-1.6 1.6s-1.6-.7-1.6-1.6c0-1 1.6-3 1.6-3s1.6 2 1.6 3z"/>
+      <path d="M2.4 15.3c1.4-2.2 3.7-3.6 6.7-3.6 2 0 3.7.5 5 1.5l4.3-2.8 1.1 1.5-3.5 2.6c.5.8.9 1.7 1 2.7H8c-.3-1.2-1.3-2-2.6-2-1.1 0-2.1.5-2.7 1.3z"/>
+      <path d="M17.4 4.6c0 1-.8 1.8-1.8 1.8s-1.8-.8-1.8-1.8c0-1.1 1.8-3.4 1.8-3.4s1.8 2.3 1.8 3.4z"/>
     </g>
   ),
-  // Termómetro sobre olas
+
+  // Termómetro sumergido en olas de refrigerante
   temp: (
     <g fill="currentColor" stroke="none">
-      <path d="M12 3.2c-1 0-1.8.8-1.8 1.8v6.9c-.9.6-1.5 1.6-1.5 2.8 0 1.8 1.5 3.3 3.3 3.3s3.3-1.5 3.3-3.3c0-1.2-.6-2.2-1.5-2.8V5c0-1-.8-1.8-1.8-1.8z"/>
-      <rect x="16" y="5.4" width="4.4" height="1.5" rx=".7"/>
-      <rect x="16" y="8.4" width="3.2" height="1.5" rx=".7"/>
-      <rect x="16" y="11.4" width="4.4" height="1.5" rx=".7"/>
-      <path d="M2 19.6c1-1 2.2-1 3.2 0s2.2 1 3.2 0 2.2-1 3.2 0 2.2 1 3.2 0 2.2-1 3.2 0 2.2 1 3.2 0" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+      <path d="M12 2.6c-1.1 0-2 .9-2 2v7.3c-1 .7-1.7 1.8-1.7 3.1a3.7 3.7 0 107.4 0c0-1.3-.7-2.4-1.7-3.1V4.6c0-1.1-.9-2-2-2z"/>
+      <rect x="15.6" y="4.6" width="5" height="1.6" rx=".8"/>
+      <rect x="15.6" y="7.8" width="3.6" height="1.6" rx=".8"/>
+      <rect x="15.6" y="11" width="5" height="1.6" rx=".8"/>
+      <path d="M1.6 19.4c1.1-1.1 2.4-1.1 3.5 0s2.4 1.1 3.5 0 2.4-1.1 3.5 0 2.4 1.1 3.5 0 2.4-1.1 3.5 0 2.4 1.1 3.5 0"
+            fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>
     </g>
   ),
-  // Batería rectangular con bornes
+
+  // Batería con bornes + y −
   bateria: (
-    <g fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round">
-      <rect x="2.6" y="7.4" width="18.8" height="9.8" rx="1"/>
-      <path d="M6.6 7.4V5.6h3.2v1.8M14.2 7.4V5.6h3.2v1.8"/>
-      <path d="M6 12.3h3.4M7.7 10.6v3.4M14.6 12.3H18"/>
+    <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2.2" y="7.2" width="19.6" height="10.2" rx="1"/>
+      <path d="M6.4 7.2V5.4h3.4v1.8M14.2 7.2V5.4h3.4v1.8"/>
+      <path d="M5.6 12.3h3.6M7.4 10.5v3.6M14.8 12.3h3.6"/>
     </g>
   ),
-  // Freno: círculo con exclamación y paréntesis
+
+  // Freno: círculo con exclamación entre paréntesis
   freno: (
-    <g fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round">
-      <circle cx="12" cy="12" r="5.2"/>
-      <path d="M3.9 7.6a8.6 8.6 0 000 8.8M20.1 7.6a8.6 8.6 0 010 8.8"/>
-      <path d="M12 9.1v3.3"/><circle cx="12" cy="14.9" r="1" fill="currentColor" stroke="none"/>
+    <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <circle cx="12" cy="12" r="5.6"/>
+      <path d="M3.4 7.2a9.2 9.2 0 000 9.6M20.6 7.2a9.2 9.2 0 010 9.6"/>
+      <path d="M12 8.9v3.6"/>
+      <circle cx="12" cy="15.1" r="1.1" fill="currentColor" stroke="none"/>
     </g>
   ),
-  // Airbag: ocupante y bolsa desplegada
+
+  // Airbag: ocupante sentado frente a la bolsa desplegada
   airbag: (
     <g fill="currentColor" stroke="none">
-      <circle cx="6.6" cy="7.6" r="2.4"/>
-      <path d="M4 18.6v-3c0-1.5 1-2.6 2.5-2.9l2.6-.5 1.4 2.4-2.6 1.3v2.7z"/>
-      <path d="M10 18.6h1.6l1.4-2.6-2.2-1.1z"/>
-      <circle cx="17" cy="13.4" r="4.4"/>
+      <circle cx="5.8" cy="7.4" r="2.5"/>
+      <path d="M3 18.8v-3.4c0-1.6 1.1-2.8 2.7-3.1l3.2-.6 1.3 2.3-2.9 1.4v3.4z"/>
+      <path d="M9.4 18.8h2.2l1.6-3-2.4-1.2z"/>
+      <circle cx="17.4" cy="12.6" r="4.6"/>
     </g>
   ),
-  // ABS dentro del disco
+
+  // ABS: letras dentro del disco de freno
   abs: (
-    <g fill="none" stroke="currentColor" strokeWidth="1.8">
-      <circle cx="12" cy="12" r="5.4"/>
-      <path d="M3.8 7.6a8.6 8.6 0 000 8.8M20.2 7.6a8.6 8.6 0 010 8.8" strokeLinecap="round"/>
-      <text x="12" y="14.2" fontSize="5" fontWeight="700" textAnchor="middle"
-            fill="currentColor" stroke="none">ABS</text>
+    <g>
+      <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+        <circle cx="12" cy="12" r="6"/>
+        <path d="M3.2 6.9a9.6 9.6 0 000 10.2M20.8 6.9a9.6 9.6 0 010 10.2"/>
+      </g>
+      <text x="12" y="14.4" fontSize="6.2" fontWeight="700" textAnchor="middle"
+            fill="currentColor" stroke="none" fontFamily="Arial, Helvetica, sans-serif">ABS</text>
     </g>
   ),
-  // Neumático en corte con exclamación (TPMS)
+
+  // Presión de neumáticos: corte con estrías y exclamación
   neumatico: (
     <g fill="currentColor" stroke="none">
-      <path d="M5 17.6V11c0-2.9 3.1-5 7-5s7 2.1 7 5v6.6h-2.2V11c0-1.6-2.1-2.9-4.8-2.9S7.2 9.4 7.2 11v6.6z"/>
-      <path d="M4 18.4h16v1.7H4z"/>
-      <path d="M11 9.4h2v3.6h-2z"/><circle cx="12" cy="15.2" r="1.1"/>
+      <path d="M4.4 18V11c0-3.1 3.4-5.4 7.6-5.4S19.6 7.9 19.6 11v7h-2.4v-7c0-1.8-2.3-3.2-5.2-3.2S6.8 9.2 6.8 11v7z"/>
+      <path d="M3.2 18.8h17.6v1.8H3.2z"/>
+      <path d="M4.4 18l-1.2 2.6M19.6 18l1.2 2.6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      <rect x="11" y="8.6" width="2" height="4" rx="1"/>
+      <circle cx="12" cy="15" r="1.15"/>
     </g>
   ),
-  // Luz alta: haz recto
+
+  // Luz alta: haz recto de rayas paralelas
   luces: (
     <g fill="currentColor" stroke="none">
-      <path d="M8.8 5.8c3.4 0 6.1 2.8 6.1 6.2s-2.7 6.2-6.1 6.2H6.9V5.8z"/>
-      <rect x="16.4" y="6.4" width="5.8" height="1.7" rx=".8"/>
-      <rect x="16.4" y="9.5" width="5.8" height="1.7" rx=".8"/>
-      <rect x="16.4" y="12.6" width="5.8" height="1.7" rx=".8"/>
-      <rect x="16.4" y="15.7" width="5.8" height="1.7" rx=".8"/>
+      <path d="M8.4 5.4c3.6 0 6.5 2.9 6.5 6.6s-2.9 6.6-6.5 6.6H6.5V5.4z"/>
+      <rect x="16.6" y="6.2" width="5.8" height="1.8" rx=".9"/>
+      <rect x="16.6" y="9.5" width="5.8" height="1.8" rx=".9"/>
+      <rect x="16.6" y="12.8" width="5.8" height="1.8" rx=".9"/>
+      <rect x="16.6" y="16.1" width="5.8" height="1.8" rx=".9"/>
     </g>
   )
 }
