@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { fmtCLP, formatPatente, ESTADOS_TALLER, OT_TIPO_DOCUMENTO } from '../lib/helpers'
+import { fmtCLP, formatPatente, ESTADOS_TALLER, OT_TIPO_DOCUMENTO, motivoEdgeFunction } from '../lib/helpers'
 
 /* ============================================================================
    Panel del asesor · seguimiento en taller y cierre de entrega
@@ -27,6 +27,25 @@ export default function CierreAsesor() {
   const [estado, setEstado] = useState('cargando')
   const [errMsg, setErrMsg] = useState('')
   const [soloMios, setSoloMios] = useState(true)
+  const [sincronizando, setSincronizando] = useState(false)
+
+  /* Trae de ClickUp lo que aún no está en el CRM y actualiza estados y
+     progreso. Necesario porque el webhook solo cubre las tarjetas ya
+     vinculadas: las creadas directamente en ClickUp quedaban fuera. */
+  async function sincronizar() {
+    setSincronizando(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('clickup-sync', { body: { accion: 'importar' } })
+      const msg = data?.error || (error ? await motivoEdgeFunction(error, data) : null)
+      if (msg) alert('No se pudo sincronizar: ' + msg)
+      else {
+        alert(`${data.total} tarjetas revisadas · ${data.creadas} creadas · ` +
+              `${data.vinculadas} vinculadas · ${data.a_bandeja} a revisar · ${data.ya_estaban} ya estaban.`)
+        cargar()
+      }
+    } catch (e) { alert('No se pudo sincronizar: ' + (e?.message || e)) }
+    setSincronizando(false)
+  }
 
   useEffect(() => { cargar() }, []) // eslint-disable-line
 
@@ -75,6 +94,9 @@ export default function CierreAsesor() {
           <h1 className="text-xl font-bold text-ink">Mis vehículos</h1>
           <p className="text-sm text-slate-500">Seguimiento en taller y cierre de entrega</p>
         </div>
+        <button className="btn-soft text-sm" disabled={sincronizando} onClick={sincronizar}>
+          {sincronizando ? 'Sincronizando…' : '⟳ Sincronizar ClickUp'}
+        </button>
         {!esAdmin && (
           <label className="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer">
             <input type="checkbox" checked={soloMios} onChange={(e) => setSoloMios(e.target.checked)} />

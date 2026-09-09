@@ -6,6 +6,7 @@ import { formatPatente, patenteLimpia, formatRut, fmtFonoOT,
   
   OT_TIPO_INGRESO, OT_TIPO_CLIENTE, OT_CONOCIO, OT_ES_GARANTIA, sucursalDeAsesor, TRANSMISIONES, TRANSMISION_LABEL } from '../lib/helpers'
 import { imprimirInspeccion } from '../lib/inspeccionPDF'
+import { motivoEdgeFunction } from '../lib/helpers'
 
 // v77 · Nuevo Ingreso — formulario de página única (antes 7 pasos).
 // Paso previo a Nueva OT. Al terminar, crea
@@ -176,9 +177,37 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
     setBusca(q); setD({ ...d, patente: q })
     if (patenteLimpia(q).length < 5) { setVeh(null); return }
     const { data } = await supabase.from('vehiculos')
-      .select('id,patente,marca,modelo,tipo_vehiculo,cliente_id,clientes(nombre,apellidos,telefono)')
+      .select(`id, patente, marca, modelo, version, cilindrada, anio, color, chasis,
+               traccion, transmision, tipo_vehiculo, combustible, km_ultimo, cliente_id,
+               clientes(id, nombre, apellidos, rut, telefono, email, ciudad, direccion, tipo, contacto_nombre)`)
       .ilike('patente_norm', `%${patenteLimpia(q)}%`).limit(1)
-    setVeh(data?.[0] || null)
+    const v = data?.[0] || null
+    setVeh(v)
+
+    // Precarga para VALIDAR con el cliente, no para ocultar. Los campos se
+    // muestran llenos y editables: si el cliente cambió de teléfono o el auto
+    // tiene otro kilometraje, se corrige en el momento. Antes los campos
+    // desaparecían y esa información quedaba sin actualizarse nunca.
+    if (v) {
+      const c = v.clientes || {}
+      setD((x) => ({
+        ...x,
+        marca: v.marca || x.marca, modelo: v.modelo || x.modelo,
+        version: v.version || x.version, cilindrada: v.cilindrada || x.cilindrada,
+        anio: v.anio || x.anio, color: v.color || x.color, chasis: v.chasis || x.chasis,
+        traccion: v.traccion || x.traccion, transmision: v.transmision || x.transmision,
+        tipo_vehiculo: v.tipo_vehiculo || x.tipo_vehiculo,
+        combustible: v.combustible || x.combustible,
+        // El km NO se precarga: es el dato que cambia en cada visita y
+        // arrastrarlo del registro anterior lo dejaría desactualizado.
+        nombre: c.nombre || x.nombre, apellidos: c.apellidos || x.apellidos,
+        rut: c.rut || x.rut, telefono: c.telefono || x.telefono,
+        email: c.email || x.email, ciudad: c.ciudad || x.ciudad,
+        direccion: c.direccion || x.direccion,
+        tipo_cliente: c.tipo || x.tipo_cliente,
+        contacto_nombre: c.contacto_nombre || x.contacto_nombre
+      }))
+    }
   }
 
   // ---- sección 2: luces + inventario ----
@@ -277,7 +306,11 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
       cliente: cli ? [cli.nombre, cli.apellidos].filter(Boolean).join(' ') : [d.nombre, d.apellidos].filter(Boolean).join(' '),
       rut: cli?.rut || d.rut, direccion: cli?.direccion || '', email: cli?.email || '',
       telefono: cli?.telefono || d.telefono,
-      trabajo: d.trabajo_a_realizar, observacionesCliente: d.observaciones_cliente,
+      // El documento que firma el cliente muestra SOLO el servicio principal.
+      // Los adicionales y los desperfectos sumados son información interna de
+      // venta cruzada: no corresponde imprimirlos en el acta de recepción.
+      trabajo: d.tipo_servicio || d.trabajo_a_realizar,
+      observacionesCliente: d.observaciones_cliente,
       observacionesAsesor: obsAsesor,
       luces, revision, niveles, combustible, danos, checklist, fotos,
       asesor: perfil?.nombre || '',
@@ -412,7 +445,9 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
             })
             // El error se MUESTRA, no solo se registra en consola. Antes fallaba
             // en silencio y no había forma de saber por qué no llegaba a ClickUp.
-            const msg = eCu?.message || rCu?.error
+            // Igual que en campañas: cuando la función responde 4xx/5xx, el
+            // motivo viene en el cuerpo, no en error.message.
+            const msg = rCu?.error || (eCu ? await motivoEdgeFunction(eCu, rCu) : null)
             if (msg) {
               setAvisoClickUp(String(msg))
               console.error('ClickUp no recibió el ingreso:', msg, rCu)
@@ -507,10 +542,13 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
               </div>
           {true && (
             <div className="space-y-3">
-              {!veh && (
+              {(veh || patenteLimpia(busca).length >= 5) && (
                 <>
                   <div className="rounded-lg bg-paper p-3 space-y-2">
-                    <p className="text-xs font-semibold text-slate-500 uppercase">Datos del cliente</p>
+                    <p className="text-xs font-semibold text-slate-500 uppercase">
+                      Datos del cliente
+                      {veh && <span className="normal-case font-normal text-slate-400"> · verifica con el cliente</span>}
+                    </p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <select className="input sm:col-span-2" value={d.tipo_cliente}
                               onChange={(e) => setD({ ...d, tipo_cliente: e.target.value })}>
@@ -608,11 +646,50 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
                   <button type="button" onClick={() => setD({ ...d, ingreso_grua: false })} className={`px-4 py-1.5 rounded-lg border text-sm ${!d.ingreso_grua ? 'bg-deep text-white border-deep' : 'border-slate-200'}`}>No</button>
                 </div>
               </div>
-              <div className="sm:col-span-2">
-                <label className="label">Trabajo a realizar</label>
-                <textarea className="input" rows="2" value={d.trabajo_a_realizar}
-                          placeholder="Lo que pide el cliente, en sus palabras"
-                          onChange={(e) => setD({ ...d, trabajo_a_realizar: e.target.value })} />
+              <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Trabajo a realizar</label>
+                  <select className="input" value={d.tipo_servicio}
+                          onChange={(e) => setD({ ...d, tipo_servicio: e.target.value, extras: [] })}>
+                    <option value="">Seleccionar servicio…</option>
+                    {SERVICIOS_ORDENADOS.map((sv) => <option key={sv}>{sv}</option>)}
+                  </select>
+                  {d.tipo_servicio && (
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Unidad de negocio: <strong>{otBU(d.tipo_servicio) || 'por clasificar'}</strong>
+                    </p>
+                  )}
+                </div>
+                {/* Segunda lista, con el mismo catálogo menos el ya elegido.
+                    Cada selección se agrega y la lista queda lista para otra:
+                    en una visita se pueden sumar varios adicionales. */}
+                {d.tipo_servicio && (
+                  <div>
+                    <label className="label">Servicio adicional</label>
+                    <select className="input" value=""
+                            onChange={(e) => {
+                              const sv = e.target.value
+                              if (sv) setD((x) => ({ ...x, extras: [...new Set([...(x.extras || []), sv])] }))
+                            }}>
+                      <option value="">Agregar servicio…</option>
+                      {SERVICIOS_ORDENADOS
+                        .filter((sv) => sv !== d.tipo_servicio && !(d.extras || []).includes(sv))
+                        .map((sv) => <option key={sv}>{sv}</option>)}
+                    </select>
+                    {(d.extras || []).length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-1.5">
+                        {(d.extras || []).map((sv) => (
+                          <span key={sv} className="text-[11px] px-2 py-1 rounded-lg flex items-center gap-1"
+                                style={{ background: '#e8f6ee', color: '#1f7a45' }}>
+                            {sv}
+                            <button type="button" className="font-bold"
+                                    onClick={() => setD((x) => ({ ...x, extras: (x.extras || []).filter((y) => y !== sv) }))}>×</button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               <div><label className="label">Observaciones del cliente</label><textarea className="input" rows="2" value={d.observaciones_cliente} onChange={(e) => setD({ ...d, observaciones_cliente: e.target.value })} /></div>
 
@@ -641,77 +718,17 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
                 )}
               </div>
 
-              {/* ---- Tipo de servicio y venta cruzada ---- */}
-              <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="label">Tipo de servicio principal</label>
-                  <select className="input" value={d.tipo_servicio}
-                          onChange={(e) => setD({ ...d, tipo_servicio: e.target.value, extras: [] })}>
-                    <option value="">Seleccionar…</option>
-                    {SERVICIOS_ORDENADOS.map((sv) => <option key={sv}>{sv}</option>)}
-                  </select>
-                  {d.tipo_servicio && (
-                    <p className="text-[11px] text-slate-400 mt-1">
-                      Unidad de negocio: <strong>{otBU(d.tipo_servicio) || 'por clasificar'}</strong>
-                    </p>
-                  )}
-                </div>
-                {/* La fecha de entrega recién tiene sentido cuando se sabe qué
-                    se va a hacer: antes de elegir el servicio es una adivinanza. */}
-                <div>
-                  <label className="label">Fecha probable de entrega</label>
-                  <input className="input" type="date" value={d.fecha_probable_entrega}
-                         disabled={!d.tipo_servicio}
-                         onChange={(e) => setD({ ...d, fecha_probable_entrega: e.target.value })} />
-                  {!d.tipo_servicio && (
-                    <p className="text-[11px] text-slate-400 mt-1">Elige primero el tipo de servicio.</p>
-                  )}
-                </div>
+              {/* La fecha de entrega recién tiene sentido cuando se sabe qué se
+                  va a hacer: antes de elegir el servicio es una adivinanza. */}
+              <div className="sm:col-span-2 sm:w-1/2">
+                <label className="label">Fecha probable de entrega</label>
+                <input className="input" type="date" value={d.fecha_probable_entrega}
+                       disabled={!d.tipo_servicio}
+                       onChange={(e) => setD({ ...d, fecha_probable_entrega: e.target.value })} />
+                {!d.tipo_servicio && (
+                  <p className="text-[11px] text-slate-400 mt-1">Elige primero el trabajo a realizar.</p>
+                )}
               </div>
-
-              {/* ---- Venta cruzada ----
-                   Mismo catálogo, sin el servicio ya elegido. Todo lo que se
-                   marque acá es venta adicional sobre el motivo de la visita,
-                   y es lo que se mide en el panel de venta cruzada. */}
-              {d.tipo_servicio && (
-                <div className="sm:col-span-2 rounded-lg border-2 p-3"
-                     style={{ borderColor: (d.extras || []).length ? '#1f9d57' : '#e2e8f0' }}>
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <div>
-                      <p className="text-sm font-medium text-ink">Venta cruzada</p>
-                      <p className="text-[11px] text-slate-400">
-                        Servicios adicionales que el cliente acepta en esta visita.
-                      </p>
-                    </div>
-                    {(d.extras || []).length > 0 && (
-                      <span className="px-2 py-1 rounded text-xs font-semibold"
-                            style={{ background: '#e8f6ee', color: '#1f7a45' }}>
-                        {(d.extras || []).length} adicional{(d.extras || []).length > 1 ? 'es' : ''}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    {SERVICIOS_ORDENADOS
-                      .filter((sv) => sv !== d.tipo_servicio && svcAplicaAVehiculo(sv, d.tipo_vehiculo || tipoVehSel))
-                      .map((sv) => {
-                        const on = (d.extras || []).includes(sv)
-                        return (
-                          <button key={sv} type="button"
-                            onClick={() => setD((x) => ({
-                              ...x,
-                              extras: on ? (x.extras || []).filter((y) => y !== sv) : [...(x.extras || []), sv]
-                            }))}
-                            className="text-[11px] px-2 py-1 rounded-lg border-2 transition-colors"
-                            style={on
-                              ? { background: '#1f9d57', color: '#fff', borderColor: '#1f9d57', fontWeight: 600 }
-                              : { background: '#fff', color: '#64748b', borderColor: '#e2e8f0' }}>
-                            {on ? '✓ ' : '+ '}{sv}
-                          </button>
-                        )
-                      })}
-                  </div>
-                </div>
-              )}
 
               {/* ---- Proceso del asesor en la recepción ----
                    Estos campos definen cómo se clasifica la OT y a qué meta
@@ -831,7 +848,7 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
                           {it.t}
                           {it.cond && <span className="text-[10px] text-slate-400 font-normal"> · {it.cond}</span>}
                         </div>
-                        <div className="flex flex-wrap gap-1.5 mt-1.5">
+                        <div className="flex flex-wrap gap-1.5 mt-1.5 items-center">
                           {it.ops.map(([v, label, sev]) => {
                             const on = r?.v === v
                             const c = SEV_COLOR[sev]
@@ -848,6 +865,24 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
                               </button>
                             )
                           })}
+                          {/* Si hay hallazgo, el asesor puede sumarlo al
+                              servicio en el momento. Es información INTERNA:
+                              alimenta la venta cruzada y no sale en el
+                              documento que firma el cliente. */}
+                          {r && r.sev !== 'ok' && r.sev !== 'na' && (
+                            <button type="button"
+                              onClick={() => setD((x) => {
+                                const et = `${it.t}${r.v ? ' (' + (it.ops.find((o) => o[0] === r.v)?.[1] || r.v) + ')' : ''}`
+                                const ya = (x.extras || []).includes(et)
+                                return { ...x, extras: ya ? (x.extras || []).filter((y) => y !== et) : [...(x.extras || []), et] }
+                              })}
+                              className="px-2 py-1 rounded-lg text-[11px] border-2 ml-auto"
+                              style={(d.extras || []).some((e) => e.startsWith(it.t))
+                                ? { background: '#1f9d57', color: '#fff', borderColor: '#1f9d57', fontWeight: 600 }
+                                : { background: '#fff', color: '#1f7a45', borderColor: '#a8d9bd' }}>
+                              {(d.extras || []).some((e) => e.startsWith(it.t)) ? '✓ En el servicio' : '+ Sumar al servicio'}
+                            </button>
+                          )}
                         </div>
                       </div>
                     )
