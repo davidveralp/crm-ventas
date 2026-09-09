@@ -125,6 +125,29 @@ for (const f of archivos) {
   }
 }
 
+/* ---- 2c. Índices que apuntan a columnas inexistentes ----
+   Falló al ejecutar la migración 67: el índice usaba `iniciada_en`, que
+   pertenece a radar_inspecciones y no a inspecciones_ingreso. Postgres lo
+   rechaza con "column does not exist", pero recién al ejecutarlo — y para
+   entonces ya te llegó el archivo. */
+const PALABRAS_SQL = new Set(['desc','asc','nulls','first','last','gin','btree',
+  'trgm','upper','lower','coalesce','text','ops','varchar','int','jsonb'])
+
+for (const f of fs.readdirSync(dirSql).filter((x) => x.endsWith('.sql'))) {
+  const sql = fs.readFileSync(path.join(dirSql, f), 'utf8')
+  for (const m of sql.matchAll(/create\s+(?:unique\s+)?index\s+(?:if not exists\s+)?\w+\s+on\s+(?:public\.)?(\w+)\s*\(([^)]*)\)/gi)) {
+    const tabla = m[1].toLowerCase()
+    if (!declaradas[tabla]) continue
+    for (const c of m[2].matchAll(/\b([a-z_]+)\b/g)) {
+      const col = c[1]
+      if (PALABRAS_SQL.has(col)) continue
+      if (!declaradas[tabla].has(col)) {
+        problemas.push({ archivo: 'database/' + f, tabla, col: `${col} (índice sobre columna inexistente)` })
+      }
+    }
+  }
+}
+
 /* ---- 3. Resultado ---- */
 const unicos = [...new Map(problemas.map((p) => [p.tabla + '.' + p.col, p])).values()]
 if (!unicos.length) {

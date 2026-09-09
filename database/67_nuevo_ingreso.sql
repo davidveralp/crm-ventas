@@ -26,7 +26,10 @@ alter table public.inspecciones_ingreso
   add column if not exists tipo_servicio      text,
   add column if not exists solicita_presupuesto boolean default false,
   add column if not exists detalle_presupuesto  text,
-  add column if not exists razon_social       text;
+  add column if not exists razon_social       text,
+  -- Venta cruzada de la visita: servicios adicionales al principal. Se guardan
+  -- aparte para poder medir cuánto se suma sobre el motivo del ingreso.
+  add column if not exists servicios_extra    jsonb default '[]'::jsonb;
 
 comment on column public.inspecciones_ingreso.revision_recepcion is
   'Once puntos de revisión con el cliente presente. {clave: {v, sev}} con sev en ok|pronto|critico|na.';
@@ -39,8 +42,10 @@ comment on column public.inspecciones_ingreso.detalle_presupuesto is
 -- pero deja de usarse en el formulario.
 
 -- Índice para encontrar los ingresos que pidieron presupuesto y siguen sin él
+-- La columna de fecha aquí es `creado_en`. (`iniciada_en` pertenece a
+-- radar_inspecciones, que es otra tabla.)
 create index if not exists inspecciones_presupuesto_idx
-  on public.inspecciones_ingreso (solicita_presupuesto, iniciada_en desc)
+  on public.inspecciones_ingreso (solicita_presupuesto, creado_en desc)
   where solicita_presupuesto;
 
 -- Verificación
@@ -49,7 +54,7 @@ from information_schema.columns
 where table_schema='public' and table_name='inspecciones_ingreso'
   and column_name in ('revision_recepcion','niveles_fluidos','tipo_vehiculo',
                       'combustible','tipo_servicio','solicita_presupuesto',
-                      'detalle_presupuesto','razon_social')
+                      'detalle_presupuesto','razon_social','servicios_extra')
 order by column_name;
 
 notify pgrst, 'reload schema';

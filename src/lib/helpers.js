@@ -643,3 +643,15 @@ export const REVISION_INGRESO = [
 export const SEV_COLOR = {
   ok: '#1f9d57', pronto: '#e0a020', critico: '#e0382b', na: '#94a3b8'
 }
+
+
+/* Lista plana de servicios para el Nuevo Ingreso.
+   PACK MANTENCIÓN 360° va primero porque es el servicio que el negocio quiere
+   empujar: el orden de una lista influye en lo que se elige. Después el resto
+   de Servicio Rápido, Taller Mecánico y DyP. */
+export const SERVICIOS_ORDENADOS = [
+  'PACK MANTENCIÓN 360°',
+  ...OT_SVC_SR.filter((s) => s !== 'PACK MANTENCIÓN 360°'),
+  ...OT_SVC_TALLER,
+  ...OT_SVC_DYP
+]

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { formatPatente, patenteLimpia, formatRut, fmtFonoOT,
   OT_MARCAS, OT_MODELOS, OT_SVC_GRUPOS, svcAplicaAVehiculo, TRACCIONES,
-  REVISION_INGRESO, NIVELES_FLUIDOS, NIVEL_OPCIONES, SEV_COLOR, COMBUSTIBLES, TIPOS_VEHICULO,
+  otBU, SERVICIOS_ORDENADOS, REVISION_INGRESO, NIVELES_FLUIDOS, NIVEL_OPCIONES, SEV_COLOR, COMBUSTIBLES, TIPOS_VEHICULO,
   
   OT_TIPO_INGRESO, OT_TIPO_CLIENTE, OT_CONOCIO, OT_ES_GARANTIA, sucursalDeAsesor, TRANSMISIONES, TRANSMISION_LABEL } from '../lib/helpers'
 import { imprimirInspeccion } from '../lib/inspeccionPDF'
@@ -146,7 +146,7 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
     razon_social: '',            // solo empresa
     tipo_vehiculo: '', combustible: '',
     solicita_presupuesto: false, detalle_presupuesto: '',
-    tipo_servicio: '',
+    tipo_servicio: '', extras: [],
     contacto_nombre: '',         // quién trae el auto si no es el dueño
     dueno_nombre: '',            // dueño cuando difiere de quien paga
     aseguradora: '',
@@ -351,6 +351,14 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
       km: parseInt(d.km, 10) || null, fecha: d.fecha, fecha_probable_entrega: d.fecha_probable_entrega || null,
       ingreso_grua: d.ingreso_grua, trabajo_a_realizar: d.trabajo_a_realizar.trim(),
       tipo_ingreso: d.tipo_ingreso, sucursal: d.sucursal || null,
+      tipo_servicio: d.tipo_servicio || null,
+      // Los extras son la venta cruzada de esta visita: se guardan aparte del
+      // servicio principal para poder medirlos.
+      servicios_extra: d.extras || [],
+      tipo_vehiculo: d.tipo_vehiculo || null, combustible: d.combustible || null,
+      solicita_presupuesto: d.solicita_presupuesto,
+      detalle_presupuesto: d.detalle_presupuesto?.trim() || null,
+      razon_social: d.razon_social?.trim() || null,
       tipo_cliente: d.tipo_cliente, conocio: d.enc_conocio || null,
       autoriza_movilizacion: d.autoriza_movilizacion,
       autoriza_contacto: d.autoriza_contacto,
@@ -378,7 +386,8 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
         empresa_id: perfil.empresa_id,
         vehiculo_id: vehiculoId, cliente_id: clienteId,
         titulo: titulo || 'Ingreso de vehículo',
-        servicio_solicitado: d.trabajo_a_realizar.trim() || null,
+        servicio_solicitado: [d.tipo_servicio, ...(d.extras || [])].filter(Boolean).join(' · ')
+          || d.trabajo_a_realizar.trim() || null,
         observaciones_cliente: d.observaciones_cliente.trim() || null,
         // Nace por designar a propósito: el jefe de taller decide el técnico.
         // La diferencia con antes es que ahora llega con toda la información.
@@ -481,23 +490,23 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
           {/* ---- PASO 0: DATOS ---- */}
           {/* sección 1 */}
           <h3 className="text-sm font-bold text-ink border-b border-slate-200 pb-1 pt-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-deep text-white text-[10px] mr-2">1</span>Datos del vehículo y cliente</h3>
-          {true && (
-            <div className="space-y-3">
-              <div>
+
+              {/* La patente va primero: es la llave que decide si todo lo demás
+                  se precarga o hay que pedirlo. */}
+              <div className="sm:col-span-2">
                 <label className="label">Patente *</label>
                 <input className="input uppercase" autoFocus value={busca} maxLength={10}
                        onChange={(e) => buscarVehiculo(e.target.value)} placeholder="Ej: GH TY 34" />
-                {veh && <p className="text-xs text-green-600 mt-1">✓ {veh.marca} {veh.modelo} · {[veh.clientes?.nombre, veh.clientes?.apellidos].filter(Boolean).join(' ')}</p>}
-                {!veh && patenteLimpia(busca).length >= 5 && <p className="text-xs text-slate-400 mt-1">Patente nueva — completa los datos del cliente más abajo.</p>}
+                {veh && <p className="text-xs text-green-600 mt-1">✓ {veh.marca} {veh.modelo} · {[veh.clientes?.nombre, veh.clientes?.apellidos].filter(Boolean).join(' ')} — valida los datos con el cliente</p>}
+                {!veh && patenteLimpia(busca).length >= 5 && <p className="text-xs text-slate-400 mt-1">Patente nueva — completa los datos del cliente y del vehículo.</p>}
+                {/* La fecha de ingreso es la de hoy y no se edita: es el dato
+                    que fija el inicio del cómputo de permanencia. */}
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Fecha de ingreso: {new Date(d.fecha + 'T12:00:00').toLocaleDateString('es-CL')}
+                </p>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div><label className="label">Kilometraje *</label><input className="input" type="number" value={d.km} onChange={(e) => setD({ ...d, km: e.target.value })} /></div>
-                <div><label className="label">Fecha</label><input className="input" type="date" value={d.fecha} onChange={(e) => setD({ ...d, fecha: e.target.value })} /></div>
-              </div>
-              <div>
-                <label className="label">Fecha probable de entrega</label>
-                <input className="input" type="date" value={d.fecha_probable_entrega} onChange={(e) => setD({ ...d, fecha_probable_entrega: e.target.value })} />
-              </div>
+          {true && (
+            <div className="space-y-3">
               {!veh && (
                 <>
                   <div className="rounded-lg bg-paper p-3 space-y-2">
@@ -530,6 +539,8 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
                   <div className="rounded-lg bg-paper p-3 space-y-2">
                     <p className="text-xs font-semibold text-slate-500 uppercase">Datos del vehículo</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <input className="input" placeholder="Kilometraje" type="number" value={d.km}
+                             onChange={(e) => setD({ ...d, km: e.target.value })} />
                       <div>
                         <select className="input" value={OT_MARCAS.includes(d.marca) ? d.marca : (d.marca ? '__otra__' : '')}
                                 onChange={(e) => setD({ ...d, marca: e.target.value === '__otra__' ? ' ' : e.target.value, modelo: '' })}>
@@ -599,32 +610,8 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
               </div>
               <div className="sm:col-span-2">
                 <label className="label">Trabajo a realizar</label>
-                {/* Mismo catálogo que "Solicitar revisión" de la ficha del
-                    cliente: se toca el servicio y se agrega al texto. Escribir
-                    a mano sigue siendo posible para lo que no esté en la lista. */}
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {OT_SVC_GRUPOS.map((g) => (
-                    <div key={g.bu} className="w-full">
-                      <p className="text-[10px] font-semibold text-slate-400 uppercase mb-1">{g.bu}</p>
-                      <div className="flex flex-wrap gap-1.5 mb-1.5">
-                        {g.items.filter((sv) => svcAplicaAVehiculo(sv, tipoVehSel)).map((sv) => {
-                          const puesto = d.trabajo_a_realizar.includes(sv)
-                          return (
-                            <button key={sv} type="button" onClick={() => alternarServicio(sv)}
-                              className="text-[11px] px-2 py-1 rounded-lg border transition-colors"
-                              style={puesto
-                                ? { background: '#111922', color: '#fff', borderColor: '#111922' }
-                                : { background: '#fff', color: '#64748b', borderColor: '#e2e8f0' }}>
-                              {puesto ? '✓ ' : '+ '}{sv}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
                 <textarea className="input" rows="2" value={d.trabajo_a_realizar}
-                          placeholder="Toca los servicios de arriba o escribe lo que pide el cliente"
+                          placeholder="Lo que pide el cliente, en sus palabras"
                           onChange={(e) => setD({ ...d, trabajo_a_realizar: e.target.value })} />
               </div>
               <div><label className="label">Observaciones del cliente</label><textarea className="input" rows="2" value={d.observaciones_cliente} onChange={(e) => setD({ ...d, observaciones_cliente: e.target.value })} /></div>
@@ -654,28 +641,77 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
                 )}
               </div>
 
-              {/* ---- Ingreso al taller ---- */}
+              {/* ---- Tipo de servicio y venta cruzada ---- */}
               <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="label">Tipo de servicio</label>
+                  <label className="label">Tipo de servicio principal</label>
                   <select className="input" value={d.tipo_servicio}
-                          onChange={(e) => setD({ ...d, tipo_servicio: e.target.value })}>
+                          onChange={(e) => setD({ ...d, tipo_servicio: e.target.value, extras: [] })}>
                     <option value="">Seleccionar…</option>
-                    {OT_SVC_GRUPOS.map((g) => (
-                      <optgroup key={g.bu} label={g.bu}>
-                        {g.items.map((sv) => <option key={sv}>{sv}</option>)}
-                      </optgroup>
-                    ))}
+                    {SERVICIOS_ORDENADOS.map((sv) => <option key={sv}>{sv}</option>)}
                   </select>
+                  {d.tipo_servicio && (
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Unidad de negocio: <strong>{otBU(d.tipo_servicio) || 'por clasificar'}</strong>
+                    </p>
+                  )}
                 </div>
-                <div className="flex items-end">
-                  <label className="flex items-center gap-2 cursor-pointer pb-2">
-                    <input type="checkbox" checked={d.ingreso_grua}
-                           onChange={(e) => setD({ ...d, ingreso_grua: e.target.checked })} />
-                    <span className="text-sm">El vehículo ingresó en grúa</span>
-                  </label>
+                {/* La fecha de entrega recién tiene sentido cuando se sabe qué
+                    se va a hacer: antes de elegir el servicio es una adivinanza. */}
+                <div>
+                  <label className="label">Fecha probable de entrega</label>
+                  <input className="input" type="date" value={d.fecha_probable_entrega}
+                         disabled={!d.tipo_servicio}
+                         onChange={(e) => setD({ ...d, fecha_probable_entrega: e.target.value })} />
+                  {!d.tipo_servicio && (
+                    <p className="text-[11px] text-slate-400 mt-1">Elige primero el tipo de servicio.</p>
+                  )}
                 </div>
               </div>
+
+              {/* ---- Venta cruzada ----
+                   Mismo catálogo, sin el servicio ya elegido. Todo lo que se
+                   marque acá es venta adicional sobre el motivo de la visita,
+                   y es lo que se mide en el panel de venta cruzada. */}
+              {d.tipo_servicio && (
+                <div className="sm:col-span-2 rounded-lg border-2 p-3"
+                     style={{ borderColor: (d.extras || []).length ? '#1f9d57' : '#e2e8f0' }}>
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div>
+                      <p className="text-sm font-medium text-ink">Venta cruzada</p>
+                      <p className="text-[11px] text-slate-400">
+                        Servicios adicionales que el cliente acepta en esta visita.
+                      </p>
+                    </div>
+                    {(d.extras || []).length > 0 && (
+                      <span className="px-2 py-1 rounded text-xs font-semibold"
+                            style={{ background: '#e8f6ee', color: '#1f7a45' }}>
+                        {(d.extras || []).length} adicional{(d.extras || []).length > 1 ? 'es' : ''}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {SERVICIOS_ORDENADOS
+                      .filter((sv) => sv !== d.tipo_servicio && svcAplicaAVehiculo(sv, d.tipo_vehiculo || tipoVehSel))
+                      .map((sv) => {
+                        const on = (d.extras || []).includes(sv)
+                        return (
+                          <button key={sv} type="button"
+                            onClick={() => setD((x) => ({
+                              ...x,
+                              extras: on ? (x.extras || []).filter((y) => y !== sv) : [...(x.extras || []), sv]
+                            }))}
+                            className="text-[11px] px-2 py-1 rounded-lg border-2 transition-colors"
+                            style={on
+                              ? { background: '#1f9d57', color: '#fff', borderColor: '#1f9d57', fontWeight: 600 }
+                              : { background: '#fff', color: '#64748b', borderColor: '#e2e8f0' }}>
+                            {on ? '✓ ' : '+ '}{sv}
+                          </button>
+                        )
+                      })}
+                  </div>
+                </div>
+              )}
 
               {/* ---- Proceso del asesor en la recepción ----
                    Estos campos definen cómo se clasifica la OT y a qué meta
