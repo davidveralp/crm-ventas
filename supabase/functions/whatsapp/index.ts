@@ -36,9 +36,28 @@ const SB_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SB_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 const WA_TOKEN = Deno.env.get('WA_TOKEN') ?? ''
 const WA_VERIFY = Deno.env.get('WA_VERIFY_TOKEN') ?? ''
-const PHONES: Record<string, string> = {
-  Toyota: Deno.env.get('WA_PHONE_TOYOTA') ?? '',
-  Multimarca: Deno.env.get('WA_PHONE_MULTIMARCA') ?? ''
+/* Didial tiene DOS cuentas de WhatsApp Business separadas, una por sucursal.
+   No es una cuenta con dos números: son dos WABA independientes.
+
+   Consecuencia práctica: las plantillas se aprueban por cuenta, así que
+   "vehículo listo" hay que crearla dos veces. A cambio, cada sucursal conserva
+   su identidad frente al cliente. */
+const CUENTAS: Record<string, { phoneId: string; waba: string }> = {
+  Toyota: {
+    phoneId: Deno.env.get('WA_PHONE_TOYOTA') ?? '',
+    waba: '230575228519735'
+  },
+  Multimarca: {
+    phoneId: Deno.env.get('WA_PHONE_MULTIMARCA') ?? '',
+    waba: '2450883918497727'
+  }
+}
+
+/* Qué número usar. El vehículo manda: un Toyota se responde desde el número de
+   Toyota aunque el cliente tenga también una camioneta de otra marca. */
+function sucursalDe(marca?: string | null, sucursal?: string | null): string {
+  if (sucursal === 'Toyota' || sucursal === 'Multimarca') return sucursal
+  return String(marca || '').toUpperCase().includes('TOYOTA') ? 'Toyota' : 'Multimarca'
 }
 const EMPRESA = '00000000-0000-0000-0000-000000000001'
 const API = 'https://graph.facebook.com/v21.0'
@@ -94,8 +113,8 @@ Deno.serve(async (req) => {
     // ---- Salida: el CRM envía un mensaje ----
     if (body.accion === 'enviar') {
       if (!WA_TOKEN) return json({ error: 'Falta el secret WA_TOKEN' }, 500)
-      const sucursal = body.sucursal === 'Toyota' ? 'Toyota' : 'Multimarca'
-      const phoneId = PHONES[sucursal]
+      const sucursal = sucursalDe(body.marca, body.sucursal)
+      const phoneId = CUENTAS[sucursal].phoneId
       if (!phoneId) return json({ error: `Falta el secret WA_PHONE_${sucursal.toUpperCase()}` }, 500)
 
       const para = normalizarFono(body.telefono)
@@ -142,6 +161,12 @@ Deno.serve(async (req) => {
 
     // ---- Entrada: Meta notifica un mensaje del cliente ----
     const entry = body.entry?.[0]?.changes?.[0]?.value
+    // Por qué número entró: Meta lo indica en metadata. Sirve para responder
+    // desde el mismo y para saber qué sucursal atiende.
+    const phoneIdEntrada = entry?.metadata?.phone_number_id
+    const sucursalEntrada = phoneIdEntrada === CUENTAS.Toyota.phoneId ? 'Toyota'
+                          : phoneIdEntrada === CUENTAS.Multimarca.phoneId ? 'Multimarca' : null
+
     if (entry?.messages?.length) {
       for (const m of entry.messages) {
         const fono = normalizarFono(m.from)
@@ -150,7 +175,7 @@ Deno.serve(async (req) => {
 
         await service.from('wa_mensajes').insert({
           empresa_id: EMPRESA, telefono: fono, direccion: 'entrante',
-          texto, wa_id: m.id, cliente_id: cliente?.id || null,
+          texto, wa_id: m.id, cliente_id: cliente?.id || null, sucursal: sucursalEntrada,
           nombre_perfil: entry.contacts?.[0]?.profile?.name || null,
           recibido_en: new Date(Number(m.timestamp) * 1000).toISOString()
         })
