@@ -14,11 +14,14 @@ import { motivoEdgeFunction } from '../lib/helpers'
 // entrega los datos ya listos para prellenar el formulario de Nueva OT.
 
 /* Las cuatro áreas de la OT, en el mismo orden que las pestañas de Dimasoft. */
+/* El tercer valor indica a dónde va en ClickUp: la mano de obra se ejecuta y
+   por eso va como subtarea con responsable; los materiales solo se verifican y
+   van como lista de control. */
 const AREAS_OT = [
-  ['repuesto', 'Repuestos'],
-  ['insumo', 'Lubricantes e insumos'],
-  ['servicio', 'Mano de obra'],
-  ['servicio_externo', 'Servicios externos']
+  ['servicio', 'Mano de obra', 'subtareas'],
+  ['repuesto', 'Repuestos', 'lista de control'],
+  ['insumo', 'Lubricantes e insumos', 'lista de control'],
+  ['servicio_externo', 'Servicio externo', 'lista de control']
 ]
 
 const SILUETAS = [
@@ -289,7 +292,8 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
   /* Las cuatro áreas de la OT, igual que en Dimasoft. El asesor carga QUÉ hay
      que hacer; el precio lo pone después el encargado de presupuestos. */
   const [lineasOT, setLineasOT] = useState([])
-  const [nuevaLinea, setNuevaLinea] = useState({ tipo: 'repuesto', detalle: '', cantidad: '1', codigo: '' })
+  const [nuevaLinea, setNuevaLinea] = useState({ tipo: 'servicio', detalle: '', cantidad: '1', codigo: '' })
+  const [areasAbiertas, setAreasAbiertas] = useState({})
   const [nuevoItem, setNuevoItem] = useState('')
   const [obsAsesor, setObsAsesor] = useState('')
   /* Agrega o quita un servicio del texto de "Trabajo a realizar". Se trabaja

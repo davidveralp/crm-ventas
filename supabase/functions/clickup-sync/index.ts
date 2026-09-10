@@ -385,31 +385,59 @@ Deno.serve(async (req) => {
         .update({ clickup_task_id: cu.id, clickup_synced_at: new Date().toISOString() })
         .eq('id', t.id)
 
-      /* Líneas de la OT como subtareas, agrupadas por área con separadores.
-         Se usa el mismo formato "*** ÁREA ***" que el taller ya emplea, para
-         que la importación posterior las reconozca y las devuelva clasificadas. */
+      /* Estructura en ClickUp, según cómo trabaja el taller:
+           · SUBTAREAS       → tareas y mano de obra (lo que el mecánico ejecuta
+                               y marca uno por uno)
+           · LISTAS DE CONTROL → repuestos, lubricantes e insumos y servicios
+                               externos (materiales que se verifican, no se
+                               ejecutan)
+
+         La distinción importa: una subtarea tiene responsable y estado; un
+         ítem de lista de control solo se marca. Los materiales no se "hacen". */
       const { data: lineas } = await service.from('ot_detalle')
-        .select('id, tipo, detalle, cantidad').eq('trabajo_id', t.id).order('orden')
+        .select('id, tipo, detalle, cantidad, codigo').eq('trabajo_id', t.id).order('orden')
+
       if (lineas?.length) {
-        const AREAS: Array<[string, string]> = [
-          ['repuesto', 'REPUESTOS'], ['insumo', 'INSUMOS'],
-          ['servicio', 'MANO DE OBRA'], ['servicio_externo', 'SERVICIOS EXTERNOS']
-        ]
-        for (const [tipo, rotulo] of AREAS) {
-          const ls = lineas.filter((l: any) => l.tipo === tipo)
-          if (!ls.length) continue
-          await fetch(`${CLICKUP_API}/list/${CLICKUP_LIST_ID}/task`, {
+        // Mano de obra → subtareas
+        for (const l of lineas.filter((x: any) => x.tipo === 'servicio')) {
+          const r = await fetch(`${CLICKUP_API}/list/${CLICKUP_LIST_ID}/task`, {
             method: 'POST', headers: await cuHeaders(),
-            body: JSON.stringify({ name: `*** ${rotulo} ***`, parent: cu.id })
-          })
-          for (const l of ls) {
-            await fetch(`${CLICKUP_API}/list/${CLICKUP_LIST_ID}/task`, {
-              method: 'POST', headers: await cuHeaders(),
-              body: JSON.stringify({
-                name: Number(l.cantidad) > 1 ? `${l.detalle} (x${l.cantidad})` : l.detalle,
-                parent: cu.id
-              })
+            body: JSON.stringify({
+              name: Number(l.cantidad) > 1 ? `${l.detalle} (x${l.cantidad})` : l.detalle,
+              parent: cu.id
             })
+          })
+          if (r.ok) {
+            const sub = await r.json()
+            await service.from('ot_detalle').update({ clickup_id: sub.id }).eq('id', l.id)
+          }
+        }
+
+        // Materiales → una lista de control por área
+        const LISTAS: Array<[string, string]> = [
+          ['repuesto', 'Repuestos'],
+          ['insumo', 'Lubricantes e insumos'],
+          ['servicio_externo', 'Servicio externo']
+        ]
+        for (const [tipo, nombre] of LISTAS) {
+          const ls = lineas.filter((x: any) => x.tipo === tipo)
+          if (!ls.length) continue
+
+          const rc = await fetch(`${CLICKUP_API}/task/${cu.id}/checklist`, {
+            method: 'POST', headers: await cuHeaders(),
+            body: JSON.stringify({ name: nombre })
+          })
+          if (!rc.ok) { console.error('Lista de control rechazada:', await rc.text()); continue }
+          const { checklist } = await rc.json()
+
+          for (const l of ls) {
+            const etiqueta = [l.codigo, l.detalle].filter(Boolean).join(' · ') +
+              (Number(l.cantidad) > 1 ? ` (x${l.cantidad})` : '')
+            const ri = await fetch(`${CLICKUP_API}/checklist/${checklist.id}/checklist_item`, {
+              method: 'POST', headers: await cuHeaders(),
+              body: JSON.stringify({ name: etiqueta })
+            })
+            if (!ri.ok) console.error('Ítem rechazado:', await ri.text())
           }
         }
       }

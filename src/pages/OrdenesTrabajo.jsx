@@ -1,0 +1,313 @@
+import { useEffect, useMemo, useState } from 'react'
+import { supabase } from '../lib/supabase'
+import { fmtCLP, formatPatente, patenteLimpia, ESTADOS_TALLER } from '../lib/helpers'
+
+/* ============================================================================
+   Órdenes de trabajo · listado y detalle
+   ----------------------------------------------------------------------------
+   Reemplaza la pestaña "Solo cliente". Muestra todas las OT en orden
+   cronológico, con buscador y tres estados que importan para la operación:
+
+     · Abierta               — el vehículo está en el taller
+     · Cerrada               — entregada y documentada
+     · Cerrada sin documento — entregada pero sin boleta ni factura
+
+   El tercero es el que interesa vigilar: son trabajos hechos que todavía no se
+   facturaron. Sin distinguirlo, se pierden entre las cerradas.
+   ========================================================================== */
+
+const fecha = (d) => d ? new Date(d).toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'
+
+const CLASES = {
+  abierta:      { label: 'Abierta', color: '#2f6fb0', bg: '#e8f0fa' },
+  cerrada:      { label: 'Cerrada', color: '#1f9d57', bg: '#e8f6ee' },
+  sin_doc:      { label: 'Sin documento', color: '#e0382b', bg: '#fdecea' }
+}
+
+const claseDe = (t) => {
+  if (t.cierre_estado !== 'cerrado') return 'abierta'
+  return t.nro_documento ? 'cerrada' : 'sin_doc'
+}
+
+export default function OrdenesTrabajo({ onEditar }) {
+  const [rows, setRows] = useState([])
+  const [q, setQ] = useState('')
+  const [filtro, setFiltro] = useState('todas')
+  const [estado, setEstado] = useState('cargando')
+  const [errMsg, setErrMsg] = useState('')
+  const [sel, setSel] = useState(null)
+
+  useEffect(() => { cargar() }, [])
+
+  async function cargar() {
+    setEstado('cargando')
+    const { data, error } = await supabase.from('trabajos_taller')
+      .select(`id, ot_numero, titulo, estado, cierre_estado, creado_en, entregado_en,
+               monto_total, nro_documento, tipo_documento, servicio_solicitado,
+               observaciones_cliente, km_ingreso, sucursal, vehiculo_id, cliente_id,
+               vehiculos(patente, marca, modelo, anio),
+               clientes(nombre, apellidos, telefono, rut)`)
+      .order('creado_en', { ascending: false }).limit(500)
+    if (error) { setErrMsg(error.message); setEstado('error'); return }
+    setRows(data || []); setEstado('listo')
+  }
+
+  const K = useMemo(() => ({
+    total: rows.length,
+    abierta: rows.filter((t) => claseDe(t) === 'abierta').length,
+    cerrada: rows.filter((t) => claseDe(t) === 'cerrada').length,
+    sin_doc: rows.filter((t) => claseDe(t) === 'sin_doc').length
+  }), [rows])
+
+  const visibles = useMemo(() => {
+    let r = rows
+    if (filtro !== 'todas') r = r.filter((t) => claseDe(t) === filtro)
+    const t = q.trim().toUpperCase()
+    if (t) {
+      const pn = patenteLimpia(t)
+      r = r.filter((x) =>
+        (x.ot_numero || '').includes(t) ||
+        (x.vehiculos?.patente || '').toUpperCase().replace(/[^A-Z0-9]/g, '').includes(pn) ||
+        `${x.clientes?.nombre || ''} ${x.clientes?.apellidos || ''}`.toUpperCase().includes(t) ||
+        (x.vehiculos?.marca || '').toUpperCase().includes(t) ||
+        (x.vehiculos?.modelo || '').toUpperCase().includes(t))
+    }
+    return r
+  }, [rows, q, filtro])
+
+  if (estado === 'cargando') return <div className="text-slate-400 text-sm">Cargando órdenes…</div>
+  if (estado === 'error') return (
+    <div className="card p-4">
+      <p className="text-sm text-slate-600">No se pudieron cargar las órdenes.</p>
+      <p className="text-xs text-slate-400 mt-1">{errMsg}</p>
+    </div>
+  )
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {[['todas', 'Total', K.total, '#6b7a8a'],
+          ['abierta', 'Abiertas', K.abierta, CLASES.abierta.color],
+          ['cerrada', 'Cerradas', K.cerrada, CLASES.cerrada.color],
+          ['sin_doc', 'Sin documento', K.sin_doc, CLASES.sin_doc.color]].map(([k, l, v, c]) => (
+          <button key={k} onClick={() => setFiltro(k)}
+            className="card p-3 text-left border-l-4 transition-opacity"
+            style={{ borderLeftColor: c, opacity: filtro === k || filtro === 'todas' ? 1 : 0.55 }}>
+            <div className="text-xs text-slate-500">{l}</div>
+            <div className="text-2xl font-semibold" style={{ color: k === 'sin_doc' && v ? c : '#111922' }}>{v}</div>
+          </button>
+        ))}
+      </div>
+
+      {filtro === 'sin_doc' && K.sin_doc > 0 && (
+        <p className="text-[11px] px-2 py-1.5 rounded" style={{ background: '#fdecea', color: '#8a1f18' }}>
+          Trabajos entregados sin boleta ni factura. Cada uno es un cobro pendiente de documentar.
+        </p>
+      )}
+
+      <input className="input w-full" placeholder="Buscar por N° de OT, patente, cliente, marca o modelo…"
+             value={q} onChange={(e) => setQ(e.target.value)} />
+
+      <div className="card overflow-x-auto">
+        <table className="w-full text-sm min-w-[680px]">
+          <thead>
+            <tr className="text-slate-400 text-xs border-b">
+              <th className="text-left p-2">OT</th>
+              <th className="text-left">Fecha</th>
+              <th className="text-left">Patente</th>
+              <th className="text-left">Vehículo</th>
+              <th className="text-left">Cliente</th>
+              <th className="text-center">Estado</th>
+              <th className="text-right">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visibles.slice(0, 200).map((t) => {
+              const c = CLASES[claseDe(t)]
+              return (
+                <tr key={t.id} onClick={() => setSel(t)}
+                    className="border-b last:border-0 cursor-pointer hover:bg-slate-50">
+                  <td className="p-2 font-medium text-ink">{t.ot_numero || '—'}</td>
+                  <td className="text-slate-500">{fecha(t.creado_en)}</td>
+                  <td className="font-medium">{t.vehiculos?.patente ? formatPatente(t.vehiculos.patente) : '—'}</td>
+                  <td className="truncate max-w-[150px] text-slate-600">
+                    {[t.vehiculos?.marca, t.vehiculos?.modelo].filter(Boolean).join(' ') || '—'}
+                  </td>
+                  <td className="truncate max-w-[160px] text-slate-600">
+                    {`${t.clientes?.nombre || ''} ${t.clientes?.apellidos || ''}`.trim() || '—'}
+                  </td>
+                  <td className="text-center">
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold"
+                          style={{ background: c.bg, color: c.color }}>{c.label}</span>
+                  </td>
+                  <td className="text-right font-medium">{t.monto_total ? fmtCLP(t.monto_total) : '—'}</td>
+                </tr>
+              )
+            })}
+            {!visibles.length && (
+              <tr><td colSpan={7} className="p-4 text-center text-slate-400">Sin órdenes que coincidan.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      {visibles.length > 200 && (
+        <p className="text-[11px] text-slate-400">Se muestran las primeras 200 de {visibles.length}.</p>
+      )}
+
+      {sel && <DetalleOT ot={sel} onCerrar={() => setSel(null)}
+                         onEditar={onEditar} onCambio={() => { setSel(null); cargar() }} />}
+    </div>
+  )
+}
+
+/* ------------------------------- Detalle ---------------------------------- */
+
+const AREAS = [
+  ['servicio', 'Mano de obra'],
+  ['repuesto', 'Repuestos'],
+  ['insumo', 'Lubricantes e insumos'],
+  ['servicio_externo', 'Servicio externo']
+]
+
+function DetalleOT({ ot, onCerrar, onCambio }) {
+  const [lineas, setLineas] = useState([])
+  const [tareas, setTareas] = useState([])
+  const [cargando, setCargando] = useState(true)
+  const editable = ot.cierre_estado !== 'cerrado'
+
+  useEffect(() => {
+    Promise.all([
+      supabase.from('ot_detalle').select('*').eq('trabajo_id', ot.id).order('orden'),
+      supabase.from('tareas_taller').select('*').eq('trabajo_id', ot.id).order('orden')
+    ]).then(([d, t]) => {
+      setLineas(d.data || []); setTareas(t.data || []); setCargando(false)
+    })
+  }, [ot.id])
+
+  const total = lineas.reduce((a, l) => a + (l.total || 0), 0)
+  const c = CLASES[claseDe(ot)]
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="bg-white sm:rounded-xl w-full max-w-2xl max-h-[100dvh] sm:max-h-[92vh] overflow-y-auto">
+        <div className="p-4 border-b border-slate-100 sticky top-0 bg-white flex items-start justify-between gap-2">
+          <div>
+            <h3 className="font-semibold text-ink text-lg">
+              OT {ot.ot_numero || 's/n'}
+              <span className="ml-2 px-2 py-0.5 rounded text-[10px] font-semibold align-middle"
+                    style={{ background: c.bg, color: c.color }}>{c.label}</span>
+            </h3>
+            <p className="text-xs text-slate-400">
+              {ot.vehiculos?.patente ? formatPatente(ot.vehiculos.patente) : ''} ·{' '}
+              {[ot.vehiculos?.marca, ot.vehiculos?.modelo, ot.vehiculos?.anio].filter(Boolean).join(' ')}
+            </p>
+          </div>
+          <button onClick={onCerrar} className="text-slate-400 text-xl leading-none">×</button>
+        </div>
+
+        <div className="p-4 space-y-4">
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <p className="text-[11px] text-slate-400 uppercase">Cliente</p>
+              <p className="font-medium text-ink">
+                {`${ot.clientes?.nombre || ''} ${ot.clientes?.apellidos || ''}`.trim() || '—'}
+              </p>
+              <p className="text-xs text-slate-500">{ot.clientes?.telefono || ''}</p>
+            </div>
+            <div>
+              <p className="text-[11px] text-slate-400 uppercase">Ingreso</p>
+              <p className="font-medium text-ink">{fecha(ot.creado_en)}</p>
+              {ot.km_ingreso ? <p className="text-xs text-slate-500">{ot.km_ingreso.toLocaleString('es-CL')} km</p> : null}
+            </div>
+          </div>
+
+          {ot.servicio_solicitado && (
+            <div>
+              <p className="text-[11px] text-slate-400 uppercase mb-0.5">Trabajo solicitado</p>
+              <p className="text-sm text-slate-700">{ot.servicio_solicitado}</p>
+            </div>
+          )}
+
+          {cargando ? <p className="text-sm text-slate-400">Cargando detalle…</p> : (
+            <>
+              {AREAS.map(([tipo, titulo]) => {
+                const ls = lineas.filter((l) => l.tipo === tipo)
+                if (!ls.length) return null
+                const sub = ls.reduce((a, l) => a + (l.total || 0), 0)
+                return (
+                  <div key={tipo} className="rounded-lg border border-slate-200 p-2">
+                    <div className="flex justify-between mb-1">
+                      <span className="text-sm font-medium text-ink">{titulo}</span>
+                      <span className="text-xs text-slate-500">{sub ? fmtCLP(sub) : 'sin valorizar'}</span>
+                    </div>
+                    {ls.map((l) => (
+                      <div key={l.id} className="flex justify-between gap-2 text-sm py-0.5">
+                        <span className="text-slate-700 flex-1 min-w-0 truncate">
+                          {l.codigo ? <span className="text-slate-400">{l.codigo} · </span> : null}
+                          {l.detalle}
+                          {Number(l.cantidad) > 1 && <span className="text-slate-400"> ×{l.cantidad}</span>}
+                        </span>
+                        <span className="text-slate-500 shrink-0">
+                          {l.total ? fmtCLP(l.total) : <span style={{ color: '#e0a020' }}>—</span>}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })}
+
+              {tareas.length > 0 && (
+                <div className="rounded-lg border border-slate-200 p-2">
+                  <p className="text-sm font-medium text-ink mb-1">
+                    Tareas ({tareas.filter((t) => t.estado === 'terminada').length}/{tareas.length})
+                  </p>
+                  {tareas.map((t) => (
+                    <div key={t.id} className="flex gap-2 text-sm py-0.5">
+                      <span>{t.estado === 'terminada' ? '✓' : '○'}</span>
+                      <span className="flex-1 text-slate-700">{t.titulo}</span>
+                      <span className="text-xs text-slate-400">
+                        {t.tecnico_nombre || ''}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {total > 0 && (
+                <div className="flex justify-between items-center rounded-lg p-3" style={{ background: '#f1f5f9' }}>
+                  <span className="text-sm text-slate-600">
+                    {ot.nro_documento ? `${ot.tipo_documento} ${ot.nro_documento}` : 'Sin documento emitido'}
+                  </span>
+                  <span className="text-lg font-semibold text-ink">{fmtCLP(total)}</span>
+                </div>
+              )}
+
+              {!lineas.length && !tareas.length && (
+                <p className="text-sm text-slate-400 text-center py-3">
+                  Esta orden no tiene detalle cargado.
+                </p>
+              )}
+            </>
+          )}
+
+          {!editable && (
+            <p className="text-[11px] px-2 py-1.5 rounded" style={{ background: '#f1f5f9', color: '#64748b' }}>
+              La orden está cerrada: el detalle no se puede modificar. Para corregir un monto o
+              un documento hay que reabrirla desde administración.
+            </p>
+          )}
+        </div>
+
+        <div className="p-4 border-t border-slate-100 flex gap-2 justify-end sticky bottom-0 bg-white">
+          <button className="btn-soft text-sm" onClick={onCerrar}>Cerrar</button>
+          {editable && (
+            <button className="btn-primary text-sm"
+                    onClick={() => { window.location.assign(`/cierres?ot=${ot.id}`) }}>
+              Editar / registrar salida
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
