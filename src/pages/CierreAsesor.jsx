@@ -245,18 +245,38 @@ function ModalCierre({ trabajo, perfil, onCerrar, onGuardado, irVehiculo }) {
   const editar = (id, campo, valor) =>
     setLineas((x) => x.map((l) => (l.id === id ? { ...l, [campo]: valor } : l)))
 
-  // Si el trabajo ya tenía líneas guardadas (cierre a medias), se recuperan.
+  /* Recupera lo que haya: primero el detalle ya guardado (cierre a medias) y,
+     si no hay, las tareas que hizo el taller en ClickUp.
+
+     Lo segundo es lo que evita transcribir: el mecánico ya escribió qué hizo,
+     así que el asesor solo pone los valores. */
   useEffect(() => {
     if (!listo) return
-    supabase.from('ot_detalle').select('*').eq('trabajo_id', trabajo.id).order('orden')
-      .then(({ data }) => {
-        if (data?.length) {
-          setLineas(data.map((l) => ({
-            id: l.id, tipo: l.tipo, codigo: l.codigo || '', detalle: l.detalle,
-            cantidad: String(l.cantidad), precio_unit: String(l.precio_unit)
+    ;(async () => {
+      const { data: det } = await supabase.from('ot_detalle')
+        .select('*').eq('trabajo_id', trabajo.id).order('orden')
+      if (det?.length) {
+        setLineas(det.map((l) => ({
+          id: l.id, tipo: l.tipo, codigo: l.codigo || '', detalle: l.detalle,
+          cantidad: String(l.cantidad), precio_unit: String(l.precio_unit)
+        })))
+        return
+      }
+
+      const { data: tareas } = await supabase.from('tareas_taller')
+        .select('id, titulo, tipo_linea, observacion, estado')
+        .eq('trabajo_id', trabajo.id).order('orden')
+      if (tareas?.length) {
+        setLineas(tareas
+          // Lo no terminado no se cobra: si el taller no lo hizo, no va en la OT.
+          .filter((t) => t.estado === 'terminada' || t.estado === 'en_curso')
+          .map((t) => ({
+            id: 'cu' + t.id, tipo: t.tipo_linea || 'servicio', codigo: '',
+            detalle: t.titulo + (t.observacion ? ` — ${t.observacion}` : ''),
+            cantidad: '1', precio_unit: '', desdeClickUp: true
           })))
-        }
-      })
+      }
+    })()
   }, [trabajo.id, listo])
 
   async function cerrar() {
@@ -411,6 +431,12 @@ function ModalCierre({ trabajo, perfil, onCerrar, onGuardado, irVehiculo }) {
                  margen por línea, descontar de bodega y explicarle el cobro al
                  cliente sin recurrir a la memoria del asesor. */}
             <div className="space-y-3">
+              {lineas.some((l) => l.desdeClickUp) && (
+                <p className="text-[11px] px-2 py-1.5 rounded" style={{ background: '#f1f5f9', color: '#475569' }}>
+                  Las líneas vienen del trabajo registrado en ClickUp, ya separadas por tipo.
+                  Solo falta agregarles el valor.
+                </p>
+              )}
               {TIPOS_LINEA.map(([tipo, titulo, ejemplo]) => {
                 const ls = lineas.filter((l) => l.tipo === tipo)
                 const sub = ls.reduce((a, l) => a + (num(l.cantidad) * num(l.precio_unit)), 0)

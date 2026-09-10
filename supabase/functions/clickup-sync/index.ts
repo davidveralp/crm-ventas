@@ -135,7 +135,31 @@ async function importarSubtareas(taskId: string, trabajoId: string) {
     const t = await r.json()
     const subs = t.subtasks || []
 
+    /* El taller usa subtareas separadoras para agrupar: "*** MANO DE OBRA ***".
+       Se detectan y definen la categoría de las que vienen después, hasta el
+       siguiente separador. Es el patrón que ya usan en ClickUp, así que no hay
+       que cambiar cómo trabajan. */
+    const esSeparador = (n: string) => /^[\s*_\-=]*[A-ZÁÉÍÓÚÑ\s]{4,}[\s*_\-=]*$/.test(n.trim())
+      && /\*|_{2,}|-{3,}|={3,}/.test(n)
+    const categoriaDe = (n: string): string | null => {
+      const t2 = n.toUpperCase()
+      if (t2.includes('REPUESTO')) return 'repuesto'
+      if (t2.includes('INSUMO') || t2.includes('LUBRICANTE')) return 'insumo'
+      if (t2.includes('MANO DE OBRA') || t2.includes('SERVICIO') && !t2.includes('EXTERN')) return 'servicio'
+      if (t2.includes('EXTERN')) return 'servicio_externo'
+      return null
+    }
+
+    // Por defecto mano de obra: es lo que más aparece y lo que el asesor menos
+    // tendría que corregir después.
+    let categoria = 'servicio'
+
     for (const [i, sub] of subs.entries()) {
+      // Un separador cambia la categoría y no se guarda como tarea
+      if (esSeparador(sub.name)) {
+        const c = categoriaDe(sub.name)
+        if (c) { categoria = c; continue }
+      }
       // El nombre del asignado en ClickUp se cruza con el catálogo de usuarios
       // del CRM por correo, que es el único identificador estable entre ambos.
       const correo = sub.assignees?.[0]?.email?.toLowerCase()
@@ -153,6 +177,7 @@ async function importarSubtareas(taskId: string, trabajoId: string) {
         tecnico_id: tecnicoId,
         tecnico_nombre: sub.assignees?.[0]?.username || null,
         observacion: sub.text_content || sub.description || null,
+        tipo_linea: categoria,
         clickup_task_id: sub.id, orden: i
       }, { onConflict: 'clickup_task_id' })
     }
@@ -166,9 +191,20 @@ function extraerPatente(titulo: string): string | null {
   return m ? m[1].replace(/\s+/g, ' ').trim() : null
 }
 
+/** Patente en formato XX XX XX, mayúsculas, sin guiones. */
+function fmtPatente(p?: string | null): string {
+  const l = String(p || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase()
+  return l.replace(/(.{2})(?=.)/g, '$1 ').trim()
+}
+
+/** Título de la tarjeta: PATENTE MARCA MODELO · OT 13736
+ *  La patente va primero porque es lo que el jefe de taller busca de un vistazo
+ *  en el tablero; el número de OT permite cruzarlo con el papel y con Dimasoft. */
 function tituloDe(t: any) {
   const v = t.vehiculos
-  return [v?.marca, v?.modelo, v?.patente, t.ot_numero ? `OT ${t.ot_numero}` : null].filter(Boolean).join(' ')
+  const base = [fmtPatente(v?.patente), v?.marca, v?.modelo]
+    .filter(Boolean).join(' ').toUpperCase()
+  return t.ot_numero ? `${base} · OT ${t.ot_numero}` : base
 }
 
 async function cuHeaders() {
