@@ -385,6 +385,35 @@ Deno.serve(async (req) => {
         .update({ clickup_task_id: cu.id, clickup_synced_at: new Date().toISOString() })
         .eq('id', t.id)
 
+      /* Líneas de la OT como subtareas, agrupadas por área con separadores.
+         Se usa el mismo formato "*** ÁREA ***" que el taller ya emplea, para
+         que la importación posterior las reconozca y las devuelva clasificadas. */
+      const { data: lineas } = await service.from('ot_detalle')
+        .select('id, tipo, detalle, cantidad').eq('trabajo_id', t.id).order('orden')
+      if (lineas?.length) {
+        const AREAS: Array<[string, string]> = [
+          ['repuesto', 'REPUESTOS'], ['insumo', 'INSUMOS'],
+          ['servicio', 'MANO DE OBRA'], ['servicio_externo', 'SERVICIOS EXTERNOS']
+        ]
+        for (const [tipo, rotulo] of AREAS) {
+          const ls = lineas.filter((l: any) => l.tipo === tipo)
+          if (!ls.length) continue
+          await fetch(`${CLICKUP_API}/list/${CLICKUP_LIST_ID}/task`, {
+            method: 'POST', headers: await cuHeaders(),
+            body: JSON.stringify({ name: `*** ${rotulo} ***`, parent: cu.id })
+          })
+          for (const l of ls) {
+            await fetch(`${CLICKUP_API}/list/${CLICKUP_LIST_ID}/task`, {
+              method: 'POST', headers: await cuHeaders(),
+              body: JSON.stringify({
+                name: Number(l.cantidad) > 1 ? `${l.detalle} (x${l.cantidad})` : l.detalle,
+                parent: cu.id
+              })
+            })
+          }
+        }
+      }
+
       // v44: crea como Subtareas de ClickUp las tareas de reparación que
       // ya existan para este trabajo (ej. las 31 de MAN X PAUTA).
       const { data: tareas } = await service.from('tareas_taller')
@@ -395,7 +424,11 @@ Deno.serve(async (req) => {
           body: JSON.stringify({ name: tarea.titulo, parent: cu.id })
         })
         const cuSub = await respSub.json()
-        if (respSub.ok) await service.from('tareas_taller').update({ clickup_subtask_id: cuSub.id }).eq('id', tarea.id)
+        if (respSub.ok) await service.from('tareas_taller')
+          // Se escriben las dos columnas: `clickup_subtask_id` la usa el código
+          // antiguo y `clickup_task_id` la importación. Sin ambas, una subtarea
+          // creada por el CRM volvía a importarse como nueva y se duplicaba.
+          .update({ clickup_subtask_id: cuSub.id, clickup_task_id: cuSub.id }).eq('id', tarea.id)
         else console.error('ClickUp subtarea falló:', tarea.titulo, JSON.stringify(cuSub))
       }
       return json({ ok: true, clickup_task_id: cu.id, subtareas: (tareas || []).length })

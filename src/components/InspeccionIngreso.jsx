@@ -13,6 +13,14 @@ import { motivoEdgeFunction } from '../lib/helpers'
 // el registro de inspección (fotos, firma, diagrama de daños marcado) y
 // entrega los datos ya listos para prellenar el formulario de Nueva OT.
 
+/* Las cuatro áreas de la OT, en el mismo orden que las pestañas de Dimasoft. */
+const AREAS_OT = [
+  ['repuesto', 'Repuestos'],
+  ['insumo', 'Lubricantes e insumos'],
+  ['servicio', 'Mano de obra'],
+  ['servicio_externo', 'Servicios externos']
+]
+
 const SILUETAS = [
   { key: 'sedan', label: 'Sedán', tipoVehiculo: 'AUTO' },
   { key: 'camioneta', label: 'Camioneta', tipoVehiculo: 'PICK UP' },
@@ -276,8 +284,12 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
   }
   const quitarFoto = (i) => setFotos((f) => f.filter((_, j) => j !== i))
 
-  // ---- sección 6: checklist + observaciones asesor ----
+  // ---- sección 6: tareas para el taller + observaciones ----
   const [checklist, setChecklist] = useState([])
+  /* Las cuatro áreas de la OT, igual que en Dimasoft. El asesor carga QUÉ hay
+     que hacer; el precio lo pone después el encargado de presupuestos. */
+  const [lineasOT, setLineasOT] = useState([])
+  const [nuevaLinea, setNuevaLinea] = useState({ tipo: 'repuesto', detalle: '', cantidad: '1', codigo: '' })
   const [nuevoItem, setNuevoItem] = useState('')
   const [obsAsesor, setObsAsesor] = useState('')
   /* Agrega o quita un servicio del texto de "Trabajo a realizar". Se trabaja
@@ -293,6 +305,16 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
 
   // Tipo de vehículo elegido (para filtrar servicios que no apliquen)
   const tipoVehSel = SILUETAS.find((x) => x.key === silueta)?.tipoVehiculo || null
+
+  const agregarLinea = () => {
+    if (!nuevaLinea.detalle.trim()) return
+    setLineasOT((x) => [...x, {
+      id: 'ln' + Date.now() + Math.random().toString(36).slice(2, 5),
+      tipo: nuevaLinea.tipo, detalle: nuevaLinea.detalle.trim(),
+      cantidad: nuevaLinea.cantidad || '1', codigo: ''
+    }])
+    setNuevaLinea({ ...nuevaLinea, detalle: '', cantidad: '1' })
+  }
 
   const agregarItem = () => { if (!nuevoItem.trim()) return; setChecklist((c) => [...c, { item: nuevoItem.trim(), estado: null }]); setNuevoItem('') }
   const marcarItem = (i, estado) => setChecklist((c) => c.map((x, j) => j === i ? { ...x, estado } : x))
@@ -464,6 +486,43 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
         // Tarjeta espejo en ClickUp desde el ingreso, no recién al solicitar
         // revisión: así el taller ve todo lo que entró aunque aún no tenga
         // técnico asignado. Nace en "por designar", que es justamente ese estado.
+        // Las tareas que anotó el asesor se guardan y suben como subtareas a
+        // ClickUp: es donde el mecánico las va a ver y marcar. Antes quedaban
+        // solo en el acta y había que dictárselas.
+        /* Las líneas de la OT se guardan sin precio: quedan esperando al
+           encargado de presupuestos, que las verá en su bandeja. */
+        if (trabajoId && lineasOT.length) {
+          const { error: eLin } = await supabase.from('ot_detalle').insert(
+            lineasOT.map((l, i) => ({
+              empresa_id: perfil.empresa_id, trabajo_id: trabajoId,
+              tipo: l.tipo, detalle: l.detalle,
+              cantidad: Number(l.cantidad) || 1, precio_unit: 0,
+              cargado_por: perfil.id, orden: i
+            }))
+          )
+          if (eLin) console.error('No se pudieron guardar las líneas:', eLin.message)
+          else {
+            // El encargado debe enterarse: si no, las líneas esperan sin que
+            // nadie sepa que están.
+            await supabase.from('notificaciones').insert({
+              empresa_id: perfil.empresa_id, rol_destino: 'coordinador_adquisiciones',
+              titulo: `Valorizar OT ${otNumero || ''} · ${formatPatente(d.patente)}`,
+              cuerpo: `${lineasOT.length} línea(s) cargadas por ${perfil.nombre || 'el asesor'}`,
+              url: '/presupuestos'
+            })
+          }
+        }
+
+        if (trabajoId && checklist.length) {
+          const { error: eTar } = await supabase.from('tareas_taller').insert(
+            checklist.map((c, i) => ({
+              empresa_id: perfil.empresa_id, trabajo_id: trabajoId,
+              titulo: c.item, estado: 'pendiente', tipo_linea: 'servicio', orden: i
+            }))
+          )
+          if (eTar) console.error('No se pudieron guardar las tareas:', eTar.message)
+        }
+
         if (trabajoId) {
           try {
             const { data: rCu, error: eCu } = await supabase.functions.invoke('clickup-sync', {
@@ -1051,12 +1110,15 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
 
           {/* ---- PASO 5: CHECKLIST + OBS ASESOR ---- */}
           {/* sección 6 */}
-          <h3 className="text-sm font-bold text-ink border-b border-slate-200 pb-1 pt-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-deep text-white text-[10px] mr-2">6</span>Checklist</h3>
+          <h3 className="text-sm font-bold text-ink border-b border-slate-200 pb-1 pt-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-deep text-white text-[10px] mr-2">6</span>Tareas</h3>
           {true && (
             <div className="space-y-3">
-              <label className="label">Items checklist</label>
+              <label className="label">Tareas para el taller</label>
+              <p className="text-[11px] text-slate-400 -mt-1">
+                Se cargan como subtareas en ClickUp para que el mecánico las vea y las marque.
+              </p>
               <div className="flex gap-1.5">
-                <input className="input text-sm flex-1" value={nuevoItem} placeholder="Ej: Estado de frenos…"
+                <input className="input text-sm flex-1" value={nuevoItem} placeholder="Ej: Revisar ruido tren delantero…"
                        onChange={(e) => setNuevoItem(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && agregarItem()} />
                 <button type="button" className="btn-soft text-xs" onClick={agregarItem}>+ Agregar</button>
               </div>

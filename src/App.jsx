@@ -17,6 +17,7 @@ import NuevoCliente from './pages/NuevoCliente'
 import CierreAsesor from './pages/CierreAsesor'
 import Generador from './pages/Generador'
 import Recepcion from './pages/Recepcion'
+import Valorizacion from './pages/Valorizacion'
 import EncuestaPublica from './pages/EncuestaPublica'
 import ControlOT from './pages/ControlOT'
 import Agenda from './pages/Agenda'
@@ -67,6 +68,7 @@ export default function App() {
       <Route path="/cierres"       element={conLayout(<CierreAsesor />)} />
       <Route path="/generador"     element={conLayout(<Generador />)} />
       <Route path="/recepcion"     element={conLayout(<Recepcion />)} />
+      <Route path="/valorizacion"  element={conLayout(<Valorizacion />)} />
       <Route path="/vehiculos"     element={conLayout(<Vehiculos />)} />
       <Route path="/vehiculos/:id" element={conLayout(<Vehiculos />)} />
       <Route path="/control-ot"  element={conLayout(<ControlOT />)} />
