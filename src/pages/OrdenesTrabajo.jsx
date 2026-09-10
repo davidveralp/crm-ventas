@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { fmtCLP, formatPatente, patenteLimpia, ESTADOS_TALLER } from '../lib/helpers'
+import { useAuth } from '../context/AuthContext'
+import { fmtCLP, formatPatente, patenteLimpia } from '../lib/helpers'
 
 /* ============================================================================
    Órdenes de trabajo · listado y detalle
@@ -29,7 +30,8 @@ const claseDe = (t) => {
   return t.nro_documento ? 'cerrada' : 'sin_doc'
 }
 
-export default function OrdenesTrabajo({ onEditar }) {
+export default function OrdenesTrabajo() {
+  const { perfil } = useAuth()
   const [rows, setRows] = useState([])
   const [q, setQ] = useState('')
   const [filtro, setFiltro] = useState('todas')
@@ -154,8 +156,8 @@ export default function OrdenesTrabajo({ onEditar }) {
         <p className="text-[11px] text-slate-400">Se muestran las primeras 200 de {visibles.length}.</p>
       )}
 
-      {sel && <DetalleOT ot={sel} onCerrar={() => setSel(null)}
-                         onEditar={onEditar} onCambio={() => { setSel(null); cargar() }} />}
+      {sel && <DetalleOT ot={sel} perfil={perfil} onCerrar={() => setSel(null)}
+                         onCambio={cargar} />}
     </div>
   )
 }
@@ -169,11 +171,61 @@ const AREAS = [
   ['servicio_externo', 'Servicio externo']
 ]
 
-function DetalleOT({ ot, onCerrar, onCambio }) {
+function DetalleOT({ ot, perfil, onCerrar, onCambio }) {
   const [lineas, setLineas] = useState([])
   const [tareas, setTareas] = useState([])
   const [cargando, setCargando] = useState(true)
+  const [editando, setEditando] = useState(null)   // área en edición
+  const [guardando, setGuardando] = useState(false)
+  const [msg, setMsg] = useState('')
   const editable = ot.cierre_estado !== 'cerrado'
+
+  const num = (x) => Number(String(x ?? '').replace(/[^0-9.]/g, '')) || 0
+
+  const editarLinea = (id, campo, valor) =>
+    setLineas((x) => x.map((l) => (l.id === id ? { ...l, [campo]: valor, _sucia: true } : l)))
+
+  const quitarLinea = (id) =>
+    setLineas((x) => x.map((l) => (l.id === id ? { ...l, _borrar: true } : l)).filter((l) => !(l._borrar && l._nueva)))
+
+  const agregarLinea = (tipo) =>
+    setLineas((x) => [...x, {
+      id: 'nueva' + Date.now() + Math.random().toString(36).slice(2, 5),
+      trabajo_id: ot.id, tipo, codigo: '', detalle: '', cantidad: '1',
+      precio_unit: '', costo_unit: '', _nueva: true, _sucia: true
+    }])
+
+  /* Guarda solo lo que cambió. Recorrer todas las líneas en cada guardado
+     sobrescribiría datos que otro usuario pudo modificar entremedio. */
+  async function guardarCambios() {
+    setGuardando(true); setMsg('')
+    try {
+      for (const l of lineas.filter((x) => x._borrar && !x._nueva)) {
+        await supabase.from('ot_detalle').delete().eq('id', l.id)
+      }
+      for (const l of lineas.filter((x) => x._sucia && !x._borrar && x.detalle?.trim())) {
+        const fila = {
+          tipo: l.tipo, codigo: l.codigo?.trim() || null, detalle: l.detalle.trim(),
+          cantidad: num(l.cantidad) || 1, precio_unit: num(l.precio_unit),
+          costo_unit: num(l.costo_unit) || null,
+          valorizado_por: num(l.precio_unit) ? perfil.id : null,
+          valorizado_en: num(l.precio_unit) ? new Date().toISOString() : null
+        }
+        if (l._nueva) {
+          await supabase.from('ot_detalle').insert({ ...fila, empresa_id: perfil.empresa_id, trabajo_id: ot.id })
+        } else {
+          await supabase.from('ot_detalle').update(fila).eq('id', l.id)
+        }
+      }
+      await supabase.rpc('recalcular_total_ot', { p_trabajo: ot.id })
+      setMsg('Cambios guardados')
+      setEditando(null)
+      onCambio?.()
+    } catch (e) {
+      setMsg('No se pudo guardar: ' + (e?.message || e))
+    }
+    setGuardando(false)
+  }
 
   useEffect(() => {
     Promise.all([
@@ -184,7 +236,11 @@ function DetalleOT({ ot, onCerrar, onCambio }) {
     })
   }, [ot.id])
 
-  const total = lineas.reduce((a, l) => a + (l.total || 0), 0)
+  // Se calcula desde los valores en pantalla, no desde `total` de la base: si
+  // el asesor está editando precios, el resumen debe reflejar lo que ve.
+  const total = lineas.filter((l) => !l._borrar)
+    .reduce((a, l) => a + num(l.cantidad) * num(l.precio_unit), 0)
+  const porValorizar = lineas.filter((l) => !l._borrar && !num(l.precio_unit)).length
   const c = CLASES[claseDe(ot)]
 
   return (
@@ -230,17 +286,69 @@ function DetalleOT({ ot, onCerrar, onCambio }) {
 
           {cargando ? <p className="text-sm text-slate-400">Cargando detalle…</p> : (
             <>
+              {/* Cada área se edita por separado con su lápiz. Editar todo de
+                  una vez en una OT con veinte líneas es incómodo y arriesga
+                  cambios accidentales. */}
               {AREAS.map(([tipo, titulo]) => {
                 const ls = lineas.filter((l) => l.tipo === tipo)
-                if (!ls.length) return null
-                const sub = ls.reduce((a, l) => a + (l.total || 0), 0)
+                const sub = ls.reduce((a, l) => a + (num(l.cantidad) * num(l.precio_unit)), 0)
+                const enEdicion = editando === tipo
+                const faltan = ls.filter((l) => !num(l.precio_unit)).length
                 return (
-                  <div key={tipo} className="rounded-lg border border-slate-200 p-2">
-                    <div className="flex justify-between mb-1">
-                      <span className="text-sm font-medium text-ink">{titulo}</span>
-                      <span className="text-xs text-slate-500">{sub ? fmtCLP(sub) : 'sin valorizar'}</span>
+                  <div key={tipo} className="rounded-lg border p-2"
+                       style={{ borderColor: faltan ? '#e0a02055' : '#e2e8f0' }}>
+                    <div className="flex items-center justify-between mb-1 gap-2">
+                      <span className="text-sm font-medium text-ink">
+                        {titulo}
+                        {faltan > 0 && (
+                          <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded"
+                                style={{ background: '#fdf6e3', color: '#8a6d1f' }}>
+                            {faltan} por valorizar
+                          </span>
+                        )}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-slate-500">{sub ? fmtCLP(sub) : '—'}</span>
+                        {editable && (
+                          <button type="button" title={enEdicion ? 'Terminar' : 'Editar'}
+                            onClick={() => setEditando(enEdicion ? null : tipo)}
+                            className="text-sm px-1.5 rounded"
+                            style={enEdicion
+                              ? { background: '#111922', color: '#fff' }
+                              : { color: '#64748b' }}>
+                            {enEdicion ? '✓' : '✏️'}
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    {ls.map((l) => (
+
+                    {ls.map((l) => enEdicion ? (
+                      <div key={l.id} className="grid grid-cols-12 gap-1 mb-1 items-center">
+                        {tipo === 'repuesto' && (
+                          <input className="input col-span-3" style={{ minHeight: '34px', fontSize: '13px' }}
+                                 placeholder="Código" value={l.codigo || ''}
+                                 onChange={(e) => editarLinea(l.id, 'codigo', e.target.value)} />
+                        )}
+                        <input className={tipo === 'repuesto' ? 'input col-span-4' : 'input col-span-7'}
+                               style={{ minHeight: '34px', fontSize: '13px' }}
+                               value={l.detalle}
+                               onChange={(e) => editarLinea(l.id, 'detalle', e.target.value)} />
+                        <input className="input col-span-1" style={{ minHeight: '34px', fontSize: '13px' }}
+                               inputMode="decimal" value={l.cantidad}
+                               onChange={(e) => editarLinea(l.id, 'cantidad', e.target.value.replace(/[^0-9.]/g, ''))} />
+                        {tipo !== 'servicio' && (
+                          <input className="input col-span-2" style={{ minHeight: '34px', fontSize: '13px' }}
+                                 inputMode="numeric" placeholder="Costo" value={l.costo_unit || ''}
+                                 onChange={(e) => editarLinea(l.id, 'costo_unit', e.target.value.replace(/[^0-9]/g, ''))} />
+                        )}
+                        <input className={tipo === 'servicio' ? 'input col-span-3' : 'input col-span-2'}
+                               style={{ minHeight: '34px', fontSize: '13px' }}
+                               inputMode="numeric" placeholder="Precio" value={l.precio_unit || ''}
+                               onChange={(e) => editarLinea(l.id, 'precio_unit', e.target.value.replace(/[^0-9]/g, ''))} />
+                        <button type="button" className="col-span-1 text-slate-300 text-lg leading-none"
+                                onClick={() => quitarLinea(l.id)}>×</button>
+                      </div>
+                    ) : (
                       <div key={l.id} className="flex justify-between gap-2 text-sm py-0.5">
                         <span className="text-slate-700 flex-1 min-w-0 truncate">
                           {l.codigo ? <span className="text-slate-400">{l.codigo} · </span> : null}
@@ -248,10 +356,18 @@ function DetalleOT({ ot, onCerrar, onCambio }) {
                           {Number(l.cantidad) > 1 && <span className="text-slate-400"> ×{l.cantidad}</span>}
                         </span>
                         <span className="text-slate-500 shrink-0">
-                          {l.total ? fmtCLP(l.total) : <span style={{ color: '#e0a020' }}>—</span>}
+                          {num(l.precio_unit)
+                            ? fmtCLP(num(l.cantidad) * num(l.precio_unit))
+                            : <span style={{ color: '#e0a020' }}>sin valorizar</span>}
                         </span>
                       </div>
                     ))}
+
+                    {enEdicion && (
+                      <button type="button" className="text-xs text-blue-700 font-medium mt-1"
+                              onClick={() => agregarLinea(tipo)}>+ Agregar línea</button>
+                    )}
+                    {!ls.length && !enEdicion && <p className="text-xs text-slate-300">Sin líneas.</p>}
                   </div>
                 )
               })}
@@ -273,10 +389,13 @@ function DetalleOT({ ot, onCerrar, onCambio }) {
                 </div>
               )}
 
-              {total > 0 && (
-                <div className="flex justify-between items-center rounded-lg p-3" style={{ background: '#f1f5f9' }}>
-                  <span className="text-sm text-slate-600">
-                    {ot.nro_documento ? `${ot.tipo_documento} ${ot.nro_documento}` : 'Sin documento emitido'}
+              {(total > 0 || porValorizar > 0) && (
+                <div className="flex justify-between items-center rounded-lg p-3"
+                     style={{ background: porValorizar ? '#fdf6e3' : '#f1f5f9' }}>
+                  <span className="text-sm" style={{ color: porValorizar ? '#8a6d1f' : '#475569' }}>
+                    {porValorizar
+                      ? `Falta valorizar ${porValorizar} línea(s)`
+                      : (ot.nro_documento ? `${ot.tipo_documento} ${ot.nro_documento}` : 'Sin documento emitido')}
                   </span>
                   <span className="text-lg font-semibold text-ink">{fmtCLP(total)}</span>
                 </div>
@@ -290,6 +409,11 @@ function DetalleOT({ ot, onCerrar, onCambio }) {
             </>
           )}
 
+          {msg && (
+            <p className="text-xs px-2 py-1.5 rounded"
+               style={{ background: msg.startsWith('No') ? '#fdecea' : '#e8f6ee',
+                        color: msg.startsWith('No') ? '#8a1f18' : '#1f7a45' }}>{msg}</p>
+          )}
           {!editable && (
             <p className="text-[11px] px-2 py-1.5 rounded" style={{ background: '#f1f5f9', color: '#64748b' }}>
               La orden está cerrada: el detalle no se puede modificar. Para corregir un monto o
@@ -300,10 +424,15 @@ function DetalleOT({ ot, onCerrar, onCambio }) {
 
         <div className="p-4 border-t border-slate-100 flex gap-2 justify-end sticky bottom-0 bg-white">
           <button className="btn-soft text-sm" onClick={onCerrar}>Cerrar</button>
-          {editable && (
+          {editable && lineas.some((l) => l._sucia || l._borrar) && (
+            <button className="btn-primary text-sm" disabled={guardando} onClick={guardarCambios}>
+              {guardando ? 'Guardando…' : 'Guardar cambios'}
+            </button>
+          )}
+          {editable && !lineas.some((l) => l._sucia || l._borrar) && (
             <button className="btn-primary text-sm"
-                    onClick={() => { window.location.assign(`/cierres?ot=${ot.id}`) }}>
-              Editar / registrar salida
+                    onClick={() => window.location.assign('/cierres')}>
+              Registrar salida
             </button>
           )}
         </div>

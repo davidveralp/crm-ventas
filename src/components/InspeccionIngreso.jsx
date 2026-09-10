@@ -294,6 +294,9 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
   const [lineasOT, setLineasOT] = useState([])
   const [nuevaLinea, setNuevaLinea] = useState({ tipo: 'servicio', detalle: '', cantidad: '1', codigo: '' })
   const [areasAbiertas, setAreasAbiertas] = useState({})
+  // Ítems a cotizar: van al encargado como presupuesto, no como trabajo a hacer
+  const [aCotizar, setACotizar] = useState([])
+  const [nuevoCotizar, setNuevoCotizar] = useState({ tipo: 'repuesto', detalle: '', cantidad: '1' })
   const [nuevoItem, setNuevoItem] = useState('')
   const [obsAsesor, setObsAsesor] = useState('')
   /* Agrega o quita un servicio del texto de "Trabajo a realizar". Se trabaja
@@ -309,6 +312,16 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
 
   // Tipo de vehículo elegido (para filtrar servicios que no apliquen)
   const tipoVehSel = SILUETAS.find((x) => x.key === silueta)?.tipoVehiculo || null
+
+  const agregarCotizar = () => {
+    if (!nuevoCotizar.detalle.trim()) return
+    setACotizar((x) => [...x, {
+      id: 'ct' + Date.now() + Math.random().toString(36).slice(2, 5),
+      tipo: nuevoCotizar.tipo, detalle: nuevoCotizar.detalle.trim(),
+      cantidad: nuevoCotizar.cantidad || '1'
+    }])
+    setNuevoCotizar({ ...nuevoCotizar, detalle: '', cantidad: '1' })
+  }
 
   const agregarLinea = () => {
     if (!nuevaLinea.detalle.trim()) return
@@ -440,7 +453,7 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
       servicios_extra: d.extras || [],
       tipo_vehiculo: d.tipo_vehiculo || null, combustible: d.combustible || null,
       solicita_presupuesto: d.solicita_presupuesto,
-      detalle_presupuesto: d.detalle_presupuesto?.trim() || null,
+      detalle_presupuesto: aCotizar.map((l) => `${l.detalle} (x${l.cantidad})`).join(' · ') || null,
       razon_social: d.razon_social?.trim() || null,
       tipo_cliente: d.tipo_cliente, conocio: d.enc_conocio || null,
       autoriza_movilizacion: d.autoriza_movilizacion,
@@ -509,7 +522,9 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
             // El encargado debe enterarse: si no, las líneas esperan sin que
             // nadie sepa que están.
             await supabase.from('notificaciones').insert({
-              empresa_id: perfil.empresa_id, rol_destino: 'coordinador_adquisiciones',
+              empresa_id: perfil.empresa_id, // Se avisa al rol y, además, a administración: si nadie tiene el rol de
+        // adquisiciones, el aviso no lo vería nadie y la solicitud se perdería.
+        rol_destino: 'coordinador_adquisiciones',
               titulo: `Valorizar OT ${otNumero || ''} · ${formatPatente(d.patente)}`,
               cuerpo: `${lineasOT.length} línea(s) cargadas por ${perfil.nombre || 'el asesor'}`,
               url: '/presupuestos'
@@ -552,20 +567,28 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
 
     // Si el cliente pidió presupuesto, va directo al encargado. Antes esto se
     // pedía de palabra y se perdía entre la recepción y el mesón.
-    if (d.solicita_presupuesto && d.detalle_presupuesto.trim()) {
+    if (d.solicita_presupuesto && aCotizar.length) {
       await supabase.from('notificaciones').insert({
         empresa_id: perfil.empresa_id,
+        // Se avisa al rol y, además, a administración: si nadie tiene el rol de
+        // adquisiciones, el aviso no lo vería nadie y la solicitud se perdería.
         rol_destino: 'coordinador_adquisiciones',
         titulo: `Cotizar · ${formatPatente(d.patente)}`,
-        cuerpo: `${[d.marca, d.modelo].filter(Boolean).join(' ')} · ${d.detalle_presupuesto.trim()}`,
-        url: '/presupuestos'
+        cuerpo: `${[d.marca, d.modelo].filter(Boolean).join(' ')} · ${aCotizar.length} ítem(s) por cotizar`,
+        url: '/valorizacion'
       })
       if (vehiculoId) {
         await supabase.from('presupuestos_taller').insert({
           empresa_id: perfil.empresa_id, vehiculo_id: vehiculoId, cliente_id: clienteId,
           trabajo_id: trabajoId, ot_numero: otNumero, estado: 'solicitado', origen: 'vehiculo',
-          solicitud: d.detalle_presupuesto.trim(),
-          items: [], solicitado_por: perfil.id
+          solicitud: aCotizar.map((l) => l.detalle).join(' · '),
+          // Cada ítem como línea del presupuesto: el encargado valoriza uno por
+          // uno y el cliente puede aceptar parte.
+          items: aCotizar.map((l) => ({
+            tipo: l.tipo, detalle: l.detalle, cant: Number(l.cantidad) || 1,
+            codigo: '', costo: 0, precio: 0, en_stock: null
+          })),
+          solicitado_por: perfil.id
         })
       }
     }
@@ -797,13 +820,53 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
                 </label>
                 {d.solicita_presupuesto && (
                   <div className="mt-2">
-                    <label className="label">¿Qué hay que cotizar?</label>
-                    <textarea className="input" rows="2"
-                      placeholder="Detalle para el encargado de presupuestos. Sé específico: repuestos, mano de obra, alternativas…"
-                      value={d.detalle_presupuesto}
-                      onChange={(e) => setD({ ...d, detalle_presupuesto: e.target.value })} />
-                    <p className="text-[11px] text-slate-400 mt-1">
-                      Se envía a Víctor Tello al registrar el ingreso. El compromiso son 15 minutos.
+                    <label className="label">Qué hay que cotizar</label>
+                    <p className="text-[11px] text-slate-400 mb-2">
+                      Una línea por ítem. Cotizar "los frenos" es ambiguo; cotizar
+                      "pastillas delanteras" y "discos delanteros" por separado permite
+                      que el cliente acepte una parte.
+                    </p>
+
+                    <div className="grid grid-cols-12 gap-1.5 mb-2">
+                      <select className="input col-span-4" style={{ minHeight: '38px' }}
+                              value={nuevoCotizar.tipo}
+                              onChange={(e) => setNuevoCotizar({ ...nuevoCotizar, tipo: e.target.value })}>
+                        <option value="repuesto">Repuesto</option>
+                        <option value="insumo">Lubricante / insumo</option>
+                        <option value="servicio">Mano de obra</option>
+                        <option value="servicio_externo">Servicio externo</option>
+                      </select>
+                      <input className="input col-span-6" style={{ minHeight: '38px' }}
+                             placeholder="Ej: Pastillas de freno delanteras"
+                             value={nuevoCotizar.detalle}
+                             onChange={(e) => setNuevoCotizar({ ...nuevoCotizar, detalle: e.target.value })}
+                             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); agregarCotizar() } }} />
+                      <input className="input col-span-1" style={{ minHeight: '38px' }} inputMode="decimal"
+                             value={nuevoCotizar.cantidad}
+                             onChange={(e) => setNuevoCotizar({ ...nuevoCotizar, cantidad: e.target.value.replace(/[^0-9.]/g, '') })} />
+                      <button type="button" className="btn-soft col-span-1 text-xs"
+                              style={{ minHeight: '38px' }} onClick={agregarCotizar}>+</button>
+                    </div>
+
+                    {aCotizar.map((l, i) => (
+                      <div key={l.id} className="flex items-center gap-2 text-sm py-0.5">
+                        <span className="text-slate-400 text-xs w-4">{i + 1}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded shrink-0"
+                              style={{ background: '#f1f5f9', color: '#64748b' }}>
+                          {AREAS_OT.find((a) => a[0] === l.tipo)?.[1] || l.tipo}
+                        </span>
+                        <span className="flex-1 text-slate-700">{l.detalle}</span>
+                        <span className="text-xs text-slate-400">{l.cantidad}</span>
+                        <button type="button" className="text-slate-300 text-lg leading-none"
+                                onClick={() => setACotizar((x) => x.filter((y) => y.id !== l.id))}>×</button>
+                      </div>
+                    ))}
+                    {!aCotizar.length && (
+                      <p className="text-xs text-slate-300">Sin ítems por cotizar.</p>
+                    )}
+                    <p className="text-[11px] text-slate-400 mt-1.5">
+                      Se envía al encargado de presupuestos al registrar el ingreso.
+                      El compromiso son 15 minutos.
                     </p>
                   </div>
                 )}

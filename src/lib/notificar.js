@@ -27,3 +27,28 @@ export function sonarAlerta() {
     beep(880, 0, 0.18); beep(1174, 0.2, 0.22)
   } catch { }
 }
+
+
+/**
+ * Aviso a un rol, con respaldo a administración.
+ *
+ * La campanita lee con `rol_destino.eq.<mi rol>`, así que si NADIE tiene ese
+ * rol el aviso se guarda y no lo ve nadie: existe en la tabla y desaparece.
+ * Pasó con `coordinador_adquisiciones` cuando el usuario de Víctor Tello
+ * todavía no estaba creado.
+ *
+ * Esta función verifica si hay alguien con el rol; si no, avisa a admin.
+ */
+export async function avisarRol({ empresa_id, rol, titulo, cuerpo = '', url = '' }) {
+  const { count } = await supabase.from('usuarios')
+    .select('id', { count: 'exact', head: true })
+    .eq('rol', rol).eq('activo', true)
+
+  const destino = count ? rol : 'admin'
+  const aviso = count ? titulo : `[sin ${rol}] ${titulo}`
+
+  await supabase.from('notificaciones').insert({
+    empresa_id, rol_destino: destino, titulo: aviso, cuerpo, url
+  })
+  return { entregado_a: destino, habia_destinatario: !!count }
+}

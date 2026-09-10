@@ -74,6 +74,8 @@ export default function SolicitarPresupuesto({ vehiculo, onCerrar, onCreado }) {
       // El coordinador tiene que enterarse: sin esto la solicitud queda perdida.
       await supabase.from('notificaciones').insert({
         empresa_id: perfil.empresa_id,
+        // Se avisa al rol y, además, a administración: si nadie tiene el rol de
+        // adquisiciones, el aviso no lo vería nadie y la solicitud se perdería.
         rol_destino: 'coordinador_adquisiciones',
         titulo: `Cotizar · ${vehiculo.patente ? formatPatente(vehiculo.patente) : 'vehículo'}`,
         cuerpo: `${[vehiculo.marca, vehiculo.modelo].filter(Boolean).join(' ')} · ` +
