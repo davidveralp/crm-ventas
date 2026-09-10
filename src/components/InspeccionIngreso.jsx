@@ -434,6 +434,7 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
     // sin datos y quedaba "por designar". Ahora nace aquí, con el vehículo, el
     // cliente y lo que pidió el cliente, para que llegue identificado.
     let trabajoId = null
+    let otNumero = null
     if (vehiculoId) {
       const titulo = [
         veh?.patente || formatPatente(d.patente),
@@ -455,10 +456,11 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
         sucursal: d.sucursal || null,
         km_ingreso: parseInt(d.km, 10) || null,
         inspeccion_id: insp.id
-      }).select('id').maybeSingle()
+      }).select('id, ot_numero').maybeSingle()
       if (eTj) console.error('No se pudo crear el trabajo de taller:', eTj.message)
       else {
         trabajoId = tj?.id || null
+        otNumero = tj?.ot_numero || null
         // Tarjeta espejo en ClickUp desde el ingreso, no recién al solicitar
         // revisión: así el taller ve todo lo que entró aunque aún no tenga
         // técnico asignado. Nace en "por designar", que es justamente ese estado.
@@ -498,7 +500,7 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
       if (vehiculoId) {
         await supabase.from('presupuestos_taller').insert({
           empresa_id: perfil.empresa_id, vehiculo_id: vehiculoId, cliente_id: clienteId,
-          trabajo_id: trabajoId, estado: 'solicitado', origen: 'vehiculo',
+          trabajo_id: trabajoId, ot_numero: otNumero, estado: 'solicitado', origen: 'vehiculo',
           solicitud: d.detalle_presupuesto.trim(),
           items: [], solicitado_por: perfil.id
         })
@@ -508,7 +510,8 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
     setGuardando(false)
 
     // Documento oficial, ya con la firma subida a Storage
-    imprimirInspeccion(datosDoc({ numero: insp.id.slice(0, 8).toUpperCase(), firmaUrl }))
+    // El número de OT ya existe desde el ingreso: va en el acta que firma el cliente.
+    imprimirInspeccion(datosDoc({ numero: otNumero || insp.id.slice(0, 8).toUpperCase(), firmaUrl }))
 
     const siluetaInfo = SILUETAS.find((s) => s.key === silueta)
     onCompletada({

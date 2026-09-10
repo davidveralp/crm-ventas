@@ -15,8 +15,8 @@ const fecha = (d) => d ? new Date(d).toLocaleDateString('es-CL') : ''
 
 const GRUPOS = [
   ['repuesto', 'Repuestos'],
-  ['servicio', 'Mano de obra y servicios'],
-  ['insumo', 'Insumos y lubricantes'],
+  ['servicio', 'Mano de obra'],
+  ['insumo', 'Insumos'],
   ['servicio_externo', 'Servicios externos']
 ]
 
@@ -86,7 +86,7 @@ export function imprimirSalidaOT(d) {
     </div>
     <div class="doc">
       ORDEN DE TRABAJO N° ${esc(otNumero || 's/n')}<br>
-      SALIDA: ${esc(fecha(fechaEntrega) || new Date().toLocaleDateString('es-CL'))}
+      ENTREGA: ${esc(fecha(fechaEntrega) || new Date().toLocaleDateString('es-CL'))}
     </div>
   </div>
   <hr>
@@ -124,10 +124,14 @@ export function imprimirSalidaOT(d) {
   </table>
 
   <table class="tot">
-    <tr><td>Subtotal</td><td class="r">${clp(bruto)}</td></tr>
-    ${Number(descuento) > 0 ? `<tr><td>Descuento</td><td class="r">− ${clp(descuento)}</td></tr>` : ''}
+    ${GRUPOS.map(([t, n]) => {
+      const v = detalle.filter((x) => x.tipo === t).reduce((s2, x) => s2 + x.cantidad * x.precio_unit, 0)
+      return v ? `<tr><td>${esc(n)}</td><td class="r">${clp(v)}</td></tr>` : ''
+    }).join('')}
+    ${Number(descuento) > 0 ? `<tr><td>Descuentos</td><td class="r">− ${clp(descuento)}</td></tr>` : ''}
     <tr class="final"><td>TOTAL</td><td class="r">${clp(neto)}</td></tr>
   </table>
+  <p style="text-align:right;font-size:9pt;margin:2px 0 0">Valores con IVA incluido</p>
 
   ${observacionesEntrega ? `<h3>Observaciones de entrega</h3><div class="txt">${esc(observacionesEntrega)}</div>` : ''}
 

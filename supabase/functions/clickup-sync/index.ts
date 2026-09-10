@@ -224,10 +224,27 @@ Deno.serve(async (req) => {
     const r = { total: tasks.length, vinculadas: 0, creadas: 0, a_bandeja: 0, ya_estaban: 0, detalle: [] as string[] }
 
     for (const tarea of tasks) {
+      // Con subtasks=true las subtareas vienen en la misma lista. Se saltan:
+      // son tareas del vehículo, no vehículos.
+      if (tarea.parent) continue
+
       // ¿Ya está vinculada?
       const { data: yaHay } = await service.from('trabajos_taller')
         .select('id').eq('clickup_task_id', tarea.id).maybeSingle()
-      if (yaHay) { r.ya_estaban++; continue }
+      if (yaHay) {
+        // ERROR CORREGIDO: antes se saltaba aquí y las subtareas nunca se
+        // importaban para los vehículos ya vinculados — que son la mayoría.
+        // El estado y el progreso también se refrescan.
+        const cf = (tarea.custom_fields || []) as Array<Record<string, any>>
+        const pct = cf.find((f) => f.id === CAMPO_PROGRESO)?.value?.percent_complete
+        await service.from('trabajos_taller').update({
+          estado: ESTADO_CLICKUP_A_CRM[(tarea.status?.status || '').toLowerCase()] || undefined,
+          progreso_clickup: typeof pct === 'number' ? Math.round(pct) : null
+        }).eq('id', yaHay.id)
+        await importarSubtareas(tarea.id, yaHay.id)
+        r.ya_estaban++
+        continue
+      }
 
       const estadoCrm = ESTADO_CLICKUP_A_CRM[(tarea.status?.status || '').toLowerCase()] || 'por_designar'
       const prioridad = PRIORIDAD_CLICKUP_A_CRM[Number(tarea.priority?.id)] || 'normal'

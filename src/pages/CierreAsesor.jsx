@@ -268,10 +268,12 @@ function ModalCierre({ trabajo, perfil, onCerrar, onGuardado, irVehiculo }) {
 
     // Correlativo desde la secuencia de la base: dos cierres simultáneos no
     // pueden obtener el mismo número, cosa que sí pasaría contando filas.
+    // El número ya viene del ingreso (migración 71): el vehículo tiene OT desde
+    // que entra, no desde que se cierra. Solo se genera si falta, para trabajos
+    // creados antes de ese cambio.
     let otNumero = trabajo.ot_numero
     if (!otNumero) {
-      const { data: nro, error: eNro } = await supabase.rpc('siguiente_ot_numero')
-      if (eNro) { setGuardando(false); setErr('No se pudo generar el número de OT: ' + eNro.message); return }
+      const { data: nro } = await supabase.rpc('siguiente_ot_numero')
       otNumero = nro
     }
 

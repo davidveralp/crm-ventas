@@ -61,6 +61,9 @@ export default function NuevoCliente() {
         <div className="card p-5 text-center">
           <div className="text-3xl mb-2">✓</div>
           <h2 className="text-lg font-bold text-ink">Ingreso registrado</h2>
+          {listo.ot_numero && (
+            <p className="text-2xl font-bold text-ink mt-2">OT N° {listo.ot_numero}</p>
+          )}
           <p className="text-sm text-slate-500 mt-1">
             Se crearon la ficha del cliente, la del vehículo y el documento de ingreso.
           </p>
