@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { supabase, fetchAllRows } from '../lib/supabase'
 import { fmtCLP, formatPatente, patenteLimpia } from '../lib/helpers'
 import PanelVehiculo from '../components/PanelVehiculo'
+import { useAuth } from '../context/AuthContext'
 import SolicitarPresupuesto from '../components/SolicitarPresupuesto'
 
 /* ============================================================================
@@ -42,7 +43,7 @@ function Listado() {
 
   async function cargar() {
     const [v, a] = await Promise.all([
-      fetchAllRows('vehiculos', 'id,patente,patente_norm,marca,modelo,version,anio,tipo_vehiculo,traccion,transmision,km_ultimo,cliente_id,clientes(nombre,apellidos)'),
+      fetchAllRows('vehiculos', 'id,patente,patente_norm,marca,modelo,version,anio,tipo_vehiculo,traccion,transmision,km_ultimo,cliente_id,eliminado_en,clientes(nombre,apellidos)', (q) => q.is('eliminado_en', null)),
       supabase.from('v_radar_alertas').select('vehiculo_id,severidad,inspeccion_id')
     ])
     const m = {}
@@ -217,6 +218,7 @@ function Listado() {
 
 function Ficha({ id }) {
   const nav = useNavigate()
+  const { esAdmin } = useAuth()
   const [v, setV] = useState(null)
   const [ots, setOts] = useState([])
   const [trabajos, setTrabajos] = useState([])
@@ -311,9 +313,19 @@ function Ficha({ id }) {
                 {nombreCli(v.clientes)} →
               </button>
             )}
-            <button onClick={() => setPidiendo(true)} className="btn-accion mt-2">
-              💰 Solicitar presupuesto
-            </button>
+            <div className="flex gap-2 mt-2 flex-wrap">
+              <button onClick={() => setPidiendo(true)} className="btn-accion">
+                💰 Solicitar presupuesto
+              </button>
+              {esAdmin && (
+                <button className="btn-soft text-sm" style={{ color: '#e0382b' }}
+                        onClick={() => eliminarFicha('vehiculos', id,
+                          `el vehículo ${v.patente ? formatPatente(v.patente) : ''}`,
+                          () => nav('/vehiculos'))}>
+                  Eliminar ficha
+                </button>
+              )}
+            </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-4 gap-3 text-sm w-full sm:w-auto">
             <div><div className="text-[11px] text-slate-400">Visitas</div><div className="font-semibold text-ink">{K.visitas}</div></div>
@@ -509,6 +521,25 @@ function Ficha({ id }) {
       )}
     </div>
   )
+}
+
+/* Borrado para administración. Es LÓGICO: la ficha desaparece de las listas
+   pero el historial se conserva, porque de un vehículo cuelgan OTs,
+   inspecciones y presupuestos que no deben perderse por un clic. */
+async function eliminarFicha(tabla, id, nombre, onListo) {
+  const motivo = window.prompt(
+    `Eliminar ${nombre}.\n\nLa ficha se ocultará pero su historial se conserva y se puede restaurar.\n\nMotivo (opcional):`)
+  if (motivo === null) return
+  const { data, error } = await supabase.rpc('eliminar_ficha', {
+    p_tabla: tabla, p_id: id, p_motivo: motivo || null
+  })
+  if (error) { alert('No se pudo eliminar: ' + error.message); return }
+  const d = data?.dependencias || {}
+  const partes = Object.entries(d).filter(([, v]) => v > 0).map(([k, v]) => `${v} ${k}`)
+  alert(partes.length
+    ? `Ficha eliminada. Conserva ${partes.join(', ')} en el historial.`
+    : 'Ficha eliminada.')
+  onListo?.()
 }
 
 export default function Vehiculos() {

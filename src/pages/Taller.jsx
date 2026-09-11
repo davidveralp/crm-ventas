@@ -80,6 +80,16 @@ function TallerInterno() {
     setImportando(false)
   }
 
+  /* Borrado de una tarjeta del tablero. A diferencia de las fichas, este es
+     físico: una OT mal creada no aporta historial. Las cerradas no se pueden
+     borrar — para esas está la anulación, que deja rastro. */
+  async function eliminarTrabajo(t) {
+    if (!confirm(`¿Eliminar la orden ${t.ot_numero || ''} de ${tituloDe(t)}?\n\nSe borran también sus tareas y detalle. No se puede deshacer.`)) return
+    const { error } = await supabase.rpc('eliminar_trabajo', { p_id: t.id })
+    if (error) { alert('No se pudo eliminar: ' + error.message); return }
+    setSel(null); cargar()
+  }
+
   async function cargar() {
     const [t, ta, pr, us, dg, op, mg] = await Promise.all([
       supabase.from('trabajos_taller').select('*, clientes(nombre,apellidos,telefono), vehiculos(patente,marca,modelo,tipo_vehiculo)').order('creado_en', { ascending: false }),
@@ -553,7 +563,7 @@ function TallerInterno() {
           tareas={tareasDe(sel.id)} presups={presupsDe(sel.id)} tecnicos={tecnicos} nombreDe={nombreDe}
           diags={diags.filter((d) => d.trabajo_id === sel.id)} margenes={margenes}
           esJefe={esJefe} esTecnico={esTecnico} esCompras={esCompras} perfil={perfil} now={now} tituloDe={tituloDe}
-          acciones={{ moverEstado, guardarTrabajo, agregarTarea, asignarTarea, iniciarTarea, terminarTarea, terminarTodas, eliminarTarea, solicitarPresupuesto, guardarPresup, agregarDiag, borrarDiag, diagAPresupuesto, marcarRespaldo, abrirRadar: setRadarDe }} />
+          acciones={{ moverEstado, guardarTrabajo, agregarTarea, asignarTarea, iniciarTarea, terminarTarea, terminarTodas, eliminarTarea, solicitarPresupuesto, guardarPresup, agregarDiag, borrarDiag, diagAPresupuesto, marcarRespaldo, abrirRadar: setRadarDe, eliminarTrabajo }} />
       )}
 
       {/* RADAR a pantalla completa: pensado para tablet en el box */}
@@ -615,7 +625,8 @@ function Detalle({ t, onClose, tareas, presups, tecnicos, nombreDe, diags, marge
   ].filter(Boolean))]
 
   return (
-    <Modal abierto titulo={tituloDe(t)} onClose={onClose} ancho="max-w-3xl">
+    <Modal abierto titulo={`${t.ot_numero ? 'OT ' + t.ot_numero + ' · ' : ''}${tituloDe(t)}`}
+           onClose={onClose} ancho="max-w-3xl">
       <div className="space-y-5">
         {/* v41: cabecera estilo ficha de tarea — estado/fechas a la izquierda,
             personas asignadas/prioridad/progreso a la derecha */}
@@ -851,6 +862,17 @@ function Detalle({ t, onClose, tareas, presups, tecnicos, nombreDe, diags, marge
           )}
         </div>
       </div>
+      {/* Eliminar va al final y separado: es la única acción sin vuelta atrás
+          de esta pantalla. Solo admin y jefatura, y nunca en OT cerradas. */}
+      {esJefe && t.cierre_estado !== 'cerrado' && (
+        <div className="pt-3 mt-3 border-t border-slate-100 flex justify-end">
+          <button className="text-xs" style={{ color: '#e0382b' }}
+                  onClick={() => acciones.eliminarTrabajo(t)}>
+            Eliminar esta orden
+          </button>
+        </div>
+      )}
+
     </Modal>
   )
 }

@@ -287,7 +287,7 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
   }
   const quitarFoto = (i) => setFotos((f) => f.filter((_, j) => j !== i))
 
-  // ---- sección 6: tareas para el taller + observaciones ----
+  // ---- sección 6: mano de obra + observaciones ----
   const [checklist, setChecklist] = useState([])
   /* Las cuatro áreas de la OT, igual que en Dimasoft. El asesor carga QUÉ hay
      que hacer; el precio lo pone después el encargado de presupuestos. */
@@ -296,7 +296,7 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
   const [areasAbiertas, setAreasAbiertas] = useState({})
   // Ítems a cotizar: van al encargado como presupuesto, no como trabajo a hacer
   const [aCotizar, setACotizar] = useState([])
-  const [nuevoCotizar, setNuevoCotizar] = useState({ tipo: 'repuesto', detalle: '', cantidad: '1' })
+  const [nuevoCotizar, setNuevoCotizar] = useState({ detalle: '', cantidad: '1' })
   const [nuevoItem, setNuevoItem] = useState('')
   const [obsAsesor, setObsAsesor] = useState('')
   /* Agrega o quita un servicio del texto de "Trabajo a realizar". Se trabaja
@@ -317,8 +317,8 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
     if (!nuevoCotizar.detalle.trim()) return
     setACotizar((x) => [...x, {
       id: 'ct' + Date.now() + Math.random().toString(36).slice(2, 5),
-      tipo: nuevoCotizar.tipo, detalle: nuevoCotizar.detalle.trim(),
-      cantidad: nuevoCotizar.cantidad || '1'
+      tipo: 'repuesto', detalle: nuevoCotizar.detalle.trim(),
+      cantidad: nuevoCotizar.cantidad || '1', cliente_trae: false
     }])
     setNuevoCotizar({ ...nuevoCotizar, detalle: '', cantidad: '1' })
   }
@@ -532,14 +532,19 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
           }
         }
 
+        /* La mano de obra se guarda como líneas de la OT, no como tareas
+           sueltas: así queda junto al resto del detalle, se valoriza igual y
+           sube a ClickUp bajo el servicio seleccionado. */
         if (trabajoId && checklist.length) {
-          const { error: eTar } = await supabase.from('tareas_taller').insert(
+          const base = lineasOT.length
+          const { error: eTar } = await supabase.from('ot_detalle').insert(
             checklist.map((c, i) => ({
               empresa_id: perfil.empresa_id, trabajo_id: trabajoId,
-              titulo: c.item, estado: 'pendiente', tipo_linea: 'servicio', orden: i
+              tipo: 'servicio', detalle: c.item, cantidad: 1, precio_unit: 0,
+              cargado_por: perfil.id, orden: base + i
             }))
           )
-          if (eTar) console.error('No se pudieron guardar las tareas:', eTar.message)
+          if (eTar) console.error('No se pudo guardar la mano de obra:', eTar.message)
         }
 
         if (trabajoId) {
@@ -585,8 +590,12 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
           // Cada ítem como línea del presupuesto: el encargado valoriza uno por
           // uno y el cliente puede aceptar parte.
           items: aCotizar.map((l) => ({
-            tipo: l.tipo, detalle: l.detalle, cant: Number(l.cantidad) || 1,
-            codigo: '', costo: 0, precio: 0, en_stock: null
+            tipo: 'repuesto', detalle: l.detalle, cant: Number(l.cantidad) || 1,
+            codigo: '', costo: 0, precio: 0,
+            // `en_stock: true` marca lo que trae el cliente: no se compra ni se
+            // cotiza, pero queda registrado para la mano de obra.
+            en_stock: l.cliente_trae ? true : null,
+            cliente_trae: !!l.cliente_trae
           })),
           solicitado_por: perfil.id
         })
@@ -820,49 +829,52 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
                 </label>
                 {d.solicita_presupuesto && (
                   <div className="mt-2">
-                    <label className="label">Qué hay que cotizar</label>
+                    <label className="label">Repuestos</label>
                     <p className="text-[11px] text-slate-400 mb-2">
-                      Una línea por ítem. Cotizar "los frenos" es ambiguo; cotizar
-                      "pastillas delanteras" y "discos delanteros" por separado permite
-                      que el cliente acepte una parte.
+                      Uno por línea. Marca los que el cliente trae: esos no se cotizan.
                     </p>
 
                     <div className="grid grid-cols-12 gap-1.5 mb-2">
-                      <select className="input col-span-4" style={{ minHeight: '38px' }}
-                              value={nuevoCotizar.tipo}
-                              onChange={(e) => setNuevoCotizar({ ...nuevoCotizar, tipo: e.target.value })}>
-                        <option value="repuesto">Repuesto</option>
-                        <option value="insumo">Lubricante / insumo</option>
-                        <option value="servicio">Mano de obra</option>
-                        <option value="servicio_externo">Servicio externo</option>
-                      </select>
-                      <input className="input col-span-6" style={{ minHeight: '38px' }}
+                      <input className="input col-span-8" style={{ minHeight: '38px' }}
                              placeholder="Ej: Pastillas de freno delanteras"
                              value={nuevoCotizar.detalle}
                              onChange={(e) => setNuevoCotizar({ ...nuevoCotizar, detalle: e.target.value })}
                              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); agregarCotizar() } }} />
-                      <input className="input col-span-1" style={{ minHeight: '38px' }} inputMode="decimal"
-                             value={nuevoCotizar.cantidad}
+                      <input className="input col-span-2" style={{ minHeight: '38px' }} inputMode="decimal"
+                             placeholder="Cant." value={nuevoCotizar.cantidad}
                              onChange={(e) => setNuevoCotizar({ ...nuevoCotizar, cantidad: e.target.value.replace(/[^0-9.]/g, '') })} />
-                      <button type="button" className="btn-soft col-span-1 text-xs"
-                              style={{ minHeight: '38px' }} onClick={agregarCotizar}>+</button>
+                      <button type="button" className="btn-soft col-span-2 text-xs"
+                              style={{ minHeight: '38px' }} onClick={agregarCotizar}>+ Agregar</button>
                     </div>
 
                     {aCotizar.map((l, i) => (
-                      <div key={l.id} className="flex items-center gap-2 text-sm py-0.5">
+                      <div key={l.id} className="flex items-center gap-2 text-sm py-1 border-b border-slate-50 last:border-0">
                         <span className="text-slate-400 text-xs w-4">{i + 1}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded shrink-0"
-                              style={{ background: '#f1f5f9', color: '#64748b' }}>
-                          {AREAS_OT.find((a) => a[0] === l.tipo)?.[1] || l.tipo}
-                        </span>
                         <span className="flex-1 text-slate-700">{l.detalle}</span>
-                        <span className="text-xs text-slate-400">{l.cantidad}</span>
+                        <span className="text-xs text-slate-400">×{l.cantidad}</span>
+                        {/* Si el cliente trae el repuesto no hay que cotizarlo:
+                            solo se cobra la mano de obra de instalarlo. */}
+                        <label className="flex items-center gap-1 cursor-pointer shrink-0">
+                          <input type="checkbox" checked={!!l.cliente_trae}
+                                 onChange={() => setACotizar((x) => x.map((y) =>
+                                   y.id === l.id ? { ...y, cliente_trae: !y.cliente_trae } : y))} />
+                          <span className="text-[11px]"
+                                style={{ color: l.cliente_trae ? '#1f7a45' : '#94a3b8' }}>
+                            {l.cliente_trae ? 'Lo trae el cliente' : 'Cotizar'}
+                          </span>
+                        </label>
                         <button type="button" className="text-slate-300 text-lg leading-none"
                                 onClick={() => setACotizar((x) => x.filter((y) => y.id !== l.id))}>×</button>
                       </div>
                     ))}
                     {!aCotizar.length && (
-                      <p className="text-xs text-slate-300">Sin ítems por cotizar.</p>
+                      <p className="text-xs text-slate-300">Sin repuestos por cotizar.</p>
+                    )}
+                    {aCotizar.some((l) => l.cliente_trae) && (
+                      <p className="text-[11px] mt-1" style={{ color: '#1f7a45' }}>
+                        {aCotizar.filter((l) => l.cliente_trae).length} los trae el cliente:
+                        no se cotizan, solo se cobra la instalación.
+                      </p>
                     )}
                     <p className="text-[11px] text-slate-400 mt-1.5">
                       Se envía al encargado de presupuestos al registrar el ingreso.
@@ -1177,12 +1189,12 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
 
           {/* ---- PASO 5: CHECKLIST + OBS ASESOR ---- */}
           {/* sección 6 */}
-          <h3 className="text-sm font-bold text-ink border-b border-slate-200 pb-1 pt-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-deep text-white text-[10px] mr-2">6</span>Tareas</h3>
+          <h3 className="text-sm font-bold text-ink border-b border-slate-200 pb-1 pt-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-deep text-white text-[10px] mr-2">6</span>Mano de obra</h3>
           {true && (
             <div className="space-y-3">
-              <label className="label">Tareas para el taller</label>
+              <label className="label">Mano de obra</label>
               <p className="text-[11px] text-slate-400 -mt-1">
-                Se cargan como subtareas en ClickUp para que el mecánico las vea y las marque.
+                Se cargan como subtareas bajo el servicio en ClickUp, para que el mecánico las vea y las marque.
               </p>
               <div className="flex gap-1.5">
                 <input className="input text-sm flex-1" value={nuevoItem} placeholder="Ej: Revisar ruido tren delantero…"
