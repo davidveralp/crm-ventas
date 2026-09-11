@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { formatPatente, patenteLimpia, formatRut, fmtFonoOT,
   OT_MARCAS, OT_MODELOS, OT_SVC_GRUPOS, svcAplicaAVehiculo, TRACCIONES,
-  otBU, SERVICIOS_ORDENADOS, AREAS_REVISION, NIVELES_FLUIDOS, NIVEL_OPCIONES, SEV_COLOR, COMBUSTIBLES, TIPOS_VEHICULO,
+  otBU, SERVICIOS_ORDENADOS, SERVICIOS_ADICIONALES, AREAS_REVISION, NIVELES_FLUIDOS, NIVEL_OPCIONES, SEV_COLOR, COMBUSTIBLES, TIPOS_VEHICULO,
   
   OT_TIPO_INGRESO, OT_TIPO_CLIENTE, OT_CONOCIO, OT_ES_GARANTIA, sucursalDeAsesor, TRANSMISIONES, TRANSMISION_LABEL } from '../lib/helpers'
 import { imprimirInspeccion } from '../lib/inspeccionPDF'
@@ -845,12 +845,6 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
                           placeholder="Lo que dice el cliente, en sus palabras"
                           onChange={(e) => setD({ ...d, observaciones_cliente: e.target.value })} />
               </div>
-              <div>
-                <label className="label">Observaciones del asesor</label>
-                <textarea className="input" rows="2" value={obsAsesor}
-                          placeholder="Tu criterio técnico y lo que observaste"
-                          onChange={(e) => setObsAsesor(e.target.value)} />
-              </div>
 
               {/* ---- TAREAS ----
                    Tres listas, una por destino en ClickUp:
@@ -944,6 +938,54 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
                   </p>
                 )}
               </div>
+
+              {/* ---- Servicios adicionales ----
+                   Van aparte del catálogo principal porque miden algo distinto:
+                   no el motivo de la visita, sino lo que el asesor logra sumar
+                   con el cliente presente. Es la venta cruzada del mostrador. */}
+              {d.tipo_servicio && (
+                <div className="sm:col-span-2 rounded-lg border-2 p-3"
+                     style={{ borderColor: (d.extras || []).length ? '#1f9d57' : '#e2e8f0' }}>
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div>
+                      <p className="text-sm font-medium text-ink">Servicios adicionales</p>
+                      <p className="text-[11px] text-slate-400">
+                        Lo que el cliente acepta además del trabajo principal.
+                      </p>
+                    </div>
+                    {(d.extras || []).length > 0 && (
+                      <span className="px-2 py-1 rounded text-xs font-semibold"
+                            style={{ background: '#e8f6ee', color: '#1f7a45' }}>
+                        {(d.extras || []).length} agregado{(d.extras || []).length > 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </div>
+
+                  <select className="input mt-2" value=""
+                          onChange={(e) => {
+                            const sv = e.target.value
+                            if (sv) setD((x) => ({ ...x, extras: [...new Set([...(x.extras || []), sv])] }))
+                          }}>
+                    <option value="">Agregar servicio adicional…</option>
+                    {SERVICIOS_ADICIONALES
+                      .filter((sv) => !(d.extras || []).includes(sv))
+                      .map((sv) => <option key={sv}>{sv}</option>)}
+                  </select>
+
+                  {(d.extras || []).length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {(d.extras || []).map((sv) => (
+                        <span key={sv} className="text-[11px] px-2 py-1 rounded-lg flex items-center gap-1"
+                              style={{ background: '#e8f6ee', color: '#1f7a45' }}>
+                          {sv}
+                          <button type="button" className="font-bold"
+                                  onClick={() => setD((x) => ({ ...x, extras: (x.extras || []).filter((y) => y !== sv) }))}>×</button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* La fecha de entrega recién tiene sentido cuando se sabe qué se
                   va a hacer: antes de elegir el servicio es una adivinanza. */}
@@ -1263,6 +1305,19 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
 
           {/* ---- PASO 5: CHECKLIST + OBS ASESOR ---- */}
           {/* sección 6 */}
+          {/* Las observaciones del asesor van aquí, al final: se escriben
+              después de haber recorrido el vehículo y la revisión, con todo a
+              la vista. Pedirlas al principio obligaba a volver a subir. */}
+          <div className="pt-2">
+            <label className="label">Observaciones del asesor</label>
+            <textarea className="input" rows="3" value={obsAsesor}
+                      placeholder="Tu criterio técnico y lo que observaste durante la recepción"
+                      onChange={(e) => setObsAsesor(e.target.value)} />
+            <p className="text-[11px] text-slate-400 mt-1">
+              Queda en el acta que firma el cliente y en el detalle de la orden.
+            </p>
+          </div>
+
           <h3 className="text-sm font-bold text-ink border-b border-slate-200 pb-1 pt-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-deep text-white text-[10px] mr-2">6</span>Firma del cliente</h3>
           {true && (
             <div className="space-y-3">

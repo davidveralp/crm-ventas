@@ -730,3 +730,33 @@ export const SERVICIOS_ORDENADOS = [
   ...OT_SVC_TALLER,
   ...OT_SVC_DYP
 ]
+
+
+/* ============================================================================
+   Servicios adicionales · venta cruzada del asesor
+   ----------------------------------------------------------------------------
+   Lista aparte del catálogo principal a propósito: estos no son el motivo de la
+   visita sino lo que el asesor logra sumar mientras el cliente está presente.
+   Separarlos permite medir la venta cruzada por asesor, que es lo que el
+   catálogo mezclado no dejaba ver.
+   ========================================================================== */
+export const SERVICIOS_ADICIONALES = [
+  'Airlife',
+  'Nitrofil',
+  'Adblue',
+  'Limpieza tapiz',
+  'Limpieza motor',
+  'Lavado chasis',
+  'Sellado chasis',
+  'Pulido de foco',
+  'Pulido de carrocería',
+  'Sellado cerámico',
+  'Recarga de extintores',
+  'Pisaderas',
+  'Antivuelco',
+  'Lona marítima',
+  'Instalación de alarmas',
+  'Instalación de corta corriente',
+  'Instalación de GPS',
+  'Instalación de láminas de seguridad'
+]
