@@ -835,19 +835,21 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
                   </div>
                 )}
               </div>
-              <div><label className="label">Observaciones del cliente</label><textarea className="input" rows="2" value={d.observaciones_cliente} onChange={(e) => setD({ ...d, observaciones_cliente: e.target.value })} /></div>
-
-              {/* ---- ¿Solicita presupuesto? ----
-                   Si el cliente quiere cotización, el detalle va directo al
-                   encargado de presupuestos. Es el paso que hoy se hacía de
-                   palabra y se perdía. */}
-              <div className="sm:col-span-2 rounded-lg border-2 p-3"
-                   style={{ borderColor: d.solicita_presupuesto ? '#2f6fb0' : '#e2e8f0' }}>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={d.solicita_presupuesto}
-                         onChange={(e) => setD({ ...d, solicita_presupuesto: e.target.checked })} />
-                  <span className="text-sm font-medium text-ink">El cliente solicita presupuesto</span>
-                </label>
+              {/* Dos campos distintos a propósito: el cliente describe el
+                  síntoma ("suena adelante al frenar") y el asesor el criterio
+                  técnico ("pastillas al 20%, recomiendo cambio"). Mezclarlos
+                  pierde información que después sirve para el diagnóstico. */}
+              <div>
+                <label className="label">Observaciones del cliente</label>
+                <textarea className="input" rows="2" value={d.observaciones_cliente}
+                          placeholder="Lo que dice el cliente, en sus palabras"
+                          onChange={(e) => setD({ ...d, observaciones_cliente: e.target.value })} />
+              </div>
+              <div>
+                <label className="label">Observaciones del asesor</label>
+                <textarea className="input" rows="2" value={obsAsesor}
+                          placeholder="Tu criterio técnico y lo que observaste"
+                          onChange={(e) => setObsAsesor(e.target.value)} />
               </div>
 
               {/* ---- TAREAS ----
