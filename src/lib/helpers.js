@@ -614,30 +614,105 @@ export const NIVELES_FLUIDOS = [
   'Dirección hidráulica', 'Líquido de frenos'
 ]
 
-/* Ítems de revisión. `cond` marca los que solo se responden si son accesibles:
-   pedirle al asesor que desmonte una rueda en la recepción no es realista. */
-export const REVISION_INGRESO = [
-  { k: 'luces',        t: 'Revisión de luces',
-    ops: [['ok', 'Todas buenas', 'ok'], ['falla', 'Alguna quemada', 'pronto'], ['varias', 'Varias falladas', 'critico']] },
-  { k: 'plumillas',    t: 'Estado de plumillas',
-    ops: [['ok', 'Buen estado', 'ok'], ['gastadas', 'Gastadas', 'pronto'], ['malas', 'Deben cambiarse', 'critico']] },
-  { k: 'filtro_aire',  t: 'Filtro de aire', cond: 'solo si es de fácil extracción',
-    ops: [['ok', 'Limpio', 'ok'], ['sucio', 'Sucio', 'pronto'], ['muy_sucio', 'Muy sucio', 'critico'], ['na', 'No revisado', 'na']] },
-  { k: 'filtro_polen', t: 'Filtro de polen', cond: 'solo si es de fácil extracción',
-    ops: [['ok', 'Limpio', 'ok'], ['sucio', 'Sucio', 'pronto'], ['muy_sucio', 'Muy sucio', 'critico'], ['na', 'No revisado', 'na']] },
-  { k: 'fugas',        t: 'Posibles fugas (aceite, refrigerante)',
-    ops: [['no', 'Sin fugas', 'ok'], ['leve', 'Humedad / fuga leve', 'pronto'], ['si', 'Fuga evidente', 'critico']] },
-  { k: 'past_del',     t: 'Vida útil pastillas delanteras', cond: 'solo si es visible sin desmontar',
-    ops: [['alta', 'Sobre 70%', 'ok'], ['media', '30% a 70%', 'pronto'], ['baja', 'Bajo 30%', 'critico'], ['na', 'No visible', 'na']] },
-  { k: 'disco_del',    t: 'Estado de discos delanteros', cond: 'solo si es visible sin desmontar',
-    ops: [['ok', 'Buen estado', 'ok'], ['desgaste', 'Con desgaste', 'pronto'], ['malo', 'Delgado o rayado', 'critico'], ['na', 'No visible', 'na']] },
-  { k: 'past_tra',     t: 'Vida útil pastillas traseras', cond: 'solo si es visible sin desmontar',
-    ops: [['alta', 'Sobre 70%', 'ok'], ['media', '30% a 70%', 'pronto'], ['baja', 'Bajo 30%', 'critico'], ['na', 'No visible', 'na']] },
-  { k: 'disco_tra',    t: 'Estado de discos traseros', cond: 'solo si es visible sin desmontar',
-    ops: [['ok', 'Buen estado', 'ok'], ['desgaste', 'Con desgaste', 'pronto'], ['malo', 'Delgado o rayado', 'critico'], ['na', 'No visible', 'na']] },
-  { k: 'freno_mano',   t: 'Freno de mano (recorrido)',
-    ops: [['ok', 'Normal (3 a 5 clics)', 'ok'], ['largo', 'Largo', 'pronto'], ['muy_largo', 'Muy largo / no sujeta', 'critico']] }
+/* ============================================================================
+   Revisión de recepción · 8 áreas
+   ----------------------------------------------------------------------------
+   Estructura definida por el taller. Cada área es independiente y desplegable,
+   porque el recorrido físico también lo es: el asesor no revisa el tren
+   delantero y las luces al mismo tiempo.
+
+   Las opciones usan el mismo vocabulario de severidad que el RADAR
+   (ok | pronto | critico | na), para que ambos alimenten el mismo circuito de
+   diagnósticos y oportunidades.
+   ========================================================================== */
+
+/* Escalas reutilizadas: la mayoría de los puntos se responden igual. */
+const E_ESTADO = [['ok', 'Bien', 'ok'], ['desgaste', 'Con desgaste', 'pronto'],
+                  ['malo', 'Cambiar', 'critico'], ['na', 'No aplica', 'na']]
+const E_SINO   = [['no', 'Sin novedad', 'ok'], ['leve', 'Leve', 'pronto'],
+                  ['si', 'Presente', 'critico']]
+const E_NIVEL  = [['ok', 'Correcto', 'ok'], ['bajo', 'Bajo', 'pronto'],
+                  ['muy_bajo', 'Muy bajo', 'critico'], ['na', 'No revisado', 'na']]
+const E_LUZ    = [['ok', 'Funciona', 'ok'], ['una', 'Una quemada', 'pronto'],
+                  ['ambas', 'No enciende', 'critico'], ['na', 'No aplica', 'na']]
+const E_VIDA   = [['alta', 'Sobre 70%', 'ok'], ['media', '30% a 70%', 'pronto'],
+                  ['baja', 'Bajo 30%', 'critico'], ['na', 'No aplica', 'na']]
+
+export const AREAS_REVISION = [
+  { k: 'tren_del', t: 'Tren delantero', items: [
+    ['amort_del', 'Amortiguadores delanteros', E_ESTADO],
+    ['terminales', 'Terminales', E_ESTADO],
+    ['axiales', 'Axiales', E_ESTADO],
+    ['bieletas_del', 'Bieletas', E_ESTADO],
+    ['bujes_est_del', 'Bujes barra estabilizadora', E_ESTADO],
+    ['bandejas_del', 'Bandejas', E_ESTADO],
+    ['holgura_masas', 'Holgura de masas', E_SINO],
+    ['rotulas', 'Rótulas', E_ESTADO],
+    ['fuelles_homo', 'Fuelles homocinéticas', E_ESTADO]
+  ] },
+  { k: 'tren_tra', t: 'Tren trasero', items: [
+    ['amort_tra', 'Amortiguadores traseros', E_ESTADO],
+    ['bandejas_tra', 'Bandejas traseras', E_ESTADO],
+    ['bujes_est_tra', 'Bujes barra estabilizadora trasera', E_ESTADO],
+    ['fuelles_tra', 'Fuelles traseros', E_ESTADO],
+    ['bieletas_tra', 'Bieletas traseras', E_ESTADO]
+  ] },
+  { k: 'frenos_neum', t: 'Vehículo levantado · frenos y neumáticos', items: [
+    ['neumaticos', 'Estado de neumáticos', E_ESTADO, 'si está malo, anotar la medida'],
+    ['past_del', '% vida útil pastillas delanteras', E_VIDA],
+    ['disco_del', 'Estado discos delanteros', E_ESTADO],
+    ['past_tra', '% vida útil pastillas traseras', E_VIDA, 'si aplica'],
+    ['disco_tra', 'Estado discos traseros', E_ESTADO, 'si aplica'],
+    ['balatas', '% vida útil balatas', E_VIDA, 'si aplica'],
+    ['tambores', 'Estado de tambores', E_ESTADO, 'si aplica']
+  ] },
+  { k: 'motor', t: 'Compartimiento motor', items: [
+    ['n_aceite', 'Nivel aceite motor', E_NIVEL],
+    ['n_refrig', 'Nivel refrigerante', E_NIVEL],
+    ['liq_frenos', 'Estado líquido de frenos', E_NIVEL],
+    ['n_limpia', 'Nivel limpiaparabrisas', E_NIVEL],
+    ['n_direccion', 'Nivel dirección hidráulica', E_NIVEL],
+    ['filtro_aire', 'Estado filtro de aire', E_ESTADO],
+    ['filtro_cabina', 'Estado filtro de cabina', E_ESTADO],
+    ['correas', 'Estado correa(s) de accesorios', E_ESTADO],
+    ['fugas', 'Posibles fugas', E_SINO]
+  ] },
+  { k: 'luces', t: 'Luces', items: [
+    ['l_altas', 'Altas', E_LUZ],
+    ['l_bajas', 'Bajas', E_LUZ],
+    ['l_neblineros', 'Neblineros', E_LUZ],
+    ['l_intermit', 'Intermitentes', E_LUZ],
+    ['l_posicion', 'Posición', E_LUZ],
+    ['l_patente', 'Patente', E_LUZ],
+    ['l_freno', 'Freno', E_LUZ],
+    ['l_reversa', 'Reversa', E_LUZ]
+  ] },
+  { k: 'interior', t: 'Interior del vehículo', items: [
+    ['bocina', 'Bocina', E_LUZ],
+    ['plumillas', 'Plumillas', E_ESTADO],
+    ['ventilacion', 'Ventilación / flujo de aire', E_ESTADO],
+    ['aire_ac', 'Aire acondicionado', E_ESTADO],
+    ['calefaccion', 'Calefacción', E_ESTADO],
+    ['freno_est', 'Freno de estacionamiento', [
+      ['ok', 'Normal', 'ok'], ['largo', 'Largo', 'pronto'],
+      ['muy_largo', 'Muy largo / no sujeta', 'critico']]]
+  ] },
+  { k: 'prueba_ruta', t: 'Prueba en ruta', items: [
+    ['vibracion', 'Vibración', E_SINO],
+    ['desviacion', 'Desviación de dirección', E_SINO],
+    ['ruidos', 'Ruidos anormales', E_SINO],
+    ['testigos', 'Testigos encendidos en tablero', E_SINO]
+  ] }
 ]
+
+/* Compatibilidad: algunas pantallas antiguas todavía importan REVISION_INGRESO.
+   Se arma como lista plana de las áreas. */
+export const REVISION_INGRESO = AREAS_REVISION.flatMap((a) =>
+  a.items.map(([k, t, ops, cond]) => ({
+    k, t, cond,
+    ops: ops.map(([v, label, sev]) => [v, label, sev])
+  }))
+)
 
 /* Color por severidad, compartido por la revisión y el RADAR. */
 export const SEV_COLOR = {

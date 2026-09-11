@@ -38,6 +38,8 @@ export default function OrdenesTrabajo() {
   const [estado, setEstado] = useState('cargando')
   const [errMsg, setErrMsg] = useState('')
   const [sel, setSel] = useState(null)
+  // Técnicos por OT, para mostrarlos en la fila sin abrir el detalle.
+  const [tecnicosPorOT, setTecnicosPorOT] = useState({})
 
   useEffect(() => { cargar() }, [])
 
@@ -52,6 +54,24 @@ export default function OrdenesTrabajo() {
       .order('creado_en', { ascending: false }).limit(500)
     if (error) { setErrMsg(error.message); setEstado('error'); return }
     setRows(data || []); setEstado('listo')
+
+    /* Una sola consulta para todas las tareas: pedir los técnicos OT por OT
+       serían 200 consultas y la tabla tardaría en aparecer. */
+    const ids = (data || []).map((t) => t.id)
+    if (ids.length) {
+      const { data: tar } = await supabase.from('tareas_taller')
+        .select('trabajo_id, tecnico_id, tecnico_nombre, usuarios:tecnico_id(nombre)')
+        .in('trabajo_id', ids.slice(0, 300))
+      const m = {}
+      ;(tar || []).forEach((x) => {
+        const n = x.usuarios?.nombre || x.tecnico_nombre
+        if (!n) return
+        const corto = n.split(' ')[0]
+        m[x.trabajo_id] = m[x.trabajo_id] || []
+        if (!m[x.trabajo_id].includes(corto)) m[x.trabajo_id].push(corto)
+      })
+      setTecnicosPorOT(m)
+    }
   }
 
   const K = useMemo(() => ({
@@ -119,6 +139,7 @@ export default function OrdenesTrabajo() {
               <th className="text-left">Patente</th>
               <th className="text-left">Vehículo</th>
               <th className="text-left">Cliente</th>
+              <th className="text-left">Técnicos</th>
               <th className="text-center">Estado</th>
               <th className="text-right">Total</th>
             </tr>
@@ -138,6 +159,9 @@ export default function OrdenesTrabajo() {
                   <td className="truncate max-w-[160px] text-slate-600">
                     {`${t.clientes?.nombre || ''} ${t.clientes?.apellidos || ''}`.trim() || '—'}
                   </td>
+                  <td className="text-xs text-slate-500 truncate max-w-[130px]">
+                    {(tecnicosPorOT[t.id] || []).join(', ') || '—'}
+                  </td>
                   <td className="text-center">
                     <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold"
                           style={{ background: c.bg, color: c.color }}>{c.label}</span>
@@ -147,7 +171,7 @@ export default function OrdenesTrabajo() {
               )
             })}
             {!visibles.length && (
-              <tr><td colSpan={7} className="p-4 text-center text-slate-400">Sin órdenes que coincidan.</td></tr>
+              <tr><td colSpan={8} className="p-4 text-center text-slate-400">Sin órdenes que coincidan.</td></tr>
             )}
           </tbody>
         </table>
@@ -230,7 +254,7 @@ function DetalleOT({ ot, perfil, onCerrar, onCambio }) {
   useEffect(() => {
     Promise.all([
       supabase.from('ot_detalle').select('*').eq('trabajo_id', ot.id).order('orden'),
-      supabase.from('tareas_taller').select('*').eq('trabajo_id', ot.id).order('orden')
+      supabase.from('tareas_taller').select('*, usuarios:tecnico_id(nombre)').eq('trabajo_id', ot.id).order('orden')
     ]).then(([d, t]) => {
       setLineas(d.data || []); setTareas(t.data || []); setCargando(false)
     })
@@ -378,12 +402,24 @@ function DetalleOT({ ot, perfil, onCerrar, onCambio }) {
                     Tareas ({tareas.filter((t) => t.estado === 'terminada').length}/{tareas.length})
                   </p>
                   {tareas.map((t) => (
-                    <div key={t.id} className="flex gap-2 text-sm py-0.5">
-                      <span>{t.estado === 'terminada' ? '✓' : '○'}</span>
-                      <span className="flex-1 text-slate-700">{t.titulo}</span>
-                      <span className="text-xs text-slate-400">
-                        {t.tecnico_nombre || ''}
-                      </span>
+                    <div key={t.id} className="py-1 border-b border-slate-50 last:border-0">
+                      <div className="flex gap-2 text-sm items-start">
+                        <span className="shrink-0" style={{ color: t.estado === 'terminada' ? '#1f9d57' : '#cbd5e1' }}>
+                          {t.estado === 'terminada' ? '✓' : '○'}
+                        </span>
+                        <span className="flex-1 text-slate-700">{t.titulo}</span>
+                        {/* Quién la hizo: el dato con el que se calculan las
+                            comisiones y se siguen los reprocesos. */}
+                        <span className="text-[11px] px-1.5 py-0.5 rounded shrink-0"
+                              style={t.usuarios?.nombre || t.tecnico_nombre
+                                ? { background: '#f1f5f9', color: '#475569' }
+                                : { color: '#cbd5e1' }}>
+                          {t.usuarios?.nombre || t.tecnico_nombre || 'sin asignar'}
+                        </span>
+                      </div>
+                      {t.observacion && (
+                        <p className="text-xs text-slate-500 italic pl-5 mt-0.5">💬 {t.observacion}</p>
+                      )}
                     </div>
                   ))}
                 </div>

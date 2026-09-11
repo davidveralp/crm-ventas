@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { formatPatente, patenteLimpia, formatRut, fmtFonoOT,
   OT_MARCAS, OT_MODELOS, OT_SVC_GRUPOS, svcAplicaAVehiculo, TRACCIONES,
-  otBU, SERVICIOS_ORDENADOS, REVISION_INGRESO, NIVELES_FLUIDOS, NIVEL_OPCIONES, SEV_COLOR, COMBUSTIBLES, TIPOS_VEHICULO,
+  otBU, SERVICIOS_ORDENADOS, AREAS_REVISION, NIVELES_FLUIDOS, NIVEL_OPCIONES, SEV_COLOR, COMBUSTIBLES, TIPOS_VEHICULO,
   
   OT_TIPO_INGRESO, OT_TIPO_CLIENTE, OT_CONOCIO, OT_ES_GARANTIA, sucursalDeAsesor, TRANSMISIONES, TRANSMISION_LABEL } from '../lib/helpers'
 import { imprimirInspeccion } from '../lib/inspeccionPDF'
@@ -23,7 +23,8 @@ import { motivoEdgeFunction } from '../lib/helpers'
 const LISTAS_TAREAS = [
   ['servicio', 'Mano de obra', 'subtareas', 'Ej: Cambio de pastillas delanteras', false],
   ['repuesto', 'Repuestos', 'lista de control', 'Ej: Pastillas de freno delanteras', true],
-  ['insumo', 'Lubricantes e insumos', 'lista de control', 'Ej: Aceite 5W30 sintético 4L', true]
+  ['insumo', 'Lubricantes e insumos', 'lista de control', 'Ej: Aceite 5W30 sintético 4L', true],
+  ['servicio_externo', 'Servicios externos', 'lista de control', 'Ej: Rectificado de discos', true]
 ]
 
 const AREAS_OT = [
@@ -303,6 +304,7 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
   const [lineasOT, setLineasOT] = useState([])
   const [nuevaLinea, setNuevaLinea] = useState({ tipo: 'servicio', detalle: '', cantidad: '1', codigo: '' })
   const [areasAbiertas, setAreasAbiertas] = useState({})
+  const [revAbiertas, setRevAbiertas] = useState({})
   // Ítems a cotizar: van al encargado como presupuesto, no como trabajo a hacer
   const [nuevoItem, setNuevoItem] = useState('')
   const [obsAsesor, setObsAsesor] = useState('')
@@ -319,6 +321,18 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
 
   // Tipo de vehículo elegido (para filtrar servicios que no apliquen)
   const tipoVehSel = SILUETAS.find((x) => x.key === silueta)?.tipoVehiculo || null
+
+  /* Un hallazgo de la revisión pasa a ser mano de obra de la OT. `origen`
+     guarda de qué punto vino, para no duplicarlo si se toca dos veces. */
+  const sumarHallazgo = (clave, texto, r) => {
+    const ya = lineasOT.find((l) => l.origen === clave)
+    if (ya) { setLineasOT((x) => x.filter((l) => l.origen !== clave)); return }
+    setLineasOT((x) => [...x, {
+      id: 'hz' + Date.now() + Math.random().toString(36).slice(2, 5),
+      tipo: 'servicio', detalle: `${texto} — ${r.v}`, cantidad: '1',
+      codigo: '', cotizar: false, origen: clave
+    }])
+  }
 
   const agregarLinea = (tipo) => {
     if (!nuevaLinea.detalle.trim()) return
@@ -1029,83 +1043,96 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
                   })}
                 </div>
               </div>
-              {/* ---- Revisión de recepción ----
-                   Reemplaza al inventario. Cada ítem responde con una opción
-                   de color, igual que el RADAR, para que el asesor pueda
-                   mostrarle el resultado al cliente en el momento. */}
+              {/* ---- Revisión de recepción · 7 áreas independientes ----
+                   Cada área se despliega por separado porque el recorrido
+                   físico también lo es: nadie revisa el tren delantero y las
+                   luces al mismo tiempo. */}
               <div>
                 <label className="label mb-1">Revisión de recepción</label>
                 <p className="text-[11px] text-slate-400 mb-2">
                   Lo que detectes acá es la primera oportunidad de venta, antes del RADAR.
+                  Toca <strong>+ al servicio</strong> en un hallazgo para agregarlo a la OT.
                 </p>
-                <div className="space-y-2">
-                  {REVISION_INGRESO.map((it) => {
-                    const r = revision[it.k]
+
+                <div className="space-y-1.5">
+                  {AREAS_REVISION.map((area) => {
+                    const respondidos = area.items.filter((it) => revision[it[0]]).length
+                    const criticos = area.items.filter((it) => revision[it[0]]?.sev === 'critico').length
+                    const pronto = area.items.filter((it) => revision[it[0]]?.sev === 'pronto').length
+                    const abierta = revAbiertas[area.k] ?? false
                     return (
-                      <div key={it.k} className="rounded-lg border p-2"
-                           style={{ borderColor: r ? SEV_COLOR[r.sev] + '66' : '#e2e8f0' }}>
-                        <div className="text-sm font-medium text-ink">
-                          {it.t}
-                          {it.cond && <span className="text-[10px] text-slate-400 font-normal"> · {it.cond}</span>}
-                        </div>
-                        <div className="flex flex-wrap gap-1.5 mt-1.5 items-center">
-                          {it.ops.map(([v, label, sev]) => {
-                            const on = r?.v === v
-                            const c = SEV_COLOR[sev]
-                            return (
-                              <button key={v} type="button"
-                                onClick={() => setRevision((x) => ({ ...x, [it.k]: on ? undefined : { v, sev } }))}
-                                className="px-2.5 rounded-lg text-xs border-2 transition-colors"
-                                style={{ minHeight: '38px',
-                                         background: on ? c : '#fff',
-                                         color: on ? '#fff' : c,
-                                         borderColor: on ? c : c + '55',
-                                         fontWeight: on ? 600 : 400 }}>
-                                {label}
-                              </button>
-                            )
-                          })}
-                          {/* Si hay hallazgo, el asesor puede sumarlo al
-                              servicio en el momento. Es información INTERNA:
-                              alimenta la venta cruzada y no sale en el
-                              documento que firma el cliente. */}
-                          {r && r.sev !== 'ok' && r.sev !== 'na' && (
-                            <button type="button"
-                              onClick={() => setD((x) => {
-                                const et = `${it.t}${r.v ? ' (' + (it.ops.find((o) => o[0] === r.v)?.[1] || r.v) + ')' : ''}`
-                                const ya = (x.extras || []).includes(et)
-                                return { ...x, extras: ya ? (x.extras || []).filter((y) => y !== et) : [...(x.extras || []), et] }
-                              })}
-                              className="px-2 py-1 rounded-lg text-[11px] border-2 ml-auto"
-                              style={(d.extras || []).some((e) => e.startsWith(it.t))
-                                ? { background: '#1f9d57', color: '#fff', borderColor: '#1f9d57', fontWeight: 600 }
-                                : { background: '#fff', color: '#1f7a45', borderColor: '#a8d9bd' }}>
-                              {(d.extras || []).some((e) => e.startsWith(it.t)) ? '✓ En el servicio' : '+ Sumar al servicio'}
-                            </button>
-                          )}
-                        </div>
+                      <div key={area.k} className="rounded-lg border"
+                           style={{ borderColor: criticos ? '#e0382b55' : pronto ? '#e0a02055' : '#e2e8f0' }}>
+                        <button type="button"
+                          onClick={() => setRevAbiertas((x) => ({ ...x, [area.k]: !abierta }))}
+                          className="w-full flex items-center justify-between p-2 text-left">
+                          <span className="text-sm font-medium text-ink">
+                            {abierta ? '▾' : '▸'} {area.t}
+                          </span>
+                          <span className="flex items-center gap-1.5">
+                            {criticos > 0 && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold"
+                                    style={{ background: '#fdecea', color: '#e0382b' }}>{criticos}</span>
+                            )}
+                            {pronto > 0 && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold"
+                                    style={{ background: '#fdf6e3', color: '#8a6d1f' }}>{pronto}</span>
+                            )}
+                            <span className="text-[11px] text-slate-400">
+                              {respondidos}/{area.items.length}
+                            </span>
+                          </span>
+                        </button>
+
+                        {abierta && (
+                          <div className="px-2 pb-2 space-y-1.5">
+                            {area.items.map(([k, texto, ops, cond]) => {
+                              const r = revision[k]
+                              return (
+                                <div key={k} className="rounded-lg p-1.5"
+                                     style={{ background: r ? SEV_COLOR[r.sev] + '0d' : '#fafbfc' }}>
+                                  <div className="text-[13px] text-ink">
+                                    {texto}
+                                    {cond && <span className="text-[10px] text-slate-400"> · {cond}</span>}
+                                  </div>
+                                  <div className="flex flex-wrap gap-1 mt-1 items-center">
+                                    {ops.map(([v, label, sev]) => {
+                                      const on = r?.v === v
+                                      const c = SEV_COLOR[sev]
+                                      return (
+                                        <button key={v} type="button"
+                                          onClick={() => setRevision((x) => ({
+                                            ...x, [k]: on ? undefined : { v, sev, texto }
+                                          }))}
+                                          className="px-2 rounded text-[11px] border transition-colors"
+                                          style={{ minHeight: '30px',
+                                                   background: on ? c : '#fff',
+                                                   color: on ? '#fff' : c,
+                                                   borderColor: on ? c : c + '44',
+                                                   fontWeight: on ? 600 : 400 }}>
+                                          {label}
+                                        </button>
+                                      )
+                                    })}
+                                    {r && r.sev !== 'ok' && r.sev !== 'na' && (
+                                      <button type="button"
+                                        onClick={() => sumarHallazgo(k, texto, r)}
+                                        className="ml-auto px-2 rounded text-[10px] border"
+                                        style={lineasOT.some((l) => l.origen === k)
+                                          ? { background: '#1f9d57', color: '#fff', borderColor: '#1f9d57', minHeight: '30px', fontWeight: 600 }
+                                          : { background: '#fff', color: '#1f7a45', borderColor: '#a8d9bd', minHeight: '30px' }}>
+                                        {lineasOT.some((l) => l.origen === k) ? '✓ en la OT' : '+ al servicio'}
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
                       </div>
                     )
                   })}
-                </div>
-
-                {/* Niveles: mismo criterio para los cinco fluidos, así se
-                    comparan entre sí y se responden rápido. */}
-                <div className="mt-3 rounded-lg border border-slate-200 p-2">
-                  <div className="text-sm font-medium text-ink mb-2">Niveles de fluidos</div>
-                  <div className="space-y-1.5">
-                    {NIVELES_FLUIDOS.map((fl) => (
-                      <div key={fl} className="flex items-center gap-2">
-                        <span className="text-sm text-slate-600 flex-1 min-w-0 truncate">{fl}</span>
-                        <select className="input w-40 shrink-0" style={{ minHeight: '38px' }}
-                                value={niveles[fl] || ''}
-                                onChange={(e) => setNiveles((x) => ({ ...x, [fl]: e.target.value }))}>
-                          <option value="">Sin revisar</option>
-                          {NIVEL_OPCIONES.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
-                        </select>
-                      </div>
-                    ))}
-                  </div>
                 </div>
               </div>
             </div>
@@ -1223,37 +1250,7 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
 
           {/* ---- PASO 5: CHECKLIST + OBS ASESOR ---- */}
           {/* sección 6 */}
-          <h3 className="text-sm font-bold text-ink border-b border-slate-200 pb-1 pt-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-deep text-white text-[10px] mr-2">6</span>Mano de obra</h3>
-          {true && (
-            <div className="space-y-3">
-              <label className="label">Mano de obra</label>
-              <p className="text-[11px] text-slate-400 -mt-1">
-                Se cargan como subtareas bajo el servicio en ClickUp, para que el mecánico las vea y las marque.
-              </p>
-              <div className="flex gap-1.5">
-                <input className="input text-sm flex-1" value={nuevoItem} placeholder="Ej: Revisar ruido tren delantero…"
-                       onChange={(e) => setNuevoItem(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && agregarItem()} />
-                <button type="button" className="btn-soft text-xs" onClick={agregarItem}>+ Agregar</button>
-              </div>
-              {!checklist.length && <p className="text-xs text-slate-400">No hay items creados.</p>}
-              <div className="space-y-1">
-                {checklist.map((c, i) => (
-                  <div key={i} className="flex items-center gap-2 text-sm rounded border border-slate-100 px-2 py-1.5">
-                    <span className="flex-1">{c.item}</span>
-                    <button type="button" onClick={() => marcarItem(i, 'x')} className={`w-7 h-7 rounded text-xs font-bold ${c.estado === 'x' ? 'bg-didial-red text-white' : 'bg-red-50 text-red-400'}`}>✕</button>
-                    <button type="button" onClick={() => marcarItem(i, 'na')} className={`w-7 h-7 rounded text-xs font-bold ${c.estado === 'na' ? 'bg-didial-amber text-white' : 'bg-amber-50 text-amber-400'}`}>—</button>
-                    <button type="button" onClick={() => marcarItem(i, 'ok')} className={`w-7 h-7 rounded text-xs font-bold ${c.estado === 'ok' ? 'bg-green-600 text-white' : 'bg-green-50 text-green-500'}`}>✓</button>
-                    <button type="button" className="text-slate-300 hover:text-red-500 text-xs" onClick={() => quitarItem(i)}>🗑</button>
-                  </div>
-                ))}
-              </div>
-              <div><label className="label">Observaciones del asesor</label><textarea className="input" rows="2" value={obsAsesor} onChange={(e) => setObsAsesor(e.target.value)} /></div>
-            </div>
-          )}
-
-          {/* ---- PASO 6: FIRMA ---- */}
-          {/* sección 7 */}
-          <h3 className="text-sm font-bold text-ink border-b border-slate-200 pb-1 pt-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-deep text-white text-[10px] mr-2">7</span>Firma del cliente</h3>
+          <h3 className="text-sm font-bold text-ink border-b border-slate-200 pb-1 pt-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-deep text-white text-[10px] mr-2">6</span>Firma del cliente</h3>
           {true && (
             <div className="space-y-3">
               <label className="label">Firma del cliente</label>
