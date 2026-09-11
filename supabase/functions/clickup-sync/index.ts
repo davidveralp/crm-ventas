@@ -162,12 +162,26 @@ async function importarSubtareas(taskId: string, trabajoId: string) {
       }
       // El nombre del asignado en ClickUp se cruza con el catálogo de usuarios
       // del CRM por correo, que es el único identificador estable entre ambos.
-      const correo = sub.assignees?.[0]?.email?.toLowerCase()
+      /* Persona asignada. Se prueban dos vías: primero el correo, que es el
+         único identificador estable entre ClickUp y el CRM; si no hay
+         coincidencia, el nombre completo.
+
+         Importa para las comisiones y el seguimiento de reprocesos: sin saber
+         quién hizo el trabajo, ninguno de los dos se puede calcular. */
+      const asignados = sub.assignees || []
+      const correo = asignados[0]?.email?.toLowerCase()
+      const nombreCU = asignados[0]?.username || null
       let tecnicoId = null
+
       if (correo) {
         const { data: u } = await service.from('usuarios')
           .select('id').ilike('email', correo).maybeSingle()
         tecnicoId = u?.id || null
+      }
+      if (!tecnicoId && nombreCU) {
+        const { data: u2 } = await service.from('usuarios')
+          .select('id').ilike('nombre', nombreCU).maybeSingle()
+        tecnicoId = u2?.id || null
       }
 
       await service.from('tareas_taller').upsert({
@@ -175,7 +189,11 @@ async function importarSubtareas(taskId: string, trabajoId: string) {
         titulo: sub.name,
         estado: (sub.status?.status || '').toLowerCase().includes('complete') ? 'terminada' : 'pendiente',
         tecnico_id: tecnicoId,
-        tecnico_nombre: sub.assignees?.[0]?.username || null,
+        // Se guarda siempre el nombre de ClickUp, aunque haya cruce: si alguien
+        // se elimina del CRM, el registro histórico conserva quién lo hizo.
+        tecnico_nombre: nombreCU,
+        // Varios asignados: se guardan todos, el primero es el responsable.
+        asignados_clickup: asignados.map((a: any) => a.username).filter(Boolean),
         observacion: sub.text_content || sub.description || null,
         tipo_linea: categoria,
         clickup_task_id: sub.id, orden: i

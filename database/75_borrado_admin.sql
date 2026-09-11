@@ -99,3 +99,13 @@ where routine_schema='public'
   and routine_name in ('eliminar_ficha','restaurar_ficha','eliminar_trabajo');
 
 notify pgrst, 'reload schema';
+
+
+-- ----------------------------------------------------------------------------
+-- Persona asignada en ClickUp (varios por subtarea)
+-- ----------------------------------------------------------------------------
+alter table public.tareas_taller
+  add column if not exists asignados_clickup text[];
+
+comment on column public.tareas_taller.asignados_clickup is
+  'Todos los asignados de la subtarea en ClickUp. El primero es el responsable; `tecnico_id` lo cruza con el CRM cuando coincide el correo o el nombre.';
