@@ -38,7 +38,7 @@ export function imprimirInspeccion(datos) {
     .join('')
 
   const html = `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
-<title>Nuevo Ingreso${numero ? ' N° ' + esc(numero) : ''}</title>
+<title>Nuevo Ingreso OT ${esc(numero || '')}</title>
 <style>
   @page { size: letter portrait; margin: 12mm 14mm; }
   * { box-sizing: border-box; }
@@ -84,7 +84,7 @@ export function imprimirInspeccion(datos) {
     </div>
     <div>
       <div class="doc">
-        NUEVO INGRESO${numero ? ' N° ' + esc(numero) : ''}<br>
+        NUEVO INGRESO${numero ? ' · OT N° ' + esc(numero) : ''}<br>
         FECHA: ${esc(fecha(fch) || new Date().toLocaleDateString('es-CL'))}
       </div>
       <div class="pag">Página: 1</div>

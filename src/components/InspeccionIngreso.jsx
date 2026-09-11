@@ -513,6 +513,17 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
       else {
         trabajoId = tj?.id || null
         otNumero = tj?.ot_numero || null
+
+        /* Respaldo: si el trigger de la migración 71 no está, el trabajo queda
+           sin número y la OT sale "s/n". Se pide el correlativo a mano para que
+           el documento salga numerado igual. */
+        if (!otNumero && trabajoId) {
+          const { data: nro } = await supabase.rpc('siguiente_ot_numero')
+          if (nro) {
+            otNumero = nro
+            await supabase.from('trabajos_taller').update({ ot_numero: nro }).eq('id', trabajoId)
+          }
+        }
         // Tarjeta espejo en ClickUp desde el ingreso, no recién al solicitar
         // revisión: así el taller ve todo lo que entró aunque aún no tenga
         // técnico asignado. Nace en "por designar", que es justamente ese estado.

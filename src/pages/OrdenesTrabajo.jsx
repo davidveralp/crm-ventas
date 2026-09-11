@@ -48,9 +48,12 @@ export default function OrdenesTrabajo() {
     const { data, error } = await supabase.from('trabajos_taller')
       .select(`id, ot_numero, titulo, estado, cierre_estado, creado_en, entregado_en,
                monto_total, nro_documento, tipo_documento, servicio_solicitado,
-               observaciones_cliente, km_ingreso, sucursal, vehiculo_id, cliente_id,
-               vehiculos(patente, marca, modelo, anio),
-               clientes(nombre, apellidos, telefono, rut)`)
+               observaciones_cliente, km_ingreso, sucursal, prioridad, fecha_limite,
+               progreso_clickup, sugerencias_clickup, inspeccion_id,
+               retira_nombre, observaciones_entrega, descuento,
+               vehiculo_id, cliente_id,
+               vehiculos(patente, marca, modelo, anio, color, version, chasis),
+               clientes(nombre, apellidos, telefono, rut, email, direccion)`)
       .order('creado_en', { ascending: false }).limit(500)
     if (error) { setErrMsg(error.message); setEstado('error'); return }
     setRows(data || []); setEstado('listo')
@@ -251,14 +254,31 @@ function DetalleOT({ ot, perfil, onCerrar, onCambio }) {
     setGuardando(false)
   }
 
+  const [insp, setInsp] = useState(null)
+
   useEffect(() => {
     Promise.all([
       supabase.from('ot_detalle').select('*').eq('trabajo_id', ot.id).order('orden'),
-      supabase.from('tareas_taller').select('*, usuarios:tecnico_id(nombre)').eq('trabajo_id', ot.id).order('orden')
-    ]).then(([d, t]) => {
-      setLineas(d.data || []); setTareas(t.data || []); setCargando(false)
+      supabase.from('tareas_taller').select('*, usuarios:tecnico_id(nombre)').eq('trabajo_id', ot.id).order('orden'),
+      // La inspección trae las observaciones del asesor y los hallazgos de la
+      // recepción, que no están en el trabajo.
+      ot.inspeccion_id
+        ? supabase.from('inspecciones_ingreso').select('*').eq('id', ot.inspeccion_id).maybeSingle()
+        : Promise.resolve({ data: null })
+    ]).then(([d, t, i]) => {
+      setLineas(d.data || []); setTareas(t.data || [])
+      setInsp(i.data || null); setCargando(false)
     })
-  }, [ot.id])
+  }, [ot.id, ot.inspeccion_id])
+
+  /* Hallazgos: solo rojos y amarillos. Los que salieron bien no aportan a una
+     vista de orden de trabajo. */
+  const hallazgos = useMemo(() => {
+    const r = insp?.revision_recepcion || {}
+    return Object.entries(r)
+      .filter(([, v]) => v && v.sev && v.sev !== 'ok' && v.sev !== 'na')
+      .map(([k, v]) => ({ k, ...v }))
+  }, [insp])
 
   // Se calcula desde los valores en pantalla, no desde `total` de la base: si
   // el asesor está editando precios, el resumen debe reflejar lo que ve.
@@ -279,7 +299,9 @@ function DetalleOT({ ot, perfil, onCerrar, onCambio }) {
             </h3>
             <p className="text-xs text-slate-400">
               {ot.vehiculos?.patente ? formatPatente(ot.vehiculos.patente) : ''} ·{' '}
-              {[ot.vehiculos?.marca, ot.vehiculos?.modelo, ot.vehiculos?.anio].filter(Boolean).join(' ')}
+              {[ot.vehiculos?.marca, ot.vehiculos?.modelo, ot.vehiculos?.version, ot.vehiculos?.anio]
+                .filter(Boolean).join(' ')}
+              {ot.vehiculos?.color ? ` · ${ot.vehiculos.color}` : ''}
             </p>
           </div>
           <button onClick={onCerrar} className="text-slate-400 text-xl leading-none">×</button>
@@ -292,12 +314,19 @@ function DetalleOT({ ot, perfil, onCerrar, onCambio }) {
               <p className="font-medium text-ink">
                 {`${ot.clientes?.nombre || ''} ${ot.clientes?.apellidos || ''}`.trim() || '—'}
               </p>
-              <p className="text-xs text-slate-500">{ot.clientes?.telefono || ''}</p>
+              <p className="text-xs text-slate-500">
+                {[ot.clientes?.rut, ot.clientes?.telefono].filter(Boolean).join(' · ')}
+              </p>
+              {ot.clientes?.email && <p className="text-xs text-slate-400">{ot.clientes.email}</p>}
             </div>
             <div>
               <p className="text-[11px] text-slate-400 uppercase">Ingreso</p>
               <p className="font-medium text-ink">{fecha(ot.creado_en)}</p>
               {ot.km_ingreso ? <p className="text-xs text-slate-500">{ot.km_ingreso.toLocaleString('es-CL')} km</p> : null}
+              {ot.sucursal && <p className="text-xs text-slate-400">{ot.sucursal}</p>}
+              {ot.entregado_en && (
+                <p className="text-xs text-slate-400">Entregado {fecha(ot.entregado_en)}</p>
+              )}
             </div>
           </div>
 
@@ -305,6 +334,54 @@ function DetalleOT({ ot, perfil, onCerrar, onCambio }) {
             <div>
               <p className="text-[11px] text-slate-400 uppercase mb-0.5">Trabajo solicitado</p>
               <p className="text-sm text-slate-700">{ot.servicio_solicitado}</p>
+            </div>
+          )}
+
+          {/* Lo que dijo el cliente y lo que anotó el asesor son cosas
+              distintas: el primero describe el síntoma, el segundo el criterio
+              técnico. Mezclarlos pierde información. */}
+          {(ot.observaciones_cliente || insp?.observaciones_cliente) && (
+            <div className="rounded-lg p-2" style={{ background: '#f8fafc' }}>
+              <p className="text-[11px] text-slate-400 uppercase mb-0.5">Observaciones del cliente</p>
+              <p className="text-sm text-slate-700 whitespace-pre-wrap">
+                {ot.observaciones_cliente || insp?.observaciones_cliente}
+              </p>
+            </div>
+          )}
+
+          {insp?.observaciones_asesor && (
+            <div className="rounded-lg p-2" style={{ background: '#f8fafc' }}>
+              <p className="text-[11px] text-slate-400 uppercase mb-0.5">Observaciones del asesor</p>
+              <p className="text-sm text-slate-700 whitespace-pre-wrap">{insp.observaciones_asesor}</p>
+            </div>
+          )}
+
+          {/* Hallazgos de la revisión de recepción: lo que se detectó al
+              recibir y todavía puede convertirse en venta. */}
+          {hallazgos.length > 0 && (
+            <div className="rounded-lg border p-2" style={{ borderColor: '#e0a02055' }}>
+              <p className="text-[11px] uppercase mb-1" style={{ color: '#8a6d1f' }}>
+                Hallazgos de la recepción ({hallazgos.length})
+              </p>
+              {hallazgos.map((h, i) => (
+                <div key={i} className="flex gap-2 text-sm py-0.5">
+                  <span style={{ color: h.sev === 'critico' ? '#e0382b' : '#e0a020' }}>●</span>
+                  <span className="flex-1 text-slate-700">{h.texto || h.k}</span>
+                  <span className="text-xs text-slate-400">{h.v}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {ot.progreso_clickup != null && (
+            <div>
+              <div className="flex justify-between text-[11px] mb-1">
+                <span className="text-slate-400 uppercase">Avance en taller</span>
+                <span className="text-slate-600 font-medium">{ot.progreso_clickup}%</span>
+              </div>
+              <div className="h-2 rounded bg-slate-100 overflow-hidden">
+                <div className="h-full rounded" style={{ width: `${ot.progreso_clickup}%`, background: '#7b68ee' }} />
+              </div>
             </div>
           )}
 
@@ -443,6 +520,16 @@ function DetalleOT({ ot, perfil, onCerrar, onCambio }) {
                 </p>
               )}
             </>
+          )}
+
+          {ot.observaciones_entrega && (
+            <div className="rounded-lg p-2" style={{ background: '#f8fafc' }}>
+              <p className="text-[11px] text-slate-400 uppercase mb-0.5">Observaciones de entrega</p>
+              <p className="text-sm text-slate-700">{ot.observaciones_entrega}</p>
+              {ot.retira_nombre && (
+                <p className="text-xs text-slate-400 mt-0.5">Retiró: {ot.retira_nombre}</p>
+              )}
+            </div>
           )}
 
           {msg && (
