@@ -198,6 +198,21 @@ const AREAS = [
   ['servicio_externo', 'Servicio externo']
 ]
 
+/* Bloque de sección: siempre visible, con estado vacío explícito.
+   Ocultar las secciones sin datos hacía que la OT pareciera incompleta cuando
+   en realidad solo faltaba llenarlas. */
+function Seccion({ titulo, extra, children, vacio }) {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">{titulo}</p>
+        {extra}
+      </div>
+      {children || <p className="text-sm text-slate-300">{vacio || 'Sin información.'}</p>}
+    </div>
+  )
+}
+
 function DetalleOT({ ot, perfil, onCerrar, onCambio }) {
   const [lineas, setLineas] = useState([])
   const [tareas, setTareas] = useState([])
@@ -289,7 +304,7 @@ function DetalleOT({ ot, perfil, onCerrar, onCambio }) {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="bg-white sm:rounded-xl w-full max-w-2xl max-h-[100dvh] sm:max-h-[92vh] overflow-y-auto">
+      <div className="bg-white sm:rounded-xl w-full max-w-3xl max-h-[100dvh] sm:max-h-[94vh] overflow-y-auto">
         <div className="p-4 border-b border-slate-100 sticky top-0 bg-white flex items-start justify-between gap-2">
           <div>
             <h3 className="font-semibold text-ink text-lg">
@@ -308,88 +323,87 @@ function DetalleOT({ ot, perfil, onCerrar, onCambio }) {
         </div>
 
         <div className="p-4 space-y-4">
-          <div className="grid grid-cols-2 gap-3 text-sm">
+          {/* ---- Contexto ---- */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm rounded-lg p-3"
+               style={{ background: '#f8fafc' }}>
             <div>
               <p className="text-[11px] text-slate-400 uppercase">Cliente</p>
-              <p className="font-medium text-ink">
+              <p className="font-medium text-ink truncate">
                 {`${ot.clientes?.nombre || ''} ${ot.clientes?.apellidos || ''}`.trim() || '—'}
               </p>
-              <p className="text-xs text-slate-500">
-                {[ot.clientes?.rut, ot.clientes?.telefono].filter(Boolean).join(' · ')}
-              </p>
-              {ot.clientes?.email && <p className="text-xs text-slate-400">{ot.clientes.email}</p>}
+              <p className="text-xs text-slate-500">{ot.clientes?.telefono || ''}</p>
+              {ot.clientes?.rut && <p className="text-xs text-slate-400">{ot.clientes.rut}</p>}
             </div>
             <div>
               <p className="text-[11px] text-slate-400 uppercase">Ingreso</p>
               <p className="font-medium text-ink">{fecha(ot.creado_en)}</p>
               {ot.km_ingreso ? <p className="text-xs text-slate-500">{ot.km_ingreso.toLocaleString('es-CL')} km</p> : null}
               {ot.sucursal && <p className="text-xs text-slate-400">{ot.sucursal}</p>}
-              {ot.entregado_en && (
-                <p className="text-xs text-slate-400">Entregado {fecha(ot.entregado_en)}</p>
+            </div>
+            <div>
+              <p className="text-[11px] text-slate-400 uppercase">Estado</p>
+              <p className="font-medium text-ink">{ot.estado?.replace(/_/g, ' ') || '—'}</p>
+              {ot.fecha_limite && <p className="text-xs text-slate-500">Entrega {fecha(ot.fecha_limite)}</p>}
+              {ot.prioridad && ot.prioridad !== 'normal' && (
+                <p className="text-xs" style={{ color: '#e0382b' }}>Prioridad {ot.prioridad}</p>
               )}
+            </div>
+            <div>
+              <p className="text-[11px] text-slate-400 uppercase">Avance taller</p>
+              {ot.progreso_clickup != null ? (
+                <>
+                  <p className="font-medium text-ink">{ot.progreso_clickup}%</p>
+                  <div className="h-1.5 rounded bg-slate-200 overflow-hidden mt-1">
+                    <div className="h-full rounded" style={{ width: `${ot.progreso_clickup}%`, background: '#7b68ee' }} />
+                  </div>
+                </>
+              ) : <p className="text-sm text-slate-300">Sin dato</p>}
             </div>
           </div>
 
-          {ot.servicio_solicitado && (
-            <div>
-              <p className="text-[11px] text-slate-400 uppercase mb-0.5">Trabajo solicitado</p>
-              <p className="text-sm text-slate-700">{ot.servicio_solicitado}</p>
-            </div>
-          )}
+          <Seccion titulo="Trabajo solicitado" vacio="No se registró el trabajo solicitado.">
+            {ot.servicio_solicitado && (
+              <p className="text-sm text-slate-700 whitespace-pre-wrap">{ot.servicio_solicitado}</p>
+            )}
+          </Seccion>
 
-          {/* Lo que dijo el cliente y lo que anotó el asesor son cosas
-              distintas: el primero describe el síntoma, el segundo el criterio
-              técnico. Mezclarlos pierde información. */}
-          {(ot.observaciones_cliente || insp?.observaciones_cliente) && (
-            <div className="rounded-lg p-2" style={{ background: '#f8fafc' }}>
-              <p className="text-[11px] text-slate-400 uppercase mb-0.5">Observaciones del cliente</p>
-              <p className="text-sm text-slate-700 whitespace-pre-wrap">
-                {ot.observaciones_cliente || insp?.observaciones_cliente}
-              </p>
-            </div>
-          )}
+          {/* El síntoma que describe el cliente y el criterio del asesor son
+              datos distintos: mezclarlos pierde información para el diagnóstico. */}
+          <div className="grid sm:grid-cols-2 gap-3">
+            <Seccion titulo="Observaciones del cliente" vacio="Sin observaciones.">
+              {(ot.observaciones_cliente || insp?.observaciones_cliente) && (
+                <p className="text-sm text-slate-700 whitespace-pre-wrap">
+                  {ot.observaciones_cliente || insp?.observaciones_cliente}
+                </p>
+              )}
+            </Seccion>
+            <Seccion titulo="Observaciones del asesor" vacio="Sin observaciones.">
+              {insp?.observaciones_asesor && (
+                <p className="text-sm text-slate-700 whitespace-pre-wrap">{insp.observaciones_asesor}</p>
+              )}
+            </Seccion>
+          </div>
 
-          {insp?.observaciones_asesor && (
-            <div className="rounded-lg p-2" style={{ background: '#f8fafc' }}>
-              <p className="text-[11px] text-slate-400 uppercase mb-0.5">Observaciones del asesor</p>
-              <p className="text-sm text-slate-700 whitespace-pre-wrap">{insp.observaciones_asesor}</p>
-            </div>
-          )}
-
-          {/* Hallazgos de la revisión de recepción: lo que se detectó al
-              recibir y todavía puede convertirse en venta. */}
-          {hallazgos.length > 0 && (
-            <div className="rounded-lg border p-2" style={{ borderColor: '#e0a02055' }}>
-              <p className="text-[11px] uppercase mb-1" style={{ color: '#8a6d1f' }}>
-                Hallazgos de la recepción ({hallazgos.length})
-              </p>
-              {hallazgos.map((h, i) => (
-                <div key={i} className="flex gap-2 text-sm py-0.5">
-                  <span style={{ color: h.sev === 'critico' ? '#e0382b' : '#e0a020' }}>●</span>
-                  <span className="flex-1 text-slate-700">{h.texto || h.k}</span>
-                  <span className="text-xs text-slate-400">{h.v}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {ot.progreso_clickup != null && (
-            <div>
-              <div className="flex justify-between text-[11px] mb-1">
-                <span className="text-slate-400 uppercase">Avance en taller</span>
-                <span className="text-slate-600 font-medium">{ot.progreso_clickup}%</span>
+          <Seccion titulo={`Hallazgos de la recepción${hallazgos.length ? ` (${hallazgos.length})` : ''}`}
+                   vacio={insp ? 'La revisión no arrojó hallazgos.' : 'Esta orden no tiene inspección de ingreso vinculada.'}>
+            {hallazgos.length > 0 && (
+              <div className="rounded-lg border p-2" style={{ borderColor: '#e0a02055' }}>
+                {hallazgos.map((h, i) => (
+                  <div key={i} className="flex gap-2 text-sm py-0.5">
+                    <span style={{ color: h.sev === 'critico' ? '#e0382b' : '#e0a020' }}>●</span>
+                    <span className="flex-1 text-slate-700">{h.texto || h.k}</span>
+                    <span className="text-xs text-slate-400">{h.v}</span>
+                  </div>
+                ))}
               </div>
-              <div className="h-2 rounded bg-slate-100 overflow-hidden">
-                <div className="h-full rounded" style={{ width: `${ot.progreso_clickup}%`, background: '#7b68ee' }} />
-              </div>
-            </div>
-          )}
+            )}
+          </Seccion>
 
-          {cargando ? <p className="text-sm text-slate-400">Cargando detalle…</p> : (
-            <>
-              {/* Cada área se edita por separado con su lápiz. Editar todo de
-                  una vez en una OT con veinte líneas es incómodo y arriesga
-                  cambios accidentales. */}
+          {/* ---- Detalle valorizable ---- */}
+          <Seccion titulo="Detalle de la orden"
+                   extra={editable && <span className="text-[10px] text-slate-400">✏️ para editar cada área</span>}>
+            {cargando ? <p className="text-sm text-slate-400">Cargando…</p> : (
+              <div className="space-y-2">
               {AREAS.map(([tipo, titulo]) => {
                 const ls = lineas.filter((l) => l.tipo === tipo)
                 const sub = ls.reduce((a, l) => a + (num(l.cantidad) * num(l.precio_unit)), 0)
@@ -473,64 +487,54 @@ function DetalleOT({ ot, perfil, onCerrar, onCambio }) {
                 )
               })}
 
-              {tareas.length > 0 && (
-                <div className="rounded-lg border border-slate-200 p-2">
-                  <p className="text-sm font-medium text-ink mb-1">
-                    Tareas ({tareas.filter((t) => t.estado === 'terminada').length}/{tareas.length})
-                  </p>
-                  {tareas.map((t) => (
-                    <div key={t.id} className="py-1 border-b border-slate-50 last:border-0">
-                      <div className="flex gap-2 text-sm items-start">
-                        <span className="shrink-0" style={{ color: t.estado === 'terminada' ? '#1f9d57' : '#cbd5e1' }}>
-                          {t.estado === 'terminada' ? '✓' : '○'}
-                        </span>
-                        <span className="flex-1 text-slate-700">{t.titulo}</span>
-                        {/* Quién la hizo: el dato con el que se calculan las
-                            comisiones y se siguen los reprocesos. */}
-                        <span className="text-[11px] px-1.5 py-0.5 rounded shrink-0"
-                              style={t.usuarios?.nombre || t.tecnico_nombre
-                                ? { background: '#f1f5f9', color: '#475569' }
-                                : { color: '#cbd5e1' }}>
-                          {t.usuarios?.nombre || t.tecnico_nombre || 'sin asignar'}
-                        </span>
-                      </div>
-                      {t.observacion && (
-                        <p className="text-xs text-slate-500 italic pl-5 mt-0.5">💬 {t.observacion}</p>
-                      )}
+              </div>
+            )}
+          </Seccion>
+
+          <Seccion titulo={`Tareas del taller${tareas.length ? ` · ${tareas.filter((t) => t.estado === 'terminada').length} de ${tareas.length}` : ''}`}
+                   vacio="Sin tareas registradas. Se cargan al ingresar o se sincronizan desde ClickUp.">
+            {tareas.length > 0 && (
+              <div className="rounded-lg border border-slate-200 p-2">
+                {tareas.map((t) => (
+                  <div key={t.id} className="py-1 border-b border-slate-50 last:border-0">
+                    <div className="flex gap-2 text-sm items-start">
+                      <span className="shrink-0" style={{ color: t.estado === 'terminada' ? '#1f9d57' : '#cbd5e1' }}>
+                        {t.estado === 'terminada' ? '✓' : '○'}
+                      </span>
+                      <span className="flex-1 text-slate-700">{t.titulo}</span>
+                      <span className="text-[11px] px-1.5 py-0.5 rounded shrink-0"
+                            style={t.usuarios?.nombre || t.tecnico_nombre
+                              ? { background: '#f1f5f9', color: '#475569' }
+                              : { color: '#cbd5e1' }}>
+                        {t.usuarios?.nombre || t.tecnico_nombre || 'sin asignar'}
+                      </span>
                     </div>
-                  ))}
-                </div>
-              )}
+                    {t.observacion && (
+                      <p className="text-xs text-slate-500 italic pl-5 mt-0.5">💬 {t.observacion}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </Seccion>
 
-              {(total > 0 || porValorizar > 0) && (
-                <div className="flex justify-between items-center rounded-lg p-3"
-                     style={{ background: porValorizar ? '#fdf6e3' : '#f1f5f9' }}>
-                  <span className="text-sm" style={{ color: porValorizar ? '#8a6d1f' : '#475569' }}>
-                    {porValorizar
-                      ? `Falta valorizar ${porValorizar} línea(s)`
-                      : (ot.nro_documento ? `${ot.tipo_documento} ${ot.nro_documento}` : 'Sin documento emitido')}
-                  </span>
-                  <span className="text-lg font-semibold text-ink">{fmtCLP(total)}</span>
-                </div>
-              )}
-
-              {!lineas.length && !tareas.length && (
-                <p className="text-sm text-slate-400 text-center py-3">
-                  Esta orden no tiene detalle cargado.
-                </p>
-              )}
-            </>
+          {(ot.observaciones_entrega || ot.retira_nombre) && (
+            <Seccion titulo="Entrega">
+              {ot.observaciones_entrega && <p className="text-sm text-slate-700">{ot.observaciones_entrega}</p>}
+              {ot.retira_nombre && <p className="text-xs text-slate-400 mt-0.5">Retiró: {ot.retira_nombre}</p>}
+            </Seccion>
           )}
 
-          {ot.observaciones_entrega && (
-            <div className="rounded-lg p-2" style={{ background: '#f8fafc' }}>
-              <p className="text-[11px] text-slate-400 uppercase mb-0.5">Observaciones de entrega</p>
-              <p className="text-sm text-slate-700">{ot.observaciones_entrega}</p>
-              {ot.retira_nombre && (
-                <p className="text-xs text-slate-400 mt-0.5">Retiró: {ot.retira_nombre}</p>
-              )}
-            </div>
-          )}
+          {/* ---- Resumen ---- */}
+          <div className="flex justify-between items-center rounded-lg p-3"
+               style={{ background: porValorizar ? '#fdf6e3' : '#f1f5f9' }}>
+            <span className="text-sm" style={{ color: porValorizar ? '#8a6d1f' : '#475569' }}>
+              {porValorizar
+                ? `Falta valorizar ${porValorizar} línea(s)`
+                : (ot.nro_documento ? `${ot.tipo_documento} ${ot.nro_documento}` : 'Sin documento emitido')}
+            </span>
+            <span className="text-lg font-semibold text-ink">{fmtCLP(total)}</span>
+          </div>
 
           {msg && (
             <p className="text-xs px-2 py-1.5 rounded"
