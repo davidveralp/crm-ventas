@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { formatPatente, patenteLimpia, formatRut, fmtFonoOT,
   OT_MARCAS, OT_MODELOS, OT_SVC_GRUPOS, svcAplicaAVehiculo, TRACCIONES,
-  otBU, SERVICIOS_ORDENADOS, SERVICIOS_ADICIONALES, AREAS_REVISION, NIVELES_FLUIDOS, NIVEL_OPCIONES, SEV_COLOR, COMBUSTIBLES, TIPOS_VEHICULO,
+  otBU, SERVICIOS_ORDENADOS, SERVICIOS_ADICIONALES, lineasDePack, AREAS_REVISION, NIVELES_FLUIDOS, NIVEL_OPCIONES, SEV_COLOR, COMBUSTIBLES, TIPOS_VEHICULO,
   
   OT_TIPO_INGRESO, OT_TIPO_CLIENTE, OT_CONOCIO, OT_ES_GARANTIA, sucursalDeAsesor, TRANSMISIONES, TRANSMISION_LABEL } from '../lib/helpers'
 import { imprimirInspeccion } from '../lib/inspeccionPDF'
@@ -333,6 +333,42 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
       codigo: '', cotizar: false, origen: clave
     }])
   }
+
+  /* Al elegir un servicio con pack, sus líneas se cargan solas en las tres
+     áreas. Evita que el asesor escriba 32 líneas cada vez que entra un Pack 360.
+
+     Las líneas anteriores del pack se quitan al cambiar de servicio, pero lo
+     que el asesor agregó a mano se conserva: no sería razonable borrarle lo
+     suyo por cambiar una selección. */
+  const elegirServicio = (servicio) => {
+    const delPack = lineasDePack(servicio, d.combustible)
+    setLineasOT((x) => [
+      ...x.filter((l) => !l.dePack),
+      ...delPack.map((l, i) => ({
+        id: 'pk' + Date.now() + '_' + i,
+        tipo: l.tipo, detalle: l.detalle, cantidad: l.cantidad || '1',
+        codigo: '', cotizar: false, dePack: true
+      }))
+    ])
+    setD({ ...d, tipo_servicio: servicio, extras: [] })
+  }
+
+  /* Si cambia el combustible después de elegir el pack, las líneas se
+     recalculan: el diésel lleva filtro de combustible y de polen que el
+     bencinero no. */
+  useEffect(() => {
+    if (!d.tipo_servicio) return
+    const delPack = lineasDePack(d.tipo_servicio, d.combustible)
+    if (!delPack.length) return
+    setLineasOT((x) => [
+      ...x.filter((l) => !l.dePack),
+      ...delPack.map((l, i) => ({
+        id: 'pk' + Date.now() + '_' + i,
+        tipo: l.tipo, detalle: l.detalle, cantidad: l.cantidad || '1',
+        codigo: '', cotizar: false, dePack: true
+      }))
+    ])
+  }, [d.combustible]) // eslint-disable-line
 
   const agregarLinea = (tipo) => {
     if (!nuevaLinea.detalle.trim()) return
@@ -794,7 +830,7 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
                 <div>
                   <label className="label">Trabajo a realizar</label>
                   <select className="input" value={d.tipo_servicio}
-                          onChange={(e) => setD({ ...d, tipo_servicio: e.target.value, extras: [] })}>
+                          onChange={(e) => elegirServicio(e.target.value)}>
                     <option value="">Seleccionar servicio…</option>
                     {SERVICIOS_ORDENADOS.map((sv) => <option key={sv}>{sv}</option>)}
                   </select>
@@ -908,7 +944,13 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
                           {ls.map((l, i) => (
                             <div key={l.id} className="flex items-center gap-2 text-sm py-1 border-b border-slate-50 last:border-0">
                               <span className="text-slate-400 text-xs w-4">{i + 1}</span>
-                              <span className="flex-1 text-slate-700">{l.detalle}</span>
+                              <span className="flex-1 text-slate-700">
+                                {l.detalle}
+                                {l.dePack && (
+                                  <span className="ml-1.5 text-[9px] px-1 py-0.5 rounded align-middle"
+                                        style={{ background: '#e8f0fa', color: '#2f6fb0' }}>pack</span>
+                                )}
+                              </span>
                               {Number(l.cantidad) > 1 && <span className="text-xs text-slate-400">×{l.cantidad}</span>}
                               {cotizable && (
                                 <label className="flex items-center gap-1 cursor-pointer shrink-0">

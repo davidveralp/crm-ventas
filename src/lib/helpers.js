@@ -760,3 +760,94 @@ export const SERVICIOS_ADICIONALES = [
   'Instalación de GPS',
   'Instalación de láminas de seguridad'
 ]
+
+
+/* ============================================================================
+   Packs de servicio · líneas que se cargan solas
+   ----------------------------------------------------------------------------
+   Al elegir un servicio con pack, el ingreso precarga sus líneas en las tres
+   áreas. El asesor puede quitar lo que no corresponda, pero no tiene que
+   escribir 30 líneas cada vez.
+
+   El Pack Mantención 360° tiene DOS variantes: el diésel suma filtro de
+   combustible y filtro de polen —con su mano de obra— que el bencinero no
+   lleva. Se elige por el combustible del vehículo.
+   ========================================================================== */
+
+const PACK_360_DIESEL = [
+    { tipo: 'servicio', detalle: "Realizar Revisión y relleno de niveles" },
+    { tipo: 'servicio', detalle: "Realizar Servicio preventivo de frenos" },
+    { tipo: 'servicio', detalle: "Realizar Rotación de neumáticos + Balanceo" },
+    { tipo: 'servicio', detalle: "Cambio de Filtro de aceite" },
+    { tipo: 'servicio', detalle: "Cambio de Aceite motor" },
+    { tipo: 'servicio', detalle: "Cambio de Golilla tapón de cárter" },
+    { tipo: 'servicio', detalle: "Cambio de Filtro de aire" },
+    { tipo: 'servicio', detalle: "Cambio de Filtro de polen" },
+    { tipo: 'servicio', detalle: "Cambio de Filtro de combustible" },
+    { tipo: 'servicio', detalle: "Inspección de tren delantero y reaprete" },
+    { tipo: 'servicio', detalle: "Inspección de suspensión delantera y trasera" },
+    { tipo: 'servicio', detalle: "Inspección de funcionamiento del sistema de embrague" },
+    { tipo: 'servicio', detalle: "Inspección de correas de accesorios y ajuste" },
+    { tipo: 'servicio', detalle: "Inspección de carga de batería y alternador" },
+    { tipo: 'servicio', detalle: "Inspección de funcionamiento de aire acondicionado" },
+    { tipo: 'servicio', detalle: "Inspección de plumillas y eyectores lanza agua" },
+    { tipo: 'servicio', detalle: "Inspección de funcionamiento de bocina" },
+    { tipo: 'servicio', detalle: "Inspección de ampolletas" },
+    { tipo: 'servicio', detalle: "Inspección de posibles fugas" },
+    { tipo: 'servicio', detalle: "Inspección de tren trasero" },
+    { tipo: 'servicio', detalle: "Control de códigos de fallas + escáner" },
+    { tipo: 'servicio', detalle: "Limpieza interior y exterior" },
+    { tipo: 'repuesto', detalle: "Filtro de aceite" },
+    { tipo: 'repuesto', detalle: "Filtro de aire" },
+    { tipo: 'repuesto', detalle: "Golilla tapón de cárter" },
+    { tipo: 'repuesto', detalle: "Filtro de polen" },
+    { tipo: 'repuesto', detalle: "Filtro de petroleo" },
+    { tipo: 'insumo', detalle: "Aceite motor (1l)" },
+    { tipo: 'insumo', detalle: "Agua desmineralizada (1l)" },
+    { tipo: 'insumo', detalle: "Limpiaparabrisas (1l)" },
+    { tipo: 'insumo', detalle: "Solvente de limpieza (1)" },
+    { tipo: 'insumo', detalle: "Insumos del taller" }
+]
+
+const PACK_360_BENCINA = [
+    { tipo: 'servicio', detalle: "Realizar Revisión y relleno de niveles" },
+    { tipo: 'servicio', detalle: "Realizar Servicio preventivo de frenos" },
+    { tipo: 'servicio', detalle: "Realizar Rotación de neumáticos + Balanceo" },
+    { tipo: 'servicio', detalle: "Cambio de Filtro de aceite" },
+    { tipo: 'servicio', detalle: "Cambio de Aceite motor" },
+    { tipo: 'servicio', detalle: "Cambio de Golilla tapón de cárter" },
+    { tipo: 'servicio', detalle: "Cambio de Filtro de aire" },
+    { tipo: 'servicio', detalle: "Inspección de tren delantero y reaprete" },
+    { tipo: 'servicio', detalle: "Inspección de suspensión delantera y trasera" },
+    { tipo: 'servicio', detalle: "Inspección de funcionamiento del sistema de embrague" },
+    { tipo: 'servicio', detalle: "Inspección de correas de accesorios y ajuste" },
+    { tipo: 'servicio', detalle: "Inspección de carga de batería y alternador" },
+    { tipo: 'servicio', detalle: "Inspección de funcionamiento de aire acondicionado" },
+    { tipo: 'servicio', detalle: "Inspección de plumillas y eyectores lanza agua" },
+    { tipo: 'servicio', detalle: "Inspección de funcionamiento de bocina" },
+    { tipo: 'servicio', detalle: "Inspección de ampolletas" },
+    { tipo: 'servicio', detalle: "Inspección de posibles fugas" },
+    { tipo: 'servicio', detalle: "Inspección de tren trasero" },
+    { tipo: 'servicio', detalle: "Inspección de filtro de polen" },
+    { tipo: 'servicio', detalle: "Control de códigos de fallas + escáner" },
+    { tipo: 'servicio', detalle: "Limpieza interior y exterior" },
+    { tipo: 'repuesto', detalle: "Filtro de aceite" },
+    { tipo: 'repuesto', detalle: "Filtro de aire" },
+    { tipo: 'repuesto', detalle: "Golilla tapón de cárter" },
+    { tipo: 'insumo', detalle: "Aceite motor (1l)" },
+    { tipo: 'insumo', detalle: "Agua desmineralizada (1l)" },
+    { tipo: 'insumo', detalle: "Limpiaparabrisas (1l)" },
+    { tipo: 'insumo', detalle: "Solvente de limpieza (1)" },
+    { tipo: 'insumo', detalle: "Insumos del taller" }
+]
+
+export const PACKS_SERVICIO = {
+  'PACK MANTENCIÓN 360°': { Diésel: PACK_360_DIESEL, _default: PACK_360_BENCINA }
+}
+
+/** Líneas del pack según el combustible del vehículo. Sin pack, arreglo vacío. */
+export function lineasDePack(servicio, combustible) {
+  const p = PACKS_SERVICIO[servicio]
+  if (!p) return []
+  return (p[combustible] || p._default || []).map((x, i) => ({ ...x, cantidad: '1', orden: i }))
+}
