@@ -939,54 +939,6 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
                 )}
               </div>
 
-              {/* ---- Servicios adicionales ----
-                   Van aparte del catálogo principal porque miden algo distinto:
-                   no el motivo de la visita, sino lo que el asesor logra sumar
-                   con el cliente presente. Es la venta cruzada del mostrador. */}
-              {d.tipo_servicio && (
-                <div className="sm:col-span-2 rounded-lg border-2 p-3"
-                     style={{ borderColor: (d.extras || []).length ? '#1f9d57' : '#e2e8f0' }}>
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <div>
-                      <p className="text-sm font-medium text-ink">Servicios adicionales</p>
-                      <p className="text-[11px] text-slate-400">
-                        Lo que el cliente acepta además del trabajo principal.
-                      </p>
-                    </div>
-                    {(d.extras || []).length > 0 && (
-                      <span className="px-2 py-1 rounded text-xs font-semibold"
-                            style={{ background: '#e8f6ee', color: '#1f7a45' }}>
-                        {(d.extras || []).length} agregado{(d.extras || []).length > 1 ? 's' : ''}
-                      </span>
-                    )}
-                  </div>
-
-                  <select className="input mt-2" value=""
-                          onChange={(e) => {
-                            const sv = e.target.value
-                            if (sv) setD((x) => ({ ...x, extras: [...new Set([...(x.extras || []), sv])] }))
-                          }}>
-                    <option value="">Agregar servicio adicional…</option>
-                    {SERVICIOS_ADICIONALES
-                      .filter((sv) => !(d.extras || []).includes(sv))
-                      .map((sv) => <option key={sv}>{sv}</option>)}
-                  </select>
-
-                  {(d.extras || []).length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {(d.extras || []).map((sv) => (
-                        <span key={sv} className="text-[11px] px-2 py-1 rounded-lg flex items-center gap-1"
-                              style={{ background: '#e8f6ee', color: '#1f7a45' }}>
-                          {sv}
-                          <button type="button" className="font-bold"
-                                  onClick={() => setD((x) => ({ ...x, extras: (x.extras || []).filter((y) => y !== sv) }))}>×</button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
               {/* La fecha de entrega recién tiene sentido cuando se sabe qué se
                   va a hacer: antes de elegir el servicio es una adivinanza. */}
               <div className="sm:col-span-2 sm:w-1/2">
@@ -1066,8 +1018,70 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
           )}
 
           {/* ---- PASO 1: LUCES + INVENTARIO ---- */}
-          {/* sección 2 */}
-          <h3 className="text-sm font-bold text-ink border-b border-slate-200 pb-1 pt-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-deep text-white text-[10px] mr-2">2</span>Luces de advertencia e inventario</h3>
+          {/* ---- SERVICIOS ADICIONALES · sección propia ----
+              Va aparte del trabajo solicitado porque mide algo distinto: no el
+              motivo de la visita, sino lo que el asesor logra sumar con el
+              cliente presente. Separarlo permite medir la venta cruzada por
+              asesor, que con los catálogos mezclados era imposible. */}
+          <h3 className="text-sm font-bold text-ink border-b border-slate-200 pb-1 pt-2">
+            <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-deep text-white text-[10px] mr-2">2</span>
+            Servicios adicionales
+          </h3>
+          <div className="space-y-3">
+            {!d.tipo_servicio && (
+              <p className="text-sm text-slate-400">
+                Elige primero el trabajo a realizar.
+              </p>
+            )}
+              {/* ---- Servicios adicionales ----
+                   Van aparte del catálogo principal porque miden algo distinto:
+                   no el motivo de la visita, sino lo que el asesor logra sumar
+                   con el cliente presente. Es la venta cruzada del mostrador. */}
+            {d.tipo_servicio && (
+                <div className="sm:col-span-2 rounded-lg border-2 p-3"
+                     style={{ borderColor: (d.extras || []).length ? '#1f9d57' : '#e2e8f0' }}>
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <p className="text-[11px] text-slate-400">
+                      Lo que el cliente acepta además del trabajo principal.
+                    </p>
+                    {(d.extras || []).length > 0 && (
+                      <span className="px-2 py-1 rounded text-xs font-semibold"
+                            style={{ background: '#e8f6ee', color: '#1f7a45' }}>
+                        {(d.extras || []).length} agregado{(d.extras || []).length > 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </div>
+
+                  <select className="input mt-1.5" value=""
+                          onChange={(e) => {
+                            const sv = e.target.value
+                            if (sv) setD((x) => ({ ...x, extras: [...new Set([...(x.extras || []), sv])] }))
+                          }}>
+                    <option value="">Agregar servicio adicional…</option>
+                    {SERVICIOS_ADICIONALES
+                      .filter((sv) => !(d.extras || []).includes(sv))
+                      .map((sv) => <option key={sv}>{sv}</option>)}
+                  </select>
+
+                  {(d.extras || []).length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {(d.extras || []).map((sv) => (
+                        <span key={sv} className="text-[11px] px-2 py-1 rounded-lg flex items-center gap-1"
+                              style={{ background: '#e8f6ee', color: '#1f7a45' }}>
+                          {sv}
+                          <button type="button" className="font-bold"
+                                  onClick={() => setD((x) => ({ ...x, extras: (x.extras || []).filter((y) => y !== sv) }))}>×</button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+          </div>
+
+          {/* sección 3 */}
+          <h3 className="text-sm font-bold text-ink border-b border-slate-200 pb-1 pt-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-deep text-white text-[10px] mr-2">3</span>Luces de advertencia e inventario</h3>
           {true && (
             <div className="space-y-4">
               <div>
@@ -1194,8 +1208,8 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
           )}
 
           {/* ---- PASO 2: COMBUSTIBLE ---- */}
-          {/* sección 3 */}
-          <h3 className="text-sm font-bold text-ink border-b border-slate-200 pb-1 pt-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-deep text-white text-[10px] mr-2">3</span>Combustible</h3>
+          {/* sección 4 */}
+          <h3 className="text-sm font-bold text-ink border-b border-slate-200 pb-1 pt-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-deep text-white text-[10px] mr-2">4</span>Combustible</h3>
           {true && (
             <div>
               <label className="label mb-3">Nivel de combustible</label>
@@ -1247,8 +1261,8 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
           )}
 
           {/* ---- PASO 3: DAÑOS ---- */}
-          {/* sección 4 */}
-          <h3 className="text-sm font-bold text-ink border-b border-slate-200 pb-1 pt-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-deep text-white text-[10px] mr-2">4</span>Daños al ingreso</h3>
+          {/* sección 5 */}
+          <h3 className="text-sm font-bold text-ink border-b border-slate-200 pb-1 pt-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-deep text-white text-[10px] mr-2">5</span>Daños al ingreso</h3>
           {true && (
             <div className="space-y-3">
               <div className="flex flex-wrap gap-1.5">
@@ -1282,8 +1296,8 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
           )}
 
           {/* ---- PASO 4: FOTOS ---- */}
-          {/* sección 5 */}
-          <h3 className="text-sm font-bold text-ink border-b border-slate-200 pb-1 pt-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-deep text-white text-[10px] mr-2">5</span>Fotografías</h3>
+          {/* sección 6 */}
+          <h3 className="text-sm font-bold text-ink border-b border-slate-200 pb-1 pt-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-deep text-white text-[10px] mr-2">6</span>Fotografías</h3>
           {true && (
             <div className="space-y-3">
               <label className="btn-soft inline-block cursor-pointer">
@@ -1304,7 +1318,7 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
           )}
 
           {/* ---- PASO 5: CHECKLIST + OBS ASESOR ---- */}
-          {/* sección 6 */}
+          {/* sección 7 */}
           {/* Las observaciones del asesor van aquí, al final: se escriben
               después de haber recorrido el vehículo y la revisión, con todo a
               la vista. Pedirlas al principio obligaba a volver a subir. */}
@@ -1318,7 +1332,7 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
             </p>
           </div>
 
-          <h3 className="text-sm font-bold text-ink border-b border-slate-200 pb-1 pt-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-deep text-white text-[10px] mr-2">6</span>Firma del cliente</h3>
+          <h3 className="text-sm font-bold text-ink border-b border-slate-200 pb-1 pt-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-deep text-white text-[10px] mr-2">7</span>Firma del cliente</h3>
           {true && (
             <div className="space-y-3">
               <label className="label">Firma del cliente</label>
