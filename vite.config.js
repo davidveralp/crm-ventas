@@ -28,6 +28,10 @@ export default defineConfig({
         // lo usa quien arma campañas. Precachearlo obligaría a TODOS a
         // descargarlo al abrir la app. Se excluye: se carga cuando se visita.
         globIgnores: ['generador/**'],
+        // El catálogo de 313 servicios engrosó el bundle. Se sube el límite en
+        // vez de excluirlo: la app debe funcionar sin conexión y el catálogo es
+        // parte de lo que el asesor necesita en el mostrador.
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
 
         /* CAUSA DE LA PANTALLA EN BLANCO AL PRIMER INGRESO
            Con `autoUpdate`, tras un despliegue nuevo el service worker seguía

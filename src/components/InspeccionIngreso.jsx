@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { formatPatente, patenteLimpia, formatRut, fmtFonoOT,
   OT_MARCAS, OT_MODELOS, OT_SVC_GRUPOS, svcAplicaAVehiculo, TRACCIONES,
-  otBU, SERVICIOS_ORDENADOS, SERVICIOS_ADICIONALES, lineasDePack, AREAS_REVISION, NIVELES_FLUIDOS, NIVEL_OPCIONES, SEV_COLOR, COMBUSTIBLES, TIPOS_VEHICULO,
+  SERVICIOS_ADICIONALES, lineasDePack,
+  SEGMENTOS_SERVICIO, categoriasDe, serviciosDe, sugerenciasDe, AREAS_REVISION, NIVELES_FLUIDOS, NIVEL_OPCIONES, SEV_COLOR, COMBUSTIBLES, TIPOS_VEHICULO,
   
   OT_TIPO_INGRESO, OT_TIPO_CLIENTE, OT_CONOCIO, OT_ES_GARANTIA, sucursalDeAsesor, TRANSMISIONES, TRANSMISION_LABEL } from '../lib/helpers'
 import { imprimirInspeccion } from '../lib/inspeccionPDF'
@@ -187,7 +188,7 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
     razon_social: '',            // solo empresa
     tipo_vehiculo: '', combustible: '',
     solicita_presupuesto: false, detalle_presupuesto: '',
-    tipo_servicio: '', extras: [],
+    segmento: '', categoria: '', tipo_servicio: '', extras: [],
     contacto_nombre: '',         // quién trae el auto si no es el dueño
     dueno_nombre: '',            // dueño cuando difiere de quien paga
     aseguradora: '',
@@ -827,49 +828,38 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
                 </div>
               </div>
               <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
+                <div className="sm:col-span-2">
                   <label className="label">Trabajo a realizar</label>
-                  <select className="input" value={d.tipo_servicio}
-                          onChange={(e) => elegirServicio(e.target.value)}>
-                    <option value="">Seleccionar servicio…</option>
-                    {SERVICIOS_ORDENADOS.map((sv) => <option key={sv}>{sv}</option>)}
-                  </select>
+                  {/* Cascada de tres pasos. Una lista plana de 313 servicios es
+                      inusable con el cliente esperando en el mostrador. */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <select className="input" value={d.segmento}
+                            onChange={(e) => setD({ ...d, segmento: e.target.value, categoria: '', tipo_servicio: '' })}>
+                      <option value="">Segmento…</option>
+                      {Object.keys(SEGMENTOS_SERVICIO).map((sg) => <option key={sg}>{sg}</option>)}
+                    </select>
+
+                    <select className="input" value={d.categoria} disabled={!d.segmento}
+                            onChange={(e) => setD({ ...d, categoria: e.target.value, tipo_servicio: '' })}>
+                      <option value="">Categoría…</option>
+                      {categoriasDe(d.segmento).map((c) => <option key={c}>{c}</option>)}
+                    </select>
+
+                    <select className="input" value={d.tipo_servicio} disabled={!d.categoria}
+                            onChange={(e) => elegirServicio(e.target.value)}>
+                      <option value="">Servicio…</option>
+                      {serviciosDe(d.categoria).map((sv) => <option key={sv}>{sv}</option>)}
+                    </select>
+                  </div>
                   {d.tipo_servicio && (
                     <p className="text-[11px] text-slate-400 mt-1">
-                      Unidad de negocio: <strong>{otBU(d.tipo_servicio) || 'por clasificar'}</strong>
+                      {d.segmento} · {d.categoria}
                     </p>
                   )}
                 </div>
                 {/* Segunda lista, con el mismo catálogo menos el ya elegido.
                     Cada selección se agrega y la lista queda lista para otra:
                     en una visita se pueden sumar varios adicionales. */}
-                {d.tipo_servicio && (
-                  <div>
-                    <label className="label">Servicio adicional</label>
-                    <select className="input" value=""
-                            onChange={(e) => {
-                              const sv = e.target.value
-                              if (sv) setD((x) => ({ ...x, extras: [...new Set([...(x.extras || []), sv])] }))
-                            }}>
-                      <option value="">Agregar servicio…</option>
-                      {SERVICIOS_ORDENADOS
-                        .filter((sv) => sv !== d.tipo_servicio && !(d.extras || []).includes(sv))
-                        .map((sv) => <option key={sv}>{sv}</option>)}
-                    </select>
-                    {(d.extras || []).length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mt-1.5">
-                        {(d.extras || []).map((sv) => (
-                          <span key={sv} className="text-[11px] px-2 py-1 rounded-lg flex items-center gap-1"
-                                style={{ background: '#e8f6ee', color: '#1f7a45' }}>
-                            {sv}
-                            <button type="button" className="font-bold"
-                                    onClick={() => setD((x) => ({ ...x, extras: (x.extras || []).filter((y) => y !== sv) }))}>×</button>
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
               {/* Dos campos distintos a propósito: el cliente describe el
                   síntoma ("suena adelante al frenar") y el asesor el criterio
@@ -940,6 +930,33 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
                             <button type="button" className="btn-soft col-span-2 text-xs"
                                     style={{ minHeight: '36px' }} onClick={() => agregarLinea(tipo)}>+</button>
                           </div>
+
+                          {/* Sugerencias según la categoría elegida. Son un
+                              punto de partida: agregar de más cuesta un clic
+                              quitarlo, olvidar uno cuesta una llamada. */}
+                          {cotizable && d.categoria && (() => {
+                            const sug = tipo === 'repuesto'
+                              ? sugerenciasDe(d.categoria).repuestos
+                              : tipo === 'insumo' ? sugerenciasDe(d.categoria).insumos : []
+                            const libres = sug.filter((x) => !ls.some((l) => l.detalle === x))
+                            if (!libres.length) return null
+                            return (
+                              <div className="flex flex-wrap gap-1 mb-1.5">
+                                <span className="text-[10px] text-slate-400 self-center">Sugeridos:</span>
+                                {libres.map((x) => (
+                                  <button key={x} type="button"
+                                    onClick={() => setLineasOT((y) => [...y, {
+                                      id: 'sg' + Date.now() + Math.random().toString(36).slice(2, 5),
+                                      tipo, detalle: x, cantidad: '1', codigo: '', cotizar: true
+                                    }])}
+                                    className="text-[10px] px-1.5 py-0.5 rounded border"
+                                    style={{ background: '#fff', color: '#2f6fb0', borderColor: '#2f6fb055' }}>
+                                    + {x}
+                                  </button>
+                                ))}
+                              </div>
+                            )
+                          })()}
 
                           {ls.map((l, i) => (
                             <div key={l.id} className="flex items-center gap-2 text-sm py-1 border-b border-slate-50 last:border-0">

@@ -1,0 +1,556 @@
+{
+"segmentos": {
+"Taller Mecánico": [
+"A/C y Calefacción",
+"ABS",
+"Air Bag",
+"Arranque y Alternador",
+"Correas Auxiliares",
+"Dirección",
+"Distribución",
+"Ejes",
+"Electrónica Motor",
+"Embrague",
+"Encendido",
+"Frenos",
+"Inyección Combustible",
+"Mecánica Motor",
+"Sistema Tracción 4x4",
+"Suspensión",
+"Tren Delantero",
+"Tren Trasero"
+],
+"Servicio Rápido": [
+"Accesorios",
+"Alineación",
+"Ampolletas",
+"Filtros",
+"Fluidos (Lubricación y Engrase)",
+"Inspecciones",
+"Plumillas",
+"Vulcanización"
+],
+"DyP": [
+"Desabolladura y Pintura",
+"Limpieza"
+]
+},
+"servicios": {
+"A/C y Calefacción": [
+"Diagnostico electronico A/C",
+"Carga aire acondicionado",
+"Diagnostico express",
+"Reparacion de ramal",
+"Cambio compresor A/C",
+"Cambio condensador A/C",
+"Cambio evaporador A/C",
+"Cambio sensor temperatura del evaporador",
+"Cambio radiador calefaccion",
+"Cambio piolas control ventilacion",
+"Diagnostico electrico ventilacion",
+"Ext y mont de flexible"
+],
+"ABS": [
+"Diagnostico electronico ABS",
+"Cambio actuador ABS",
+"Cambio sensor de velocidad",
+"Reparacion de ramal",
+"Cambio liquido de frenos",
+"Escaner funciones especiales"
+],
+"Air Bag": [
+"Diagnostico electronico AIRBAG",
+"Cambio cinta airbag",
+"Cambio sensor impacto frontal",
+"Cambio actuador acompañante",
+"Cambio cinturon de seguridad",
+"Escaner funciones especiales"
+],
+"Arranque y Alternador": [
+"Desmontaje y montaje arranque O alternador baja complejidad",
+"Desmontaje y montaje arranque O alternador media complejidad",
+"Desmontaje y montaje arranque alta complejidad",
+"Desmontaje y montaje alternador alta complejidad",
+"Mantencion Arranque",
+"Mantencion Alternador"
+],
+"Correas Auxiliares": [
+"1 Tipo pk sin complejidad",
+"1 tipo pk media complejidad",
+"1 Tipo pk alta complejidad",
+"1 Tipo V",
+"1 Tipo V media complejidad",
+"1 Tipo V Alta complejidad"
+],
+"Dirección": [
+"Cambio cremallera direccion mecanica",
+"Cambio cremallera direccion electro-asistida",
+"Cambio cremallera direccion hidraulica",
+"Cambio flexible hidraulico",
+"Escaner funciones especiales",
+"Cambio bomba de direccion hidraulica",
+"Cambio sensor angulo de direccion",
+"Cambio amortiguador EPS"
+],
+"Distribución": [
+"Kit correa distribucion express (BASICA)",
+"Kit correa distribucion s/b. agua s/retenes",
+"kit correa distribucion c/b. agua comp. Std",
+"kit correa distribucion c/b. agua comp. Media",
+"kit cadena distribucion s/sacar motor",
+"kit cadena distribucion sacar motor"
+],
+"Ejes": [
+"Ext y mont cardan",
+"Cambio cruceta (1 unidad)",
+"Ext y mont eje palier (1)",
+"Cambio punta y/o fuelle homocinetica (1 unidad)",
+"Cambio triceta (1 unidad)"
+],
+"Electrónica Motor": [
+"Escaner",
+"Diagnostico",
+"DIAGNOSTICO EXPRESS + SCANNER",
+"Regeneracion forzada",
+"Limpieza quinto inyector",
+"Mantension SCV",
+"Limpieza de MAF",
+"Cambio de sensor de oxigeno",
+"Limpieza Admision escape y EGR",
+"Limpieza Admision escape y EGR media comp",
+"Limpieza admision escape y egr alta comp"
+],
+"Embrague": [
+"Kit embrague cuna corta y sale",
+"kit embrague cuna larga y sale",
+"kit de embrague extraccion cuna",
+"kit embrague alta dificultad extracción motor-caja",
+"Kit de embrague 4x2 Tracc trasera",
+"kit de embrague 4x4 Tracc trasera",
+"kit de embrague extraccion barras",
+"Bomba de embrague (+Insumos)",
+"Cilindro esclavo (+Insumos)",
+"Piola de embrague"
+],
+"Encendido": [
+"Bujias",
+"Bujias extracción cubre motor, bobinas o cables",
+"Bujias extracción de multiple de admisión",
+"Bujias incandescentes NI-terrano-navara actyon 13-18",
+"Bujias incandescentes TY-hilux 05-10",
+"Bujias incandescentes TY-hilux 11-15",
+"Cables de bujias",
+"Bobina de encendido (1)",
+"Bobina de encendido extracción multiple",
+"Bateria",
+"Limpieza de cuerpo de aceleración",
+"Limpieza de extractor de ventilación bateria hibrida"
+],
+"Frenos": [
+"Mantencion frenos de discos delanteros",
+"Pastillas delanteras",
+"Discos flot. y pastillas delanteras para cambiar.",
+"Discos flot. y pastillas delanteras para rectificar",
+"Discos flot APERNADO y pastillas delanteras",
+"Rectificado de discos delanteros, traseros y tambores",
+"Extrac y mont de porta caliper delanteros para reparacion",
+"Mantension 2 calipers delanteros (+Insumos)",
+"1 Flexible (+Insumos)",
+"Mantencion frenos de discos traseros",
+"Pastillas traseras",
+"Pastillas Traseras C/herramienta (+Insumos)",
+"Pastillas Traseras ELECTRICO con escaner (+Insumos)",
+"Discos flot y pastillas traseras",
+"Discos flot y pastillas traseras c/herramienta",
+"Discos flot (rod masa a presion) y pastillas traseras c/escaner",
+"Balatas y tambores (+Insumos)",
+"Mantencion 2 calipers traseros",
+"Mantencion 2 calipers traseros electronico",
+"Extrac y mont de caliper traseros para reparacion",
+"Extrac y mont de caliper elec/herramienta traseros",
+"Regulacion de frenos por detrás",
+"Regulacion de frenos (mantension)",
+"Bomba de frenos",
+"Bomba de frenos alta complejidad",
+"1 Piola lateral (freno estacionamiento)",
+"Ext y montaje de cilindros de frenos traseros"
+],
+"Inyección Combustible": [
+"Extracción y montaje inyectores TY-hilux 05-10 Ni-Navara",
+"Extracción y montaje inyectores TY-hilux 11-15 Ni-Navara GM-dmax",
+"Extracción y montaje inyectores TY-hilux 16-21 MI-L200 10-21",
+"Ext y montaje de inyectores bencineros de facil acceso",
+"Ext y montaje de inyectores bencineros de dificil acceso V6",
+"Mantención bomba alta presión TY-hilux HP3-4",
+"Extracción y montaje de estanque combustible",
+"Limpieza de estaque fuera del vehiculo",
+"Extracción y montaje bomba alta presión TY-hilux 05-10",
+"Extraccion y montaje bomba alta presión TY-hilux 10-15",
+"Extraccion y montaje bomba alta presión TY-hilux 16-24",
+"Escaner funciones especiales"
+],
+"Mecánica Motor": [
+"Cambio motor",
+"Ext y mont intercooler (superior)",
+"Ext y mont intercooler (frontal)",
+"Ext y mont DPF",
+"Cambio turbo hilux 05-11",
+"Cambio turbo hilux 12-15",
+"Cambio turbo hilux 16-",
+"Limpieza admision-EGR hilux 05-11",
+"Limpieza admision-EGR hilux 12-15",
+"Limpieza admision-EGR hilux 16-24",
+"Cambio radiador"
+],
+"Sistema Tracción 4x4": [
+"Diagnostico electronico 4WD",
+"Cambio actuador caja transferencia",
+"Cambio actuador caja dif delantero",
+"Reparacion de ramal",
+"Ext y mont de caja transferencia",
+"Diagnostico y cambio comp caja transfer."
+],
+"Suspensión": [
+"amortiguador 2 del- ojo-punta delanteros o traseros",
+"Amortiguador 2 del. Macpearson Y/O cazoletas",
+"Amortiguador 2 del. Macpearson Alta complejidad",
+"amortiguador tras, Macpearson",
+"Amortiguador tras ojo-ojo",
+"Amortiguador tras, ojo-punta",
+"Pulmon suspension"
+],
+"Tren Delantero": [
+"Axiales 2, terminales 2",
+"Terminales y/o fuelles de direccion (2)",
+"Bandeja inferior (PAR)",
+"Bandeja superior (PAR)",
+"Bandeja inferior c/barra torcion (1)",
+"Bandeja superior c/barra torcion (1)",
+"Rotula inferior Apernada (1)",
+"Rotula superior apernada (1)",
+"Rotula inferior a presion (1)",
+"Rotula superior a presion(1)",
+"Bieletas (2) con ext de ruedas",
+"Bujes barra estabilizadora (2)",
+"Bujes barras tensoras",
+"Cremallera direccion y alineacion",
+"Cuna corta",
+"Cuna larga",
+"Caja auxiliar de direccion",
+"Rodamiento masa Y masa delantero a presión (1)",
+"Rodamiento de masa ajustable delantero (1)",
+"Muñón 1 por lado"
+],
+"Tren Trasero": [
+"Rodamiento de masa a presion (1)",
+"Rodamiento-masa Conjunto (1)",
+"Cambio reten manga diferencial (1)",
+"Cambio reten pinon de ataque",
+"Cambio bujes tras paquete resorte",
+"Cambio brazo arrastre (1)",
+"cambio Brazo control (1)",
+"Cambio bandeja inferior (1)",
+"cambio bieletas",
+"Cambio terminal regulador",
+"Cambio yugo o cuna semi-chasis"
+],
+"Accesorios": [
+"GPS",
+"TURBO TIMER",
+"CORTA CORRIENTE",
+"RADIO",
+"ALARMA",
+"NEBLINEROS",
+"AMPOLLETAS LED CARRETERA",
+"Luz de carretera HB11 (1) acceso dificutuoso",
+"CAMBIO BOCINA",
+"ALARMA RETROCESO",
+"SENSORES RETROCESO",
+"ESPEJO CON CAMARA",
+"BALIZA",
+"FOCOS FAENEROS",
+"Panel control ventilacion",
+"Revision electrica de 1 cto de luces",
+"Ext y montaje de botoneras de alzavidrio"
+],
+"Alineación": [
+"Alineación auto/SUV",
+"Alineación camioneta",
+"Alineación minibús",
+"Cuadratura"
+],
+"Ampolletas": [
+"Trasera por lado (1)",
+"Patente desmontable (2)",
+"Patente desmontar panel interior (2)",
+"3º luz de frenos",
+"3º luz de frenos desm. panel interior",
+"Intermitente lateral (1)",
+"Luz de carretra H4 (1) acceso libre",
+"Luz de carretera HB11 (1) acceso dificutuoso",
+"Neblinero H7-H11 (1)",
+"Posicion Frontal acceso superior (1)",
+"Posicion Frontal acceso inferior (1)",
+"Posicion frontal extracciòn de foco (2)",
+"Plafonier o mapa",
+"Panel de instrumentos",
+"Panel control ventilacion",
+"Revision electrica de 1 cto de luces"
+],
+"Filtros": [
+"Aire con grillete",
+"Aire con tornillos",
+"Filtro petroleo elemento",
+"Filtro petroleo y bencina metalico",
+"Filtro de petroleo racor",
+"1 Filtro de polen detrás guantera",
+"2 filtro de polen detrás guantera",
+"Filtro de polen costado reposapies",
+"Filtro de alta presión combustible HILUX-FORTUNER SW4",
+"Filtro de combustible interior estanque (sin desmontar)",
+"Filtro de combustible interior estanque (desmontar estanque)"
+],
+"Fluidos (Lubricación y Engrase)": [
+"Aceite motor y filtro",
+"Aceite Caja de cambios manual acceso directo",
+"Aceite Caja de cambios manual dificultad de acceso",
+"Aceite caja Transferencia 4x4",
+"Aceite diferencial delantero",
+"Aceite diferencial delantero o trasero con carter",
+"Aceite diferencial trasero",
+"Liquido de frenos",
+"Liquido de frenos con escaner",
+"Aceite direcciòn hidraulica",
+"Engrase cardanes y crucetas 4x2",
+"Engrase cardanes y crucetas 4x4",
+"Llenado limpiaparabrisas y/o agua desmineralizada",
+"Llenado deposito auxiliar refrigerante",
+"Extaccion de combustible",
+"Carga de adblue",
+"Carga de aditivo FAP",
+"Cambio refrigerante motor",
+"Cambio aceite A/T Con tapones",
+"Cambio aceite A/T Y FILTRO"
+],
+"Inspecciones": [
+"Revisión preventiva general (con informe en tablet)",
+"Revisión express",
+"Revisión específica (Ej. Ruido, frenos o rechazo PRT)",
+"Escaner",
+"Rev. Aceite Caja de cambios manual",
+"Rev Aceite caja Transferencia 4x4",
+"Rev Aceite diferencial delantero",
+"Rev Aceite diferencial delantero o trasero con carter",
+"Rev.Aceite diferencial trasero",
+"Liquidos compartimiento motor",
+"inspección audio cargador de celular"
+],
+"Plumillas": [
+"2 Plumillas STD",
+"1 Plumilla trasera UNIVERSAL",
+"Mantencion mecanismo plumillas",
+"2 Destapar sapitos lanza agua",
+"Rev. Elec. bomba limpiaparabrisas"
+],
+"Vulcanización": [
+"Balanceo 1 neumático",
+"Cambio de neumático (1) sin balanceo (sin sensor)",
+"Cambio de neumático (1) con balanceo (sin sensor)",
+"Cambio de neumático (1) con balanceo (con sensor)",
+"Cambio de neumático (1) sin balanceo (con sensor)",
+"Cambio de válvula",
+"Parche adicional",
+"Rotación de neumáticos (4) sin balanceo",
+"Rotación de neumáticos (4) con balanceo",
+"Válvula VTR413N negra (adicional)",
+"Vulcanización rueda por mano, sin balanceo (con sensor)",
+"Vulcanización rueda por mano, sin balanceo (sin sensor)",
+"Vulcanización rueda por mano, con balanceo (sin sensor)",
+"Vulcanización rueda por mano, con balanceo (con sensor)",
+"Vulcanización media sin balanceo (sin sensor)",
+"Vulcanización media con balanceo (sin sensor)",
+"Vulcanización media con balanceo (con sensor)",
+"Vulcanización media sin balanceo (con sensor)",
+"Vulcanización parche en caliente (sin sensor)",
+"Vulcanización parche en caliente (con sensor)"
+],
+"Desabolladura y Pintura": [
+"Pintura y desabolladura por unidad",
+"Pintura tapa espejo por unidad",
+"Pintura tapa rueda por unidad",
+"Pintura completa auto (14 piezas)",
+"Pintura completa SUV (15 piezas)",
+"Pintura completa camioneta (16 piezas)",
+"Pulido de focos (par)",
+"Cambio espejo retrovisor (1)",
+"Cambio vidrio ventana (1)",
+"Cambio vidrio aleta (1)",
+"Cambio foco posterior (trasero) c/u",
+"Cambio foco frontal (delantero) c/u",
+"Cambio focos neblineros (par)",
+"Cambio guardafango",
+"Pulido carrocería completa auto",
+"Pulido carrocería completa SUV",
+"Pulido carrocería completa camioneta",
+"[Servicio externo] Extracción de luneta o parabrisas",
+"[Servicio externo] Montaje de luneta o parabrisas"
+],
+"Limpieza": [
+"Limpieza interior del vehículo",
+"Limpieza exterior del vehículo",
+"Pulido de 2 focos",
+"Lavado de motor",
+"Lavado de tapiz (semi sucio)",
+"Lavado de tapiz (extremo sucio)",
+"[Servicio externo] Lavado de chasis",
+"[Servicio externo] Lavado de motor"
+]
+},
+"repuestos": {
+"Frenos": [
+"Discos de freno",
+"Pastillas de freno",
+"Caliper (mordaza) de freno",
+"Manguera flexible de freno",
+"Tambores de freno",
+"Balatas"
+],
+"Plumillas": [
+"Plumillas/escobillas limpiaparabrisas",
+"Boquillas lava-parabrisas (sapitos)",
+"Bomba de limpiaparabrisas"
+],
+"Arranque y Alternador": [
+"Motor de arranque",
+"Alternador"
+],
+"Filtros": [
+"Filtro de aire",
+"Filtro de polen",
+"Filtro de aceite",
+"Filtro de combustible"
+],
+"Suspensión": [
+"Amortiguadores",
+"Cazoletas",
+"Resortes"
+],
+"Tren Delantero": [
+"Terminales de dirección",
+"Axiales",
+"Rótulas",
+"Bieletas",
+"Bujes barra estabilizadora",
+"Bandejas",
+"Rodamiento de masa"
+],
+"Tren Trasero": [
+"Rodamiento de masa",
+"Bieletas traseras",
+"Bujes",
+"Retén de diferencial"
+],
+"Encendido": [
+"Bujías",
+"Cables de bujías",
+"Bobina de encendido",
+"Batería"
+],
+"Distribución": [
+"Kit correa de distribución",
+"Bomba de agua",
+"Kit cadena de distribución"
+],
+"Correas Auxiliares": [
+"Correa de accesorios",
+"Tensor de correa"
+],
+"Embrague": [
+"Kit de embrague",
+"Bomba de embrague",
+"Cilindro esclavo",
+"Piola de embrague"
+],
+"Ejes": [
+"Cruceta",
+"Fuelle homocinética",
+"Punta de eje",
+"Triceta"
+],
+"A/C y Calefacción": [
+"Compresor A/C",
+"Condensador A/C",
+"Evaporador A/C",
+"Filtro deshidratador"
+],
+"Vulcanización": [
+"Neumático",
+"Válvula",
+"Sensor TPMS"
+],
+"Ampolletas": [
+"Ampolletas"
+],
+"Dirección": [
+"Cremallera de dirección",
+"Bomba de dirección hidráulica",
+"Flexible hidráulico"
+]
+},
+"insumos": {
+"Frenos": [
+"Líquido de frenos",
+"Limpiador de frenos",
+"Grasa de calipers"
+],
+"Fluidos (Lubricación y Engrase)": [
+"Aceite motor (1l)",
+"Aceite de caja",
+"Aceite de diferencial",
+"Refrigerante",
+"Agua desmineralizada (1l)",
+"Limpiaparabrisas (1l)",
+"Grasa",
+"AdBlue"
+],
+"Filtros": [
+"Aceite motor (1l)",
+"Golilla tapón de cárter"
+],
+"A/C y Calefacción": [
+"Gas refrigerante",
+"Aceite PAG"
+],
+"Embrague": [
+"Líquido de frenos"
+],
+"Distribución": [
+"Refrigerante",
+"Sellante"
+],
+"Electrónica Motor": [
+"Limpiador de admisión",
+"Limpiador de inyectores"
+],
+"Mecánica Motor": [
+"Refrigerante",
+"Sellante"
+],
+"Suspensión": [
+"Insumos del taller"
+],
+"Tren Delantero": [
+"Grasa",
+"Insumos del taller"
+],
+"Tren Trasero": [
+"Grasa",
+"Insumos del taller"
+],
+"Limpieza": [
+"Shampoo",
+"Cera",
+"Desengrasante"
+]
+}
+}

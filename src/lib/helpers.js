@@ -851,3 +851,39 @@ export function lineasDePack(servicio, combustible) {
   if (!p) return []
   return (p[combustible] || p._default || []).map((x, i) => ({ ...x, cantidad: '1', orden: i }))
 }
+
+
+/* ============================================================================
+   Catálogo de servicios desde la planilla de precios
+   ----------------------------------------------------------------------------
+   313 servicios en 28 categorías, agrupados en tres segmentos. La selección es
+   en cascada —categoría y luego servicio— porque una lista plana de 313 líneas
+   es inusable en el mostrador con el cliente esperando.
+
+   El Pack Mantención 360° se agrega como categoría de Taller Mecánico.
+   ========================================================================== */
+import catalogo from '../data/catalogoServicios.json'
+
+export const SEGMENTOS_SERVICIO = catalogo.segmentos
+export const SERVICIOS_POR_CATEGORIA = catalogo.servicios
+
+/** Categorías de un segmento, con el Pack 360° al frente en Taller Mecánico. */
+export function categoriasDe(segmento) {
+  const base = catalogo.segmentos[segmento] || []
+  return segmento === 'Taller Mecánico' ? ['Pack Mantención 360°', ...base] : base
+}
+
+export function serviciosDe(categoria) {
+  if (categoria === 'Pack Mantención 360°') return ['PACK MANTENCIÓN 360°']
+  return catalogo.servicios[categoria] || []
+}
+
+/** Repuestos e insumos que suele llevar una categoría. Son SUGERENCIAS: el
+ *  asesor marca los que aplican. Sugerir de más es mejor que olvidar: quitar
+ *  una línea cuesta un clic, acordarse de una que falta cuesta una llamada. */
+export function sugerenciasDe(categoria) {
+  return {
+    repuestos: catalogo.repuestos[categoria] || [],
+    insumos: catalogo.insumos[categoria] || []
+  }
+}
