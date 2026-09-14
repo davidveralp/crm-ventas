@@ -341,7 +341,14 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
      Las líneas anteriores del pack se quitan al cambiar de servicio, pero lo
      que el asesor agregó a mano se conserva: no sería razonable borrarle lo
      suyo por cambiar una selección. */
-  const elegirServicio = (servicio) => {
+  /* Al elegir la categoría se define el segmento y, si es un pack, se cargan
+     sus líneas. Los servicios de la categoría quedan disponibles en Mano de
+     obra como lista desplegable. */
+  const elegirCategoria = (categoria) => {
+    const segmento = Object.keys(SEGMENTOS_SERVICIO)
+      .find((sg) => categoriasDe(sg).includes(categoria)) || ''
+    const esPack = categoria === 'Pack Mantención 360°'
+    const servicio = esPack ? 'PACK MANTENCIÓN 360°' : ''
     const delPack = lineasDePack(servicio, d.combustible)
     setLineasOT((x) => [
       ...x.filter((l) => !l.dePack),
@@ -351,7 +358,7 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
         codigo: '', cotizar: false, dePack: true
       }))
     ])
-    setD({ ...d, tipo_servicio: servicio, extras: [] })
+    setD({ ...d, categoria, segmento, tipo_servicio: servicio, extras: [] })
   }
 
   /* Si cambia el combustible después de elegir el pack, las líneas se
@@ -830,30 +837,21 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
               <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="sm:col-span-2">
                   <label className="label">Trabajo a realizar</label>
-                  {/* Cascada de tres pasos. Una lista plana de 313 servicios es
-                      inusable con el cliente esperando en el mostrador. */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <select className="input" value={d.segmento}
-                            onChange={(e) => setD({ ...d, segmento: e.target.value, categoria: '', tipo_servicio: '' })}>
-                      <option value="">Segmento…</option>
-                      {Object.keys(SEGMENTOS_SERVICIO).map((sg) => <option key={sg}>{sg}</option>)}
-                    </select>
-
-                    <select className="input" value={d.categoria} disabled={!d.segmento}
-                            onChange={(e) => setD({ ...d, categoria: e.target.value, tipo_servicio: '' })}>
-                      <option value="">Categoría…</option>
-                      {categoriasDe(d.segmento).map((c) => <option key={c}>{c}</option>)}
-                    </select>
-
-                    <select className="input" value={d.tipo_servicio} disabled={!d.categoria}
-                            onChange={(e) => elegirServicio(e.target.value)}>
-                      <option value="">Servicio…</option>
-                      {serviciosDe(d.categoria).map((sv) => <option key={sv}>{sv}</option>)}
-                    </select>
-                  </div>
-                  {d.tipo_servicio && (
+                  {/* Una sola lista con las categorías agrupadas por segmento.
+                      Los servicios concretos se eligen después, dentro de Mano
+                      de obra, porque ahí es donde se ejecutan y se valorizan. */}
+                  <select className="input" value={d.categoria}
+                          onChange={(e) => elegirCategoria(e.target.value)}>
+                    <option value="">Seleccionar categoría…</option>
+                    {Object.keys(SEGMENTOS_SERVICIO).map((seg) => (
+                      <optgroup key={seg} label={seg}>
+                        {categoriasDe(seg).map((c) => <option key={c} value={c}>{c}</option>)}
+                      </optgroup>
+                    ))}
+                  </select>
+                  {d.categoria && (
                     <p className="text-[11px] text-slate-400 mt-1">
-                      {d.segmento} · {d.categoria}
+                      Elige los servicios en <strong>Mano de obra</strong>, más abajo.
                     </p>
                   )}
                 </div>
@@ -916,9 +914,32 @@ export default function InspeccionIngreso({ perfil, onCompletada, onCancelar, co
 
                       {abierta && (
                         <>
+                          {/* Mano de obra: los servicios de la categoría se
+                              eligen de la lista; el resto de las áreas se
+                              escribe libre porque los repuestos varían por
+                              vehículo y no hay catálogo cerrado. */}
+                          {tipo === 'servicio' && d.categoria && serviciosDe(d.categoria).length > 0 && (
+                            <select className="input mb-1.5" style={{ minHeight: '36px', fontSize: '13px' }}
+                                    value=""
+                                    onChange={(e) => {
+                                      const sv = e.target.value
+                                      if (!sv) return
+                                      setLineasOT((x) => [...x, {
+                                        id: 'sv' + Date.now() + Math.random().toString(36).slice(2, 5),
+                                        tipo: 'servicio', detalle: sv, cantidad: '1',
+                                        codigo: '', cotizar: false
+                                      }])
+                                    }}>
+                              <option value="">Agregar servicio de {d.categoria}…</option>
+                              {serviciosDe(d.categoria)
+                                .filter((sv) => !ls.some((l) => l.detalle === sv))
+                                .map((sv) => <option key={sv}>{sv}</option>)}
+                            </select>
+                          )}
+
                           <div className="grid grid-cols-12 gap-1.5 mb-1.5">
                             <input className="input col-span-8" style={{ minHeight: '36px', fontSize: '13px' }}
-                                   placeholder={ejemplo}
+                                   placeholder={tipo === 'servicio' ? 'O escribe uno que no esté en la lista…' : ejemplo}
                                    value={nuevaLinea.tipo === tipo ? nuevaLinea.detalle : ''}
                                    onFocus={() => setNuevaLinea((x) => ({ ...x, tipo }))}
                                    onChange={(e) => setNuevaLinea({ tipo, detalle: e.target.value, cantidad: nuevaLinea.cantidad || '1' })}
