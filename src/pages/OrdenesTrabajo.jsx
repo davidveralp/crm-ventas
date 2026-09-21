@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { fmtCLP, formatPatente, patenteLimpia } from '../lib/helpers'
+import { fmtCLP, formatPatente, patenteLimpia, motivoEdgeFunction } from '../lib/helpers'
 
 /* ============================================================================
    Órdenes de trabajo · listado y detalle
@@ -40,6 +40,38 @@ export default function OrdenesTrabajo() {
   const [sel, setSel] = useState(null)
   // Técnicos por OT, para mostrarlos en la fila sin abrir el detalle.
   const [tecnicosPorOT, setTecnicosPorOT] = useState({})
+  const [pendientes, setPendientes] = useState(0)
+  const [sincronizando, setSincronizando] = useState(false)
+  const [msgSync, setMsgSync] = useState('')
+
+  /* Cuántas OT esperan irse a la planilla. Se muestra en el botón para que se
+     note si la sincronización lleva días detenida. */
+  async function contarPendientes() {
+    const { count } = await supabase.from('sync_planilla')
+      .select('id', { count: 'exact', head: true }).neq('estado', 'enviado')
+    setPendientes(count || 0)
+  }
+  useEffect(() => { contarPendientes() }, [])
+
+  async function sincronizar() {
+    setSincronizando(true); setMsgSync('')
+    try {
+      const { data, error } = await supabase.functions.invoke('sync-planilla', {
+        body: { accion: 'despachar' }
+      })
+      const motivo = data?.error || (error ? await motivoEdgeFunction(error, data) : null)
+      if (motivo) setMsgSync('No se pudo sincronizar: ' + motivo)
+      else {
+        setMsgSync(
+          `${data.enviadas} OT enviadas a la planilla` +
+          (data.fallidas ? ` · ${data.fallidas} con error: ${data.errores?.[0] || ''}` : '') +
+          (data.total === 0 ? ' · no había pendientes' : '')
+        )
+        contarPendientes()
+      }
+    } catch (e) { setMsgSync('No se pudo sincronizar: ' + (e?.message || e)) }
+    setSincronizando(false)
+  }
 
   useEffect(() => { cargar() }, [])
 
@@ -130,8 +162,21 @@ export default function OrdenesTrabajo() {
         </p>
       )}
 
-      <input className="input w-full" placeholder="Buscar por N° de OT, patente, cliente, marca o modelo…"
-             value={q} onChange={(e) => setQ(e.target.value)} />
+      <div className="flex gap-2 flex-wrap items-center">
+        <input className="input flex-1 min-w-[240px]"
+               placeholder="Buscar por N° de OT, patente, cliente, marca o modelo…"
+               value={q} onChange={(e) => setQ(e.target.value)} />
+        {/* La planilla histórica sigue siendo la base del negocio: cada OT que
+            se crea o se cierra se encola y se envía desde aquí. */}
+        <button className="btn-soft text-sm shrink-0" disabled={sincronizando} onClick={sincronizar}>
+          {sincronizando ? 'Sincronizando…' : `⟳ Planilla${pendientes ? ` (${pendientes})` : ''}`}
+        </button>
+      </div>
+      {msgSync && (
+        <p className="text-[11px] px-2 py-1.5 rounded"
+           style={{ background: msgSync.startsWith('No') ? '#fdecea' : '#e8f6ee',
+                    color: msgSync.startsWith('No') ? '#8a1f18' : '#1f7a45' }}>{msgSync}</p>
+      )}
 
       <div className="card overflow-x-auto">
         <table className="w-full text-sm min-w-[680px]">

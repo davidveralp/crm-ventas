@@ -277,9 +277,33 @@ function ModalCita({ perfil, islas, duraciones, dia, onCerrar, onGuardado }) {
     if (!f.servicio) { setErr('Elige el servicio: define cuánto ocupa la isla.'); return }
     if (!f.patente.trim() && !f.telefono.trim()) { setErr('Ingresa al menos la patente o el teléfono.'); return }
     setGuardando(true); setErr('')
+
+    /* Recepción es el primer punto donde entra información al sistema. Si la
+       patente es nueva se crean cliente y vehículo aquí, para que Nuevo
+       Ingreso los encuentre cargados y el asesor no vuelva a escribirlos. */
+    let clienteId = veh?.cliente_id || null
+    let vehiculoId = veh?.id || null
+
+    if (!vehiculoId && patenteLimpia(f.patente).length >= 5) {
+      if (!clienteId && f.nombre_contacto.trim()) {
+        const { data: cli } = await supabase.from('clientes').insert({
+          empresa_id: perfil.empresa_id,
+          nombre: f.nombre_contacto.trim(),
+          telefono: f.telefono.trim() ? fmtFonoOT(f.telefono) : null,
+          ficha_incompleta: true
+        }).select('id').maybeSingle()
+        clienteId = cli?.id || null
+      }
+      const { data: vh } = await supabase.from('vehiculos').insert({
+        empresa_id: perfil.empresa_id,
+        patente: formatPatente(f.patente), cliente_id: clienteId
+      }).select('id').maybeSingle()
+      vehiculoId = vh?.id || null
+    }
+
     const { error } = await supabase.from('citas').insert({
       empresa_id: perfil.empresa_id,
-      cliente_id: veh?.cliente_id || null, vehiculo_id: veh?.id || null,
+      cliente_id: clienteId, vehiculo_id: vehiculoId,
       isla_id: f.isla_id || null,
       nombre_contacto: f.nombre_contacto.trim() || null,
       telefono: f.telefono.trim() ? fmtFonoOT(f.telefono) : null,
