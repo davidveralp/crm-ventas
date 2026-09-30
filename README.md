@@ -11,6 +11,6 @@ App web de un solo archivo (`index.html`) para automotoras de compraventa y cons
 - **Centro de control** por rol (Gerencia, Administración, Vendedor), con motor de reglas AU-001 a AU-015 configurable.
 
 ## Uso
-Abrir `index.html` en el navegador. No requiere instalación. Los datos se guardan en el `localStorage` del navegador; exporta respaldos desde Configuración.
+Abrir `public/index.html` en el navegador. No requiere instalación. Los datos se guardan en el `localStorage` del navegador; exporta respaldos desde Configuración.
 
 > El tratamiento del IVA y el texto del contrato de consignación son referenciales: valídalos con tu contador y tu abogado.
