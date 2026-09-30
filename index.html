@@ -1,45 +1,1024 @@
-<!doctype html>
-<html lang="es">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <meta name="theme-color" content="#E73C32" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <title>DIDIAL CRM</title>
-  </head>
-  <body>
-    <div id="root"></div>
+<title>Patio VPAI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,500..800&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: patio de ventas — riel lateral grafito con navegación por espacio de trabajo + área de trabajo con paneles; el acento es el naranjo del precio pegado en el parabrisas; las patentes se dibujan como placas chilenas */
+:root{
+  --bg:#EEEDEA; --surface:#FFFFFF; --surface-2:#F6F5F2; --ink:#1D2126; --muted:#5C636B; --line:#D9D7D2;
+  --accent:#C4540A; --accent-ink:#FFFFFF; --accent-soft:#FBE7D6;
+  --side-bg:#23282E; --side-ink:#E4E6E8; --side-muted:#98A0A8; --side-active:#323941;
+  --plate:#FFFFFF; --plate-ink:#111417; --plate-line:#9AA0A6;
+  --crit:#B42A22; --high:#B8620A; --med:#8B7300; --low:#2C6A94; --ok:#2A7A48; --neutral:#5F6770;
+  --shadow:0 1px 2px rgba(30,25,20,.06),0 4px 14px rgba(30,25,20,.05);
+  --f-display:"Archivo","Arial Narrow",Arial,sans-serif;
+  --f-body:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  --r:6px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#14171A; --surface:#1C2024; --surface-2:#22272C; --ink:#E7E6E3; --muted:#9BA2A9; --line:#30363C;
+  --accent:#F08A3E; --accent-ink:#1E1106; --accent-soft:#3B2515;
+  --side-bg:#0F1214; --side-ink:#DDE0E3; --side-muted:#8A939B; --side-active:#232A30;
+  --plate:#EDEDEA; --plate-ink:#111417; --plate-line:#6D747B;
+  --crit:#F06A5E; --high:#F0A043; --med:#D8BF4A; --low:#72AEDB; --ok:#5EC287; --neutral:#9DA6AE;
+  --shadow:0 1px 2px rgba(0,0,0,.35); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#14171A; --surface:#1C2024; --surface-2:#22272C; --ink:#E7E6E3; --muted:#9BA2A9; --line:#30363C;
+  --accent:#F08A3E; --accent-ink:#1E1106; --accent-soft:#3B2515;
+  --side-bg:#0F1214; --side-ink:#DDE0E3; --side-muted:#8A939B; --side-active:#232A30;
+  --plate:#EDEDEA; --plate-ink:#111417; --plate-line:#6D747B;
+  --crit:#F06A5E; --high:#F0A043; --med:#D8BF4A; --low:#72AEDB; --ok:#5EC287; --neutral:#9DA6AE;
+  --shadow:0 1px 2px rgba(0,0,0,.35); color-scheme:dark}
 
-    <!-- Red de seguridad: si el navegador no logra cargar el módulo principal
-         (típicamente porque una caché vieja apunta a un archivo con hash que ya
-         no existe tras un despliegue), en vez de dejar la pantalla en blanco se
-         limpia la caché y se recarga una sola vez.
-         El centinela en sessionStorage evita un bucle de recargas si el fallo
-         es por otra causa. -->
-    <script>
-      window.addEventListener('error', function (e) {
-        var esModulo = e.target && e.target.tagName === 'SCRIPT';
-        if (!esModulo) return;
-        if (sessionStorage.getItem('recuperando')) return;   // ya se intentó
-        sessionStorage.setItem('recuperando', '1');
-        if (window.caches && caches.keys) {
-          caches.keys().then(function (ns) {
-            return Promise.all(ns.map(function (n) { return caches.delete(n); }));
-          }).then(function () { location.reload(); });
-        } else {
-          location.reload();
-        }
-      }, true);
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 var(--f-body)}
+h1,h2,h3{font-family:var(--f-display);font-stretch:88%;font-weight:700;letter-spacing:.005em;text-wrap:balance;margin:0}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mono{font-family:var(--f-mono);font-size:.84em}
+.muted{color:var(--muted)}
+.num{font-variant-numeric:tabular-nums}
+.sub{display:block;font-size:12px;color:var(--muted)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 
-      // Si la app arrancó bien, se limpia el centinela.
-      window.addEventListener('load', function () {
-        setTimeout(function () { sessionStorage.removeItem('recuperando'); }, 4000);
-      });
-    </script>
+.app{display:grid;grid-template-columns:232px minmax(0,1fr);min-height:100%}
+.side{background:var(--side-bg);color:var(--side-ink);padding:20px 12px;display:flex;flex-direction:column;gap:16px;position:sticky;top:env(safe-area-inset-top,0px);height:100vh;overflow:auto}
+.brand{display:flex;gap:10px;align-items:center;padding:0 8px}
+.brand-mark{width:36px;height:36px;flex:none}
+.brand b{font-family:var(--f-display);font-stretch:112%;font-weight:800;font-size:19px;letter-spacing:.02em;text-transform:uppercase;line-height:1;display:block}
+.brand small{display:block;color:var(--side-muted);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;margin-top:3px}
+.nav{display:flex;flex-direction:column;gap:2px}
+.nav button{all:unset;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border-radius:5px;color:var(--side-ink);font-size:13.5px}
+.nav button:hover{background:var(--side-active)}
+.nav button[aria-current="page"]{background:var(--side-active);box-shadow:inset 3px 0 0 var(--accent)}
+.nav button:focus-visible{outline:2px solid var(--accent)}
+.nav .cnt{font-family:var(--f-mono);font-size:10.5px;min-width:22px;text-align:center;padding:1px 6px;border-radius:9px;background:var(--crit);color:#fff}
+.nav .cnt.soft{background:transparent;color:var(--side-muted);border:1px solid var(--side-active)}
+.nav-sep{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--side-muted);padding:10px 10px 4px}
+.side-foot{margin-top:auto;font-size:11.5px;color:var(--side-muted);padding:0 8px;line-height:1.45}
 
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
-</html>
+.mainwrap{min-width:0;display:flex;flex-direction:column}
+.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 20px;padding:20px 28px 14px;border-bottom:1px solid var(--line);background:var(--surface)}
+.top h1{font-size:30px;line-height:1.05}
+.top .fn{font-size:12.5px;color:var(--muted);margin-top:4px;max-width:72ch}
+.rolebox{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.rolebox label{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.demo-tag{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);border:1px dashed var(--accent);padding:2px 8px;border-radius:4px}
+main{padding:22px 28px 60px;display:flex;flex-direction:column;gap:20px;min-width:0}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px;min-width:0;box-shadow:var(--shadow)}
+.panel-h{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:8px 16px;margin-bottom:12px}
+.panel-h h2{font-size:20px}
+.panel-h p{margin:2px 0 0;color:var(--muted);font-size:12.5px;max-width:72ch}
+.grid2{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:20px}
+.grid2 > *,.grid3 > *{min-width:0}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+.stack{display:flex;flex-direction:column;gap:20px;min-width:0}
+.eyebrow{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+
+/* Franja de indicadores */
+.strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
+.strip > div{padding:15px 18px;min-width:0}
+.strip > div + div{border-left:1px solid var(--line)}
+.big{font-family:var(--f-display);font-stretch:92%;font-weight:700;font-size:38px;line-height:1;font-variant-numeric:tabular-nums;margin-top:4px}
+.big small{font-size:15px;font-weight:500;color:var(--muted);margin-left:3px}
+.strip .note{font-size:12px;color:var(--muted);margin-top:4px}
+
+/* Tonos */
+.t-crit{--tone:var(--crit)} .t-high{--tone:var(--high)} .t-med{--tone:var(--med)} .t-low{--tone:var(--low)} .t-ok{--tone:var(--ok)} .t-neutral{--tone:var(--neutral)} .t-accent{--tone:var(--accent)}
+.pill{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font-size:11.5px;font-weight:500;padding:1px 8px;border-radius:10px;color:var(--tone);background:color-mix(in srgb,var(--tone) 13%,transparent);border:1px solid color-mix(in srgb,var(--tone) 35%,transparent)}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--tone)}
+.chip{display:inline-block;font-size:11.5px;padding:1px 7px;border-radius:4px;background:var(--surface-2);border:1px solid var(--line);white-space:nowrap}
+
+/* Patente chilena */
+.plate{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;background:var(--plate);color:var(--plate-ink);border:1.5px solid var(--plate-line);border-radius:4px;padding:1px 7px 2px;line-height:1;min-width:84px;box-shadow:inset 0 0 0 2px var(--plate)}
+.plate b{font-family:var(--f-mono);font-weight:700;font-size:14px;letter-spacing:.06em}
+.plate i{font-style:normal;font-size:6.5px;letter-spacing:.35em;color:#555;margin-top:1px}
+.plate.lg{min-width:150px;padding:4px 12px 5px}
+.plate.lg b{font-size:26px}
+.plate.lg i{font-size:9px}
+
+/* Alertas */
+.alerts{display:flex;flex-direction:column;gap:8px}
+.alert{display:grid;grid-template-columns:4px minmax(0,1fr) auto;gap:0 12px;align-items:center;padding:9px 12px 9px 0;border:1px solid var(--line);border-radius:5px;background:var(--surface)}
+.alert .stripe{background:var(--tone);border-radius:5px 0 0 5px;align-self:stretch;margin:-9px 0}
+.alert .ah{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center}
+.alert .ah strong{font-weight:600;font-size:13.5px}
+.alert p{margin:2px 0 0;font-size:12.5px;color:var(--muted)}
+.filters{display:flex;flex-wrap:wrap;gap:6px}
+.fbtn{all:unset;cursor:pointer;font-size:12px;padding:3px 10px;border-radius:12px;border:1px solid var(--line);color:var(--muted)}
+.fbtn[aria-pressed="true"]{border-color:var(--accent);color:var(--ink);background:var(--accent-soft)}
+.fbtn:focus-visible{outline:2px solid var(--accent)}
+.fbtn b{font-family:var(--f-mono);font-weight:500;font-size:11px;margin-left:4px}
+
+/* Botones */
+.btn{cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:5px;border:1px solid var(--line);background:var(--surface);font-size:13px;font-weight:500;white-space:nowrap}
+.btn:hover{border-color:var(--muted)}
+.btn.pri{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.pri:hover{filter:brightness(1.07)}
+.btn.danger{color:var(--crit);border-color:color-mix(in srgb,var(--crit) 45%,transparent)}
+.btn.sm{padding:3px 9px;font-size:12px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+
+/* Tablas */
+.tw{overflow-x:auto;margin:0 -4px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);text-align:left;font-weight:500;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:8px;border-bottom:1px solid var(--line);vertical-align:middle}
+tr[data-act]{cursor:pointer}
+tr[data-act]:hover td{background:var(--surface-2)}
+td.r,th.r{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+tfoot td{font-weight:600;border-bottom:none;border-top:2px solid var(--line)}
+.neg{color:var(--crit)} .pos{color:var(--ok)}
+.empty{padding:18px;text-align:center;color:var(--muted);font-size:13px;border:1px dashed var(--line);border-radius:5px}
+
+/* Inventario: tarjetas */
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
+.vcard{all:unset;cursor:pointer;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow);min-width:0}
+.vcard:hover{border-color:var(--muted)}
+.vcard:focus-visible{outline:2px solid var(--accent)}
+.vphoto{aspect-ratio:16/9;max-width:100%;background:var(--surface-2);position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.vphoto img{width:100%;height:100%;object-fit:cover}
+.vphoto svg{width:46%;opacity:.35;color:var(--muted)}
+.vphoto .tag{position:absolute;top:8px;left:8px}
+.vphoto .price{position:absolute;right:8px;bottom:8px;background:var(--accent);color:var(--accent-ink);font-family:var(--f-display);font-stretch:90%;font-weight:800;font-size:17px;padding:2px 9px;border-radius:3px;transform:rotate(-2deg);box-shadow:0 2px 6px rgba(0,0,0,.18)}
+.vbody{padding:11px 13px 13px;display:flex;flex-direction:column;gap:6px}
+.vbody .t{font-weight:600;font-size:14.5px;line-height:1.25}
+.vmeta{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:12px;color:var(--muted)}
+.vfoot{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:2px}
+.days{font-family:var(--f-mono);font-size:11.5px;color:var(--tone,var(--muted))}
+.agebar{height:4px;border-radius:2px;background:var(--surface-2);overflow:hidden}
+.agebar i{display:block;height:100%;background:var(--tone,var(--ok))}
+
+/* Kanban leads */
+.kanban{display:grid;grid-template-columns:repeat(6,minmax(210px,1fr));gap:12px;overflow-x:auto;padding-bottom:6px}
+.col{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r);padding:10px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.col h3{font-size:15px;display:flex;justify-content:space-between;align-items:baseline}
+.col h3 span{font-family:var(--f-mono);font-size:11px;color:var(--muted);font-weight:500}
+.lcard{all:unset;cursor:pointer;background:var(--surface);border:1px solid var(--line);border-radius:5px;padding:9px 10px;display:flex;flex-direction:column;gap:4px;font-size:12.5px;border-left:3px solid var(--tone,var(--line))}
+.lcard:hover{border-color:var(--muted);border-left-color:var(--tone,var(--muted))}
+.lcard:focus-visible{outline:2px solid var(--accent)}
+.lcard b{font-size:13.5px;font-weight:600}
+.lcard .row{display:flex;justify-content:space-between;gap:6px;color:var(--muted);flex-wrap:wrap}
+
+/* Ficha */
+.ficha-h{display:flex;flex-wrap:wrap;gap:18px;align-items:center}
+.ficha-h .ph{width:220px;max-width:100%;aspect-ratio:16/10;border-radius:5px;overflow:hidden;background:var(--surface-2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;flex:none}
+.ficha-h .ph img{width:100%;height:100%;object-fit:cover}
+.ficha-h .ph svg{width:50%;opacity:.35;color:var(--muted)}
+.ficha-h .info{flex:1;min-width:220px;display:flex;flex-direction:column;gap:6px}
+.ficha-h h2{font-size:26px}
+dl.kv{display:grid;grid-template-columns:minmax(110px,auto) minmax(0,1fr);gap:6px 14px;margin:0;font-size:13px}
+dl.kv dt{color:var(--muted)}
+dl.kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.flow{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin:4px 0 2px}
+.flow span{font-size:11.5px;padding:3px 9px;border-radius:12px;border:1px solid var(--line);color:var(--muted)}
+.flow span.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.flow span.done{color:var(--ink);border-color:var(--muted)}
+.flow em{color:var(--muted);font-style:normal;font-size:11px}
+.check{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}
+.check:last-child{border-bottom:none}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:5px;overflow:hidden}
+.seg button{all:unset;cursor:pointer;font-size:11.5px;padding:3px 9px;color:var(--muted)}
+.seg button + button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--tone);color:#fff}
+.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.seg button:disabled{cursor:default}
+.waterfall{display:flex;flex-direction:column;gap:5px;font-size:13px}
+.waterfall .ln{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;padding:3px 0}
+.waterfall .ln.tot{border-top:2px solid var(--line);padding-top:7px;font-weight:600}
+.waterfall .ln span:last-child{font-variant-numeric:tabular-nums;font-family:var(--f-mono);font-size:12.5px}
+.callout{padding:10px 12px;border-radius:5px;background:color-mix(in srgb,var(--tone,var(--low)) 10%,transparent);border:1px solid color-mix(in srgb,var(--tone,var(--low)) 35%,transparent);font-size:12.5px}
+
+/* Barras */
+.bars{display:flex;flex-direction:column;gap:10px}
+.bar-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 10px;align-items:center}
+.bar-row .lbl{font-size:13px}
+.bar-row .val{font-family:var(--f-mono);font-size:12px;text-align:right;grid-row:span 2;color:var(--muted)}
+.bar{height:9px;border-radius:3px;background:var(--surface-2);border:1px solid var(--line);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--tone,var(--accent))}
+
+/* Formularios / modal */
+.modal{position:fixed;inset:0;background:rgba(15,18,20,.5);display:flex;align-items:flex-start;justify-content:center;padding:max(24px,env(safe-area-inset-top,0px)) 16px 24px;overflow:auto;z-index:20}
+.dialog{background:var(--surface);border:1px solid var(--line);border-radius:8px;width:min(720px,100%);box-shadow:0 20px 60px rgba(0,0,0,.3);display:flex;flex-direction:column}
+.dialog header{padding:16px 20px 10px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.dialog header h2{font-size:21px}
+.dialog .body{padding:16px 20px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 16px}
+.dialog footer{padding:12px 20px 16px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.fld{display:flex;flex-direction:column;gap:4px;min-width:0}
+.fld.full{grid-column:1/-1}
+.fld label{font-size:12px;color:var(--muted);font-weight:500}
+.fld input:not([type=checkbox]),.fld select,.fld textarea{padding:7px 9px;border:1px solid var(--line);border-radius:5px;background:var(--surface);width:100%;min-width:0}
+.fld textarea{min-height:70px;resize:vertical}
+.fld .hint{font-size:11.5px;color:var(--muted)}
+.fld.chk{flex-direction:row;align-items:center;gap:8px}
+.fld.chk label{color:var(--ink);font-size:13px}
+.fsec{grid-column:1/-1;font-family:var(--f-display);font-stretch:90%;font-weight:700;font-size:15px;padding-top:6px;border-top:1px solid var(--line);margin-top:4px}
+.fsec:first-child{border-top:none;padding-top:0;margin-top:0}
+.ferr{grid-column:1/-1;color:var(--crit);font-size:12.5px}
+input.search{padding:6px 10px;border:1px solid var(--line);border-radius:5px;background:var(--surface);min-width:0;width:220px;max-width:100%}
+select.sel{padding:5px 8px;border:1px solid var(--line);border-radius:5px;background:var(--surface)}
+pre.txt{white-space:pre-wrap;font-family:var(--f-mono);font-size:12px;background:var(--surface-2);border:1px solid var(--line);border-radius:5px;padding:12px;margin:0;max-height:55vh;overflow:auto;grid-column:1/-1}
+
+.toast{position:fixed;bottom:calc(20px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:6px;font-size:13px;z-index:30;box-shadow:0 6px 20px rgba(0,0,0,.25)}
+.log{display:flex;flex-direction:column}
+.log .it{display:grid;grid-template-columns:130px minmax(0,1fr);gap:12px;padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}
+.log .it .mono{color:var(--muted)}
+
+@media (max-width:1100px){.grid2,.grid3{grid-template-columns:minmax(0,1fr)}.strip{grid-template-columns:repeat(2,minmax(0,1fr))}.strip > div:nth-child(3){border-left:none}.strip > div:nth-child(n+3){border-top:1px solid var(--line)}}
+@media (max-width:820px){
+  .app{grid-template-columns:minmax(0,1fr)}
+  .side{position:static;height:auto;padding:12px 16px;gap:10px}
+  .nav{flex-direction:row;overflow-x:auto;gap:4px;padding-bottom:4px}
+  .nav button{white-space:nowrap;padding:6px 10px}
+  .nav-sep,.side-foot{display:none}
+  .top{padding:16px}
+  main{padding:16px 16px 50px}
+  .dialog .body{grid-template-columns:minmax(0,1fr)}
+  .strip > div{padding:12px 14px}
+  .big{font-size:30px}
+}
+@media (max-width:480px){.strip{grid-template-columns:minmax(0,1fr)}.strip > div + div{border-left:none;border-top:1px solid var(--line)}}
+</style>
+
+<div class="app">
+  <aside class="side">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 36 36" aria-hidden="true"><rect x="1" y="7" width="34" height="22" rx="3" fill="var(--plate)" stroke="var(--accent)" stroke-width="2"/><path d="M8 22.5l3-6.5h14l3 6.5" fill="none" stroke="var(--plate-ink)" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="23" r="2.2" fill="var(--plate-ink)"/><circle cx="24" cy="23" r="2.2" fill="var(--plate-ink)"/></svg>
+      <div><b>Patio</b><small id="empresaNombre">VPAI · Automotora</small></div>
+    </div>
+    <nav class="nav" id="nav" aria-label="Secciones"></nav>
+    <div class="side-foot">Datos guardados en este navegador. Exporta un respaldo desde Configuración.</div>
+  </aside>
+  <div class="mainwrap">
+    <header class="top">
+      <div><div class="eyebrow" id="crumb"></div><h1 id="title"></h1><div class="fn" id="fn"></div></div>
+      <div class="rolebox">
+        <label for="role">Espacio de trabajo</label>
+        <select id="role" class="sel"></select>
+        <select id="vend" class="sel" aria-label="Vendedor" hidden></select>
+        <span class="demo-tag" id="demoTag">Datos de ejemplo</span>
+      </div>
+    </header>
+    <main id="main"></main>
+  </div>
+</div>
+<div class="modal" id="modal" hidden><div class="dialog" role="dialog" aria-modal="true" aria-labelledby="mTitle"><header><div><div class="eyebrow" id="mEyebrow"></div><h2 id="mTitle"></h2></div><button class="btn sm" data-act="close">Cerrar</button></header><div class="body" id="mBody"></div><footer id="mFoot"></footer></div></div>
+<div class="toast" id="toast" hidden></div>
+<input type="file" id="fileImport" accept="application/json" hidden>
+<input type="file" id="filePhoto" accept="image/*" hidden>
+<script>
+/* ============ Utilidades ============ */
+const $=s=>document.querySelector(s);
+const KEY='patio-vpai-v1', UIKEY='patio-vpai-ui';
+const P=s=>new Date(String(s).slice(0,10)+'T00:00');
+const iso=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0')};
+const HOY=()=>iso(new Date());
+const addD=n=>{const d=new Date();d.setDate(d.getDate()+n);return iso(d)};
+const hAgo=h=>new Date(Date.now()-h*36e5).toISOString();
+const dias=(a,b)=>Math.round((P(b||HOY())-P(a))/864e5);
+const horas=ts=>(Date.now()-new Date(ts).getTime())/36e5;
+const uid=p=>p+Date.now().toString(36).slice(-4)+Math.random().toString(36).slice(2,6);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const clp=n=>(n<0?'−':'')+'$'+Math.round(Math.abs(n||0)).toLocaleString('es-CL');
+const mm=n=>{const a=Math.abs(n||0),s=n<0?'−':'';if(!a)return '$0';return a>=1e6?s+'$'+(a/1e6).toLocaleString('es-CL',{maximumFractionDigits:1})+' M':s+'$'+Math.round(a/1e3).toLocaleString('es-CL')+' mil'};
+const fdate=s=>s?P(s).toLocaleDateString('es-CL',{day:'2-digit',month:'short',year:'numeric'}).replace('.',''):'—';
+const fdt=ts=>ts?new Date(ts).toLocaleString('es-CL',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}).replace('.',''):'—';
+const pct=n=>isFinite(n)?(n*100).toLocaleString('es-CL',{maximumFractionDigits:1})+'%':'—';
+const nd=n=>n+(Math.abs(n)===1?' día':' días');
+const sum=(a,f)=>a.reduce((s,x)=>s+(+f(x)||0),0);
+const fmtPat=p=>{p=String(p||'').toUpperCase().replace(/[^A-Z0-9]/g,'');return p.length===6?p.slice(0,2)+'·'+p.slice(2,4)+'·'+p.slice(4):p};
+
+/* ============ Catálogos fijos del dominio ============ */
+const ROLES={gerencia:'Gerencia',admin:'Administración',vendedor:'Vendedor'};
+const ESTADOS={evaluacion:['En evaluación','low'],disponible:['Disponible','ok'],reservado:['Reservado','accent'],vendido:['Vendido','med'],entregado:['Entregado','neutral'],devuelto:['Devuelto / rechazado','neutral']};
+const FLUJO=['evaluacion','disponible','reservado','vendido','entregado'];
+const STOCK=['evaluacion','disponible','reservado'];
+const TRANS={evaluacion:['disponible','devuelto'],disponible:['reservado','vendido','evaluacion','devuelto'],reservado:['vendido','disponible'],vendido:['entregado'],entregado:[],devuelto:[]};
+const ORIGEN={compra:['Compra','neutral'],consignacion:['Consignación','low'],parte_pago:['Parte de pago','accent']};
+const CHECKS=[
+  {k:'prenda',s:'Prendas y embargos',l:'Prendas, prohibiciones y embargos (certificado de anotaciones)',crit:true},
+  {k:'multas',s:'Multas',l:'Multas impagas (RMNP)',crit:true},
+  {k:'informe',s:'Informe de historial',l:'Informe de historial (tipo Autofact): siniestros, remates, km',crit:true},
+  {k:'docs',s:'Documentos del dueño',l:'Padrón, cédula del dueño y poder notarial si aplica',crit:true},
+  {k:'tag',s:'TAG',l:'Deuda TAG y autopistas'},
+  {k:'permiso',s:'Permiso de circulación',l:'Permiso de circulación vigente'},
+  {k:'revision',s:'Revisión técnica',l:'Revisión técnica y gases vigentes'},
+  {k:'soap',s:'SOAP',l:'SOAP vigente'},
+  {k:'inspeccion',s:'Inspección',l:'Inspección mecánica y de carrocería'}];
+const CHK_EST={pend:['Pendiente','neutral'],ok:['OK','ok'],obs:['Observado','crit']};
+const GASTOS=['Mecánica','Pintura y desabolladura','Detailing','Neumáticos','Documentos y trámites','Traslado','Publicidad','Otro'];
+const ETAPAS={nuevo:['Nuevo','low'],contactado:['Contactado','neutral'],visita:['Visita / prueba','med'],negociacion:['Negociación','accent'],ganado:['Ganado','ok'],perdido:['Perdido','crit']};
+const PORTALES=['Chileautos','Yapo','Marketplace','Instagram','Web propia'];
+const PAGO={contado:'Contado',credito:'Crédito automotriz',mixto:'Mixto (pie + crédito)'};
+const CREDITO={evaluacion:['En evaluación','med'],aprobado:['Aprobado','ok'],rechazado:['Rechazado','crit'],cursado:['Cursado','neutral']};
+const TRANSF={pendiente:['Pendiente','high'],firmada:['Contrato firmado','med'],ingresada:['Ingresada al RC','low'],inscrita:['Inscrita','ok']};
+const SEV={crit:['Crítica','crit',0],high:['Alta','high',1],med:['Media','med',2],low:['Baja','low',3]};
+const AREAS={stock:'Stock',legal:'Legal y toma',consig:'Consignación',leads:'Leads',venta:'Ventas y entregas'};
+
+/* ============ Datos de ejemplo ============ */
+function seed(){
+  const ok=()=>Object.fromEntries(CHECKS.map(c=>[c.k,'ok']));
+  const V=o=>Object.assign({id:uid('v'),vin:'',version:'',color:'',combustible:'Bencina',transmision:'Manual',ubicacion:'Patio principal',precio:0,costoCompra:0,proveedorId:'',checklist:ok(),obsLegal:'',gastos:[],foto:'',publicado:{},notas:'',reserva:null,venta:null,creado:new Date().toISOString()},o);
+  const G=(tipo,desc,monto,d,cargo)=>({id:uid('g'),tipo,desc,monto,fecha:addD(d),cargoConsignante:!!cargo});
+  const pubAll={Chileautos:true,Yapo:true,Marketplace:true,Instagram:true,'Web propia':true};
+  const personas=[
+    {id:'p1',nombre:'Rodrigo Tapia Muñoz',rut:'12.345.678-5',telefono:'+56 9 8123 4501',email:'rtapia@correo.cl'},
+    {id:'p2',nombre:'Carolina Vega Pizarro',rut:'15.987.321-6',telefono:'+56 9 6654 2210',email:'cvega@correo.cl'},
+    {id:'p3',nombre:'Inversiones del Valle SpA',rut:'76.543.210-3',telefono:'+56 51 222 4410',email:'contacto@delvalle.cl'},
+    {id:'p4',nombre:'Luis Araya Cortés',rut:'9.876.543-3',telefono:'+56 9 9012 7733',email:'laraya@correo.cl'},
+    {id:'p5',nombre:'Francisca Morales Díaz',rut:'17.654.098-1',telefono:'+56 9 5543 8801',email:'fmorales@correo.cl'},
+    {id:'p6',nombre:'Andrés Castillo Rojas',rut:'13.456.789-0',telefono:'+56 9 7321 0098',email:'acastillo@correo.cl'},
+    {id:'p7',nombre:'Valentina Núñez Soto',rut:'18.234.567-4',telefono:'+56 9 8765 4412',email:'vnunez@correo.cl'},
+    {id:'p8',nombre:'Jorge Pérez Olivares',rut:'10.111.222-9',telefono:'+56 9 6123 9987',email:'jperez@correo.cl'},
+    {id:'p9',nombre:'Daniela Fuentes Lagos',rut:'16.543.210-8',telefono:'+56 9 9345 1276',email:'dfuentes@correo.cl'},
+    {id:'p10',nombre:'Marcelo Silva Ortiz',rut:'14.321.987-6',telefono:'+56 9 5098 3321',email:'msilva@correo.cl'}];
+  const vehiculos=[
+    V({id:'v1',patente:'KXRT45',vin:'JTMRWRFV5KD012345',marca:'Toyota',modelo:'RAV4',version:'2.0 LX 4x2 CVT',anio:2019,km:68500,color:'Blanco perla',transmision:'Automática',estado:'disponible',origen:'compra',ingreso:addD(-22),costoCompra:15900000,precio:18490000,proveedorId:'p8',gastos:[G('Mecánica','Mantención 70.000 km y pastillas',320000,-20),G('Detailing','Pulido y limpieza de tapiz',180000,-19)],publicado:{...pubAll}}),
+    V({id:'v2',patente:'HJKL82',marca:'Chevrolet',modelo:'Sail',version:'1.5 LS',anio:2018,km:92000,color:'Gris',estado:'disponible',origen:'consignacion',ingreso:addD(-71),precio:6890000,gastos:[G('Detailing','Limpieza completa',90000,-70,true)],publicado:{Chileautos:true,Marketplace:true}}),
+    V({id:'v3',patente:'LBVW19',marca:'Hyundai',modelo:'Tucson',version:'2.0 GL 4x2 AT',anio:2020,km:54200,color:'Rojo',transmision:'Automática',estado:'reservado',origen:'compra',ingreso:addD(-34),costoCompra:16800000,precio:19690000,proveedorId:'p10',gastos:[G('Pintura y desabolladura','Parachoque trasero',280000,-31),G('Detailing','Pulido',150000,-30)],reserva:{fecha:addD(-2),clienteId:'p6',vendedorId:'u1',monto:500000},publicado:{...pubAll}}),
+    V({id:'v4',patente:'FGTR27',marca:'Kia',modelo:'Morning',version:'1.2 EX',anio:2017,km:88000,color:'Plata',estado:'evaluacion',origen:'parte_pago',ingreso:addD(-3),costoCompra:4600000,precio:5490000,proveedorId:'p9',checklist:{...ok(),multas:'pend',informe:'pend',revision:'pend',inspeccion:'pend'},notas:'Recibido en parte de pago del Peugeot 208.'}),
+    V({id:'v5',patente:'PWXZ61',marca:'Suzuki',modelo:'Swift',version:'1.2 GLX',anio:2021,km:31500,color:'Azul',estado:'disponible',origen:'consignacion',ingreso:addD(-12),precio:10490000,publicado:{...pubAll}}),
+    V({id:'v6',patente:'JDSK33',marca:'Nissan',modelo:'Navara',version:'2.3 LE 4x4 MT',anio:2019,km:121000,color:'Blanco',combustible:'Diésel',estado:'disponible',origen:'compra',ingreso:addD(-96),costoCompra:17500000,precio:19290000,proveedorId:'p8',gastos:[G('Mecánica','Cambio de kit de embrague',690000,-90),G('Neumáticos','4 neumáticos AT 255/70',520000,-88),G('Detailing','Limpieza y restauración de plásticos',160000,-87)],publicado:{...pubAll}}),
+    V({id:'v7',patente:'KPLM90',marca:'Mazda',modelo:'CX-5',version:'2.0 R 2WD AT',anio:2018,km:79000,color:'Gris titanio',transmision:'Automática',estado:'vendido',origen:'consignacion',ingreso:addD(-47),precio:15290000,gastos:[G('Detailing','Pulido y limpieza',140000,-45,true)],venta:{fecha:addD(-6),clienteId:'p7',vendedorId:'u2',precio:14990000,pago:'mixto',financiera:'Forum',montoFinanciado:9000000,credito:'aprobado',creditoFecha:addD(-8),transferencia:'firmada',parteDePagoId:''},publicado:{}}),
+    V({id:'v8',patente:'RTGH54',marca:'Peugeot',modelo:'208',version:'1.2 Active',anio:2020,km:44000,color:'Blanco',estado:'entregado',origen:'compra',ingreso:addD(-61),costoCompra:8200000,precio:9990000,gastos:[G('Pintura y desabolladura','Puerta delantera izquierda',240000,-58),G('Detailing','Limpieza completa',120000,-57)],venta:{fecha:addD(-20),clienteId:'p9',vendedorId:'u1',precio:9790000,pago:'contado',financiera:'',montoFinanciado:0,credito:'',transferencia:'inscrita',parteDePagoId:'v4',entrega:addD(-17)}}),
+    V({id:'v9',patente:'GHTY72',marca:'Mitsubishi',modelo:'L200',version:'2.4 Katana CR 4x4',anio:2017,km:142000,color:'Gris',combustible:'Diésel',estado:'disponible',origen:'compra',ingreso:addD(-58),costoCompra:12300000,precio:13990000,proveedorId:'p10',gastos:[G('Mecánica','Mantención y correa de distribución',410000,-55)],publicado:{...pubAll}}),
+    V({id:'v10',patente:'SVBN15',marca:'Ford',modelo:'Ranger',version:'3.2 XLT 4x4 AT',anio:2021,km:67000,color:'Negro',combustible:'Diésel',transmision:'Automática',estado:'evaluacion',origen:'consignacion',ingreso:addD(-5),precio:24990000,checklist:{...ok(),prenda:'obs',tag:'pend',inspeccion:'pend'},obsLegal:'Prenda vigente a favor de una financiera. El dueño debe alzarla antes de publicar.'}),
+    V({id:'v11',patente:'DRWP48',marca:'Toyota',modelo:'Yaris',version:'1.5 GLi',anio:2016,km:101000,color:'Rojo',estado:'entregado',origen:'compra',ingreso:addD(-110),costoCompra:6100000,precio:7490000,gastos:[G('Detailing','Limpieza',90000,-108)],venta:{fecha:addD(-64),clienteId:'p10',vendedorId:'u3',precio:7290000,pago:'contado',financiera:'',montoFinanciado:0,credito:'',transferencia:'inscrita',parteDePagoId:'',entrega:addD(-62)}}),
+    V({id:'v12',patente:'TZMX06',marca:'MG',modelo:'ZS',version:'1.5 Comfort',anio:2022,km:28000,color:'Blanco',estado:'disponible',origen:'consignacion',ingreso:addD(-55),precio:11990000,publicado:{Chileautos:true,Marketplace:true,Instagram:true}}),
+    V({id:'v13',patente:'PLRD23',marca:'Chevrolet',modelo:'Tracker',version:'1.2 Turbo LT AT',anio:2021,km:39000,color:'Azul',transmision:'Automática',estado:'disponible',origen:'compra',ingreso:addD(-8),costoCompra:13900000,precio:15990000,proveedorId:'p8'}),
+    V({id:'v14',patente:'FHWK71',marca:'Hyundai',modelo:'Accent',version:'1.4 GL',anio:2019,km:71000,color:'Plata',estado:'entregado',origen:'consignacion',ingreso:addD(-80),precio:8690000,venta:{fecha:addD(-30),clienteId:'p6',vendedorId:'u2',precio:8490000,pago:'credito',financiera:'Santander Consumer',montoFinanciado:6500000,credito:'cursado',transferencia:'inscrita',parteDePagoId:'',entrega:addD(-27)}}),
+    V({id:'v15',patente:'LKJS88',marca:'Kia',modelo:'Sportage',version:'2.0 EX 4x2 AT',anio:2020,km:58000,color:'Negro',transmision:'Automática',estado:'disponible',origen:'compra',ingreso:addD(-38),costoCompra:15200000,precio:17290000,proveedorId:'p10',gastos:[G('Mecánica','Mantención y frenos',260000,-36),G('Detailing','Pulido',150000,-35)],publicado:{Chileautos:true,Yapo:true,Marketplace:true,'Web propia':true}})];
+  const consignaciones=[
+    {id:'c1',vehiculoId:'v2',consignanteId:'p1',inicio:addD(-71),plazo:90,minimo:6200000,comTipo:'pct',comValor:8,estado:'vigente',liq:null},
+    {id:'c2',vehiculoId:'v5',consignanteId:'p2',inicio:addD(-12),plazo:60,minimo:9800000,comTipo:'fija',comValor:450000,estado:'vigente',liq:null},
+    {id:'c3',vehiculoId:'v7',consignanteId:'p3',inicio:addD(-47),plazo:60,minimo:14200000,comTipo:'pct',comValor:7,estado:'vendida',liq:null},
+    {id:'c4',vehiculoId:'v10',consignanteId:'p4',inicio:addD(-5),plazo:60,minimo:23500000,comTipo:'pct',comValor:6,estado:'vigente',liq:null},
+    {id:'c5',vehiculoId:'v12',consignanteId:'p5',inicio:addD(-55),plazo:60,minimo:11200000,comTipo:'pct',comValor:7,estado:'vigente',liq:null},
+    {id:'c6',vehiculoId:'v14',consignanteId:'p1',inicio:addD(-80),plazo:60,minimo:7900000,comTipo:'pct',comValor:8,estado:'liquidada',liq:{fecha:addD(-26),monto:7810800,medio:'Transferencia bancaria'}}];
+  const L=o=>Object.assign({id:uid('l'),email:'',vehiculoId:'',vendedorId:'',etapa:'nuevo',motivo:'',prox:'',notas:'',contactos:[]},o);
+  const C=(h,tipo,nota)=>({ts:hAgo(h),tipo,nota});
+  const leads=[
+    L({nombre:'Felipe Ramírez',telefono:'+56 9 7788 1122',canal:'Chileautos',vehiculoId:'v1',vendedorId:'u1',creado:hAgo(2),notas:'Pregunta si acepta parte de pago.'}),
+    L({nombre:'Macarena Ortiz',telefono:'+56 9 6612 4480',canal:'Marketplace',vehiculoId:'v6',creado:hAgo(30)}),
+    L({nombre:'Ignacio Bravo',telefono:'+56 9 9911 2031',canal:'Instagram',vehiculoId:'v5',vendedorId:'u2',etapa:'contactado',creado:hAgo(100),prox:addD(-1),contactos:[C(52,'WhatsApp','Envié fotos y ficha. Queda de confirmar visita.')]}),
+    L({nombre:'Paula Henríquez',telefono:'+56 9 8123 7765',canal:'Web propia',vehiculoId:'v13',vendedorId:'u3',etapa:'contactado',creado:hAgo(40),prox:addD(1),contactos:[C(20,'Llamada','Busca SUV automático, pie de $5 M.')]}),
+    L({nombre:'Sebastián Lagos',telefono:'+56 9 5541 0987',canal:'Yapo',vehiculoId:'v9',vendedorId:'u1',etapa:'visita',creado:hAgo(150),prox:HOY(),contactos:[C(120,'Llamada','Agenda prueba de manejo.'),C(26,'Visita','Probó la camioneta. Quiere revisión en su mecánico.')]}),
+    L({nombre:'Andrés Castillo Rojas',personaId:'p6',telefono:'+56 9 7321 0098',canal:'Chileautos',vehiculoId:'v3',vendedorId:'u1',etapa:'negociacion',creado:hAgo(200),prox:addD(2),contactos:[C(60,'Visita','Reserva con $500.000. Tramita crédito.')]}),
+    L({nombre:'Constanza Reyes',telefono:'+56 9 6677 3344',canal:'Chileautos',vehiculoId:'v12',vendedorId:'u2',etapa:'negociacion',creado:hAgo(260),prox:addD(-2),contactos:[C(80,'Llamada','Ofrece $11,3 M. Consulta financiamiento con Forum.')]}),
+    L({nombre:'Valentina Núñez Soto',personaId:'p7',telefono:'+56 9 8765 4412',canal:'Marketplace',vehiculoId:'v7',vendedorId:'u2',etapa:'ganado',creado:hAgo(400),contactos:[C(150,'Visita','Cierre con crédito Forum.')]}),
+    L({nombre:'Daniela Fuentes Lagos',personaId:'p9',telefono:'+56 9 9345 1276',canal:'Web propia',vehiculoId:'v8',vendedorId:'u1',etapa:'ganado',creado:hAgo(700)}),
+    L({nombre:'Tomás Herrera',telefono:'+56 9 5123 6677',canal:'Marketplace',vehiculoId:'v6',vendedorId:'u3',etapa:'perdido',motivo:'Precio sobre mercado',creado:hAgo(900)}),
+    L({nombre:'Roberto Méndez',telefono:'+56 9 9988 1200',canal:'Referido',vehiculoId:'v15',vendedorId:'u1',etapa:'contactado',creado:hAgo(70),prox:addD(3),contactos:[C(48,'Llamada','Referido de cliente anterior. Viene el sábado.')]}),
+    L({nombre:'Camila Paredes',telefono:'+56 9 7766 5511',canal:'Instagram',vendedorId:'u2',creado:hAgo(5),notas:'Busca SUV hasta $12 M.'}),
+    L({nombre:'Diego Contreras',telefono:'+56 9 6234 8890',canal:'Chileautos',vehiculoId:'v9',vendedorId:'u3',etapa:'visita',creado:hAgo(180),prox:addD(-1),contactos:[C(75,'Visita','Vino a ver la L200. Pide descuento.')]}),
+    L({nombre:'Josefa Vidal',telefono:'+56 9 8899 0012',canal:'Web propia',vehiculoId:'v1',vendedorId:'u2',etapa:'negociacion',creado:hAgo(220),prox:addD(1),contactos:[C(30,'Correo','Envié simulación de crédito a 36 cuotas.')]}),
+    L({nombre:'Héctor Salinas',telefono:'+56 9 5567 2290',canal:'Yapo',vehiculoId:'v2',creado:hAgo(50)}),
+    L({nombre:'Martina Rivas',telefono:'+56 9 9123 4455',canal:'Marketplace',vehiculoId:'v6',vendedorId:'u1',etapa:'perdido',motivo:'Compró en otra automotora',creado:hAgo(1100)})];
+  return {version:1,demo:true,
+    empresa:{nombre:'Automotora Demo',rut:'76.000.000-0',ciudad:'La Serena',telefono:'+56 9 0000 0000',direccion:'Av. Ejemplo 1234'},
+    cfg:{diasStockAlerta:60,diasStockCritico:90,diasEvalMax:3,diasAvisoConsig:7,diasLiquidacion:5,horasSinContacto:24,diasReservaMax:7,diasEntregaMax:10,diasCreditoMax:5,margenObjetivo:5,tasaCapital:1.5,comisionVendedor:150000,comisionMinima:400000,comPctDef:8,plazoDef:60,ivaMargen:true},
+    vendedores:[{id:'u1',nombre:'Camila Rojas',activo:true},{id:'u2',nombre:'Matías Fuentes',activo:true},{id:'u3',nombre:'Javiera Soto',activo:true}],
+    canales:['Chileautos','Yapo','Marketplace','Instagram','Web propia','Referido','Visita directa'],
+    ubicaciones:['Patio principal','Bodega','Taller externo'],
+    financieras:['Forum','Santander Consumer','Tanner','BCI Automotriz','Amicar'],
+    personas,vehiculos,consignaciones,leads,
+    bitacora:[{ts:new Date().toISOString(),quien:'Sistema',accion:'Datos de ejemplo cargados',ref:''}]};
+}
+
+/* ============ Estado ============ */
+let DB, UI={role:'gerencia',vend:'u1',view:'control',id:null,inv:'stock',invOrigen:'',q:'',alertArea:'',rentTab:'stock',rentSort:'dias',leadCanal:'',leadVend:''};
+function load(){try{const s=localStorage.getItem(KEY);if(s){DB=JSON.parse(s)}}catch(e){}if(!DB||!DB.vehiculos)DB=seed();try{Object.assign(UI,JSON.parse(localStorage.getItem(UIKEY)||'{}'))}catch(e){}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(DB));return true}catch(e){toast('No se pudo guardar: el navegador no tiene espacio. Quita fotos o exporta un respaldo.');return false}}
+function saveUI(){try{localStorage.setItem(UIKEY,JSON.stringify(UI))}catch(e){}}
+const quien=()=>UI.role==='vendedor'?'Vendedor · '+(vend(UI.vend)?.nombre||''):ROLES[UI.role];
+function log(accion,ref){DB.bitacora.unshift({ts:new Date().toISOString(),quien:quien(),accion,ref:ref||''});DB.bitacora=DB.bitacora.slice(0,800)}
+
+/* ============ Consultas ============ */
+const veh=id=>DB.vehiculos.find(v=>v.id===id);
+const per=id=>DB.personas.find(p=>p.id===id);
+const vend=id=>DB.vendedores.find(u=>u.id===id);
+const consDe=v=>DB.consignaciones.find(c=>c.vehiculoId===v.id);
+const nomV=v=>v?`${v.marca} ${v.modelo} ${v.anio}`:'—';
+const diasStock=v=>dias(v.ingreso,v.venta?.fecha||(v.estado==='devuelto'?v.cierre||HOY():HOY()));
+const vence=c=>{const d=P(c.inicio);d.setDate(d.getDate()+(+c.plazo||0));return iso(d)};
+const esMio=l=>UI.role!=='vendedor'||l.vendedorId===UI.vend||!l.vendedorId;
+const can=a=>({
+  editVeh:['gerencia','admin'],costos:['gerencia','admin'],config:['gerencia','admin'],consig:['gerencia','admin'],
+  venta:['gerencia','admin','vendedor'],reserva:['gerencia','admin','vendedor'],entrega:['gerencia','admin'],legal:['gerencia','admin'],liquidar:['gerencia','admin']
+}[a]||[]).includes(UI.role);
+
+function comision(c,precio){if(!c)return 0;const x=c.comTipo==='pct'?precio*(+c.comValor||0)/100:(+c.comValor||0);return c.comTipo==='pct'?Math.max(x,+DB.cfg.comisionMinima||0):x}
+function liquidacion(v){const c=consDe(v);if(!c)return null;const precio=v.venta?.precio||v.precio||0;const com=comision(c,precio);const cargos=sum(v.gastos.filter(g=>g.cargoConsignante),g=>g.monto);return {c,precio,com,cargos,aPagar:precio-com-cargos,bajoMinimo:precio<(+c.minimo||0)}}
+/* Economía de la unidad: realizado si está vendida, proyectado al precio publicado si sigue en stock */
+function econ(v){
+  const cfg=DB.cfg,vendido=!!v.venta,precio=vendido?+v.venta.precio:+v.precio||0,d=diasStock(v);
+  const gastosProp=sum(v.gastos.filter(g=>!g.cargoConsignante),g=>g.monto),comVend=+cfg.comisionVendedor||0;
+  if(v.origen==='consignacion'){
+    const ingreso=comision(consDe(v),precio),iva=ingreso*19/119,neto=ingreso-iva-gastosProp-comVend;
+    return {vendido,precio,d,ingreso,costoCompra:0,gastosProp,comVend,iva,capitalCost:0,capital:gastosProp,neto,pct:precio?neto/precio:NaN,porDia:0};
+  }
+  const costo=+v.costoCompra||0,capital=costo+gastosProp,tasaDia=(+cfg.tasaCapital||0)/100/30;
+  const iva=cfg.ivaMargen?Math.max(0,precio-costo)*19/119:0,capitalCost=capital*tasaDia*d;
+  const neto=precio-costo-gastosProp-comVend-iva-capitalCost;
+  return {vendido,precio,d,ingreso:precio,costoCompra:costo,gastosProp,comVend,iva,capitalCost,capital,neto,pct:precio?neto/precio:NaN,porDia:capital*tasaDia};
+}
+const ageTone=d=>d>=DB.cfg.diasStockCritico?'crit':d>=DB.cfg.diasStockAlerta?'high':d>=DB.cfg.diasStockAlerta*.66?'med':'ok';
+const legalPend=v=>CHECKS.filter(c=>v.checklist?.[c.k]!=='ok');
+
+/* ============ Motor de reglas (determinista) ============ */
+const RULES=[
+  ['AU-001','Capital inmovilizado','Unidad disponible o reservada sobre el umbral de días en stock. Crítica sobre el segundo umbral.','stock'],
+  ['AU-002','Toma detenida','Vehículo en evaluación por más días de los permitidos.','legal'],
+  ['AU-003','Observación legal','Prenda, multas u otra verificación marcada como observada.','legal'],
+  ['AU-004','Consignación por vencer','Contrato vigente que vence dentro del aviso configurado, o ya vencido.','consig'],
+  ['AU-005','Venta bajo el mínimo','Consignación vendida bajo el precio mínimo pactado con el dueño.','consig'],
+  ['AU-006','Liquidación pendiente','Consignación vendida sin pago al consignante después del plazo.','consig'],
+  ['AU-007','Lead sin contacto','Lead nuevo sin primer contacto dentro de las horas configuradas.','leads'],
+  ['AU-008','Seguimiento vencido','Lead activo con fecha de seguimiento pasada.','leads'],
+  ['AU-009','Margen bajo objetivo','Margen neto proyectado de una unidad propia bajo el objetivo.','stock'],
+  ['AU-010','Entrega o transferencia pendiente','Unidad vendida sin entregar o sin transferencia inscrita después del plazo.','venta'],
+  ['AU-011','Reserva prolongada','Reserva sin concretar después de los días configurados.','venta'],
+  ['AU-012','Sin publicar','Unidad disponible sin aviso en ningún portal.','stock'],
+  ['AU-013','Lead sin vendedor','Lead activo sin vendedor asignado.','leads'],
+  ['AU-014','Crédito sin respuesta','Solicitud de crédito en evaluación sobre los días configurados.','venta'],
+  ['AU-015','Interesado en auto vendido','Lead activo cuyo auto de interés ya se vendió: ofrecer alternativa.','leads']];
+function evaluar(){
+  const A=[],cfg=DB.cfg,add=(rule,sev,titulo,detalle,go,vendedorId)=>A.push({rule,sev,titulo,detalle,go,vendedorId,area:RULES.find(r=>r[0]===rule)[3]});
+  for(const v of DB.vehiculos){
+    const d=diasStock(v),go={view:'ficha',id:v.id},lbl=`${fmtPat(v.patente)} ${nomV(v)}`;
+    if(['disponible','reservado'].includes(v.estado)){
+      const e=econ(v);
+      if(d>=cfg.diasStockCritico)add('AU-001','crit',`${lbl}: ${d} días en patio`,v.origen==='consignacion'?'Consignación estancada: revisar precio con el dueño.':`Capital de ${mm(e.capital)} detenido. Esperar cuesta ${clp(e.porDia)} por día.`,go);
+      else if(d>=cfg.diasStockAlerta)add('AU-001','high',`${lbl}: ${d} días en patio`,v.origen==='consignacion'?'Proponer ajuste de precio al consignante.':`Capital de ${mm(e.capital)} detenido. Evaluar rebaja o campaña.`,go);
+      if(v.origen!=='consignacion'&&isFinite(e.pct)&&e.pct*100<cfg.margenObjetivo)add('AU-009','med',`${lbl}: margen proyectado ${pct(e.pct)}`,`Objetivo ${cfg.margenObjetivo}%. Margen neto proyectado ${clp(e.neto)}.`,go);
+    }
+    if(v.estado==='disponible'&&!PORTALES.some(p=>v.publicado?.[p]))add('AU-012','med',`${lbl}: sin publicar`,`Lleva ${d} días disponible sin aviso en ningún portal${v.foto?'':' y sin foto'}.`,go);
+    if(v.estado==='evaluacion'&&d>cfg.diasEvalMax)add('AU-002','high',`${lbl}: ${d} días en evaluación`,`${legalPend(v).length} verificaciones pendientes.`,go);
+    if(STOCK.includes(v.estado)){const obs=CHECKS.filter(c=>v.checklist?.[c.k]==='obs');if(obs.length)add('AU-003',obs.some(c=>c.crit)?'crit':'high',`${lbl}: ${obs.map(c=>c.s).join(', ')} con observación`,v.obsLegal||'No publicar hasta resolver.',go)}
+    if(v.reserva&&v.estado==='reservado'){const dr=dias(v.reserva.fecha);if(dr>cfg.diasReservaMax)add('AU-011','med',`${lbl}: reservado hace ${dr} días`,`Cliente ${per(v.reserva.clienteId)?.nombre||''}. Concretar venta o liberar.`,go,v.reserva.vendedorId)}
+    if(v.venta){
+      const dv=dias(v.venta.fecha);
+      if(v.estado==='vendido'&&dv>cfg.diasEntregaMax)add('AU-010','med',`${lbl}: vendido hace ${dv} días sin entregar`,'Coordinar entrega con el cliente.',go,v.venta.vendedorId);
+      if(v.venta.transferencia!=='inscrita'&&dv>cfg.diasEntregaMax*2)add('AU-010','high',`${lbl}: transferencia sin inscribir`,`Estado: ${TRANSF[v.venta.transferencia]?.[0]||'Pendiente'}. Van ${dv} días desde la venta.`,go);
+      if(v.venta.credito==='evaluacion'&&dias(v.venta.creditoFecha||v.venta.fecha)>cfg.diasCreditoMax)add('AU-014','med',`${lbl}: crédito ${v.venta.financiera} sin respuesta`,'Llamar a la financiera.',go,v.venta.vendedorId);
+    }
+  }
+  for(const c of DB.consignaciones){
+    const v=veh(c.vehiculoId);if(!v)continue;const go={view:'ficha',id:v.id},lbl=`${fmtPat(v.patente)} ${nomV(v)}`;
+    if(c.estado==='vigente'&&STOCK.includes(v.estado)){const r=dias(HOY(),vence(c));if(r<0)add('AU-004','high',`${lbl}: consignación vencida hace ${nd(-r)}`,`Renovar contrato con ${per(c.consignanteId)?.nombre} o devolver el auto.`,go);else if(r<=cfg.diasAvisoConsig)add('AU-004','med',`${lbl}: consignación vence en ${nd(r)}`,`Contactar a ${per(c.consignanteId)?.nombre} para renovar o ajustar precio.`,go)}
+    if(v.venta&&c.estado!=='liquidada'){
+      const lq=liquidacion(v);
+      if(lq.bajoMinimo)add('AU-005','high',`${lbl}: vendido ${clp(lq.precio)} bajo el mínimo de ${clp(c.minimo)}`,'Requiere autorización escrita del consignante.',go);
+      const dv=dias(v.venta.fecha);if(dv>cfg.diasLiquidacion)add('AU-006','high',`${lbl}: liquidación pendiente hace ${dv} días`,`Pagar ${clp(lq.aPagar)} a ${per(c.consignanteId)?.nombre}.`,go);
+      else add('AU-006','low',`${lbl}: liquidar al consignante`,`${clp(lq.aPagar)} a ${per(c.consignanteId)?.nombre}. Plazo ${cfg.diasLiquidacion} días.`,go);
+    }
+  }
+  for(const l of DB.leads){
+    if(['ganado','perdido'].includes(l.etapa))continue;const go={view:'lead',id:l.id};
+    if(l.etapa==='nuevo'&&!l.contactos.length&&horas(l.creado)>cfg.horasSinContacto)add('AU-007','high',`${l.nombre}: ${Math.floor(horas(l.creado))} h sin contacto`,`Lead de ${l.canal}${l.vehiculoId?' por '+nomV(veh(l.vehiculoId)):''}.`,go,l.vendedorId);
+    if(!l.vendedorId)add('AU-013','high',`${l.nombre}: sin vendedor asignado`,`Lead de ${l.canal}. Asignar ahora.`,go);
+    if(l.prox&&dias(l.prox)>0)add('AU-008','med',`${l.nombre}: seguimiento vencido hace ${nd(dias(l.prox))}`,`${ETAPAS[l.etapa][0]}${l.vehiculoId?' · '+nomV(veh(l.vehiculoId)):''}.`,go,l.vendedorId);
+    const lv=veh(l.vehiculoId);if(lv&&['vendido','entregado','devuelto'].includes(lv.estado))add('AU-015','med',`${l.nombre}: el ${nomV(lv)} ya no está disponible`,'Ofrecer una alternativa del stock.',go,l.vendedorId);
+  }
+  return A.sort((a,b)=>SEV[a.sev][2]-SEV[b.sev][2]);
+}
+function alertasRol(A){
+  if(UI.role==='vendedor')return A.filter(a=>['leads','venta'].includes(a.area)||a.rule==='AU-012').filter(a=>!a.vendedorId||a.vendedorId===UI.vend);
+  if(UI.role==='admin')return A.filter(a=>a.area!=='leads'||a.rule==='AU-013');
+  return A;
+}
+
+/* ============ Flujo de estados del vehículo ============ */
+function validar(v,dest){
+  const err=[],av=[];
+  if(!TRANS[v.estado].includes(dest))err.push(`No se puede pasar de ${ESTADOS[v.estado][0]} a ${ESTADOS[dest][0]}.`);
+  if(dest==='disponible'){
+    CHECKS.filter(c=>c.crit&&v.checklist?.[c.k]!=='ok').forEach(c=>err.push(`Verificación obligatoria sin aprobar: ${c.l}.`));
+    CHECKS.filter(c=>!c.crit&&v.checklist?.[c.k]==='obs').forEach(c=>err.push(`Verificación observada: ${c.l}.`));
+    CHECKS.filter(c=>!c.crit&&v.checklist?.[c.k]==='pend').forEach(c=>av.push(`Pendiente: ${c.l}.`));
+    if(!(+v.precio>0))err.push('Falta el precio de publicación.');
+    if(v.origen!=='consignacion'&&!(+v.costoCompra>0))err.push('Falta el costo de compra o tasación.');
+    if(v.origen==='consignacion'&&!consDe(v))err.push('Falta el contrato de consignación.');
+  }
+  return {err,av};
+}
+function transicion(v,dest,datos={},motivo=''){
+  const {err}=validar(v,dest);if(err.length)return err;
+  const antes=v.estado;v.estado=dest;const c=consDe(v);
+  if(dest==='reservado')v.reserva=datos;
+  if(dest==='disponible'&&antes==='reservado'){log(`Reserva liberada (${motivo||'sin motivo'})`,v.id);v.reserva=null}
+  if(dest==='vendido'){v.venta=datos;if(c)c.estado='vendida';
+    if(datos.leadId){const l=DB.leads.find(x=>x.id===datos.leadId);if(l){l.etapa='ganado';l.prox=''}}}
+  if(dest==='entregado')v.venta.entrega=datos.entrega||HOY();
+  if(dest==='devuelto'){v.cierre=HOY();v.motivoCierre=motivo;if(c&&c.estado==='vigente')c.estado='devuelta'}
+  log(`VEHICULO_${dest.toUpperCase()}: ${ESTADOS[antes][0]} → ${ESTADOS[dest][0]}${motivo&&dest!=='disponible'?' ('+motivo+')':''}`,v.id);
+  return null;
+}
+</script>
+<script>
+/* ============ Piezas de interfaz ============ */
+const pill=(l,t)=>`<span class="pill t-${t}">${esc(l)}</span>`;
+const plate=(p,lg)=>`<span class="plate${lg?' lg':''}"><b>${esc(fmtPat(p))}</b><i>CHILE</i></span>`;
+const CAR=`<svg viewBox="0 0 64 32" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round" aria-hidden="true"><path d="M4 23v-5l6-2 7-8h22l9 8 10 2v5"/><circle cx="16" cy="24" r="4.5" fill="var(--surface-2)"/><circle cx="48" cy="24" r="4.5" fill="var(--surface-2)"/><path d="M21 16h26"/></svg>`;
+const estPill=v=>pill(...ESTADOS[v.estado]);
+const oriPill=v=>pill(...ORIGEN[v.origen]);
+function tbl(heads,rows,empty,foot){if(!rows.length)return `<div class="empty">${empty}</div>`;return `<div class="tw"><table><thead><tr>${heads.map(h=>h.startsWith('>')?`<th class="r">${h.slice(1)}</th>`:`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody>${foot?`<tfoot>${foot}</tfoot>`:''}</table></div>`}
+function bars(rows,fmt){const max=Math.max(1,...rows.map(r=>r.v));return `<div class="bars">${rows.map(r=>`<div class="bar-row t-${r.t||'accent'}"><div class="lbl">${esc(r.l)}</div><div class="val">${fmt?fmt(r):r.v}</div><div class="bar"><i style="width:${Math.max(r.v>0?2:0,r.v/max*100)}%"></i></div></div>`).join('')}</div>`}
+function toast(m){const t=$('#toast');t.textContent=m;t.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(()=>t.hidden=true,2800)}
+function copiar(txt,ok='Copiado al portapapeles'){try{navigator.clipboard.writeText(txt).then(()=>toast(ok),()=>selPre())}catch(e){selPre()}}
+function selPre(){const p=$('#mBody pre');if(p){const r=document.createRange();r.selectNodeContents(p);const s=getSelection();s.removeAllRanges();s.addRange(r);toast('Texto seleccionado: cópialo con Ctrl+C')}else toast('No se pudo copiar')}
+let TXT='';
+function showText(eb,titulo,texto){TXT=texto;FORM=null;$('#mEyebrow').textContent=eb;$('#mTitle').textContent=titulo;$('#mBody').innerHTML=`<pre class="txt">${esc(texto)}</pre>`;$('#mFoot').innerHTML=`<span class="muted" style="font-size:12px">Revisa el texto antes de usarlo.</span><button class="btn pri" data-act="copyTxt">Copiar texto</button>`;$('#modal').hidden=false}
+function showMsg(titulo,items,intro){FORM=null;$('#mEyebrow').textContent='Validación';$('#mTitle').textContent=titulo;$('#mBody').innerHTML=`<div class="fld full"><p style="margin:0">${esc(intro||'')}</p><ul style="margin:6px 0 0;padding-left:18px">${items.map(i=>`<li>${esc(i)}</li>`).join('')}</ul></div>`;$('#mFoot').innerHTML=`<span></span><button class="btn pri" data-act="close">Entendido</button>`;$('#modal').hidden=false}
+function alertList(list,limit){if(!list.length)return `<div class="empty">Sin alertas. Todo al día.</div>`;return `<div class="alerts">${list.slice(0,limit).map(a=>`<div class="alert t-${SEV[a.sev][1]}"><div class="stripe"></div><div style="min-width:0"><div class="ah">${pill(SEV[a.sev][0],SEV[a.sev][1])}<strong>${esc(a.titulo)}</strong></div><p>${esc(a.detalle)} <span class="mono">${a.rule}</span></p></div><button class="btn sm" data-act="go" data-view="${a.go.view}" data-id="${a.go.id}">Abrir</button></div>`).join('')}</div>${list.length>limit?`<p class="muted" style="margin:10px 0 0;font-size:12.5px">Y ${list.length-limit} alertas más de menor prioridad.</p>`:''}`}
+const buckets=()=>{const c=DB.cfg,b=[['0 a 30 días',0,30,'ok'],[`31 a ${c.diasStockAlerta-1} días`,31,c.diasStockAlerta-1,'med'],[`${c.diasStockAlerta} a ${c.diasStockCritico-1} días`,c.diasStockAlerta,c.diasStockCritico-1,'high'],[`${c.diasStockCritico} días o más`,c.diasStockCritico,1e9,'crit']];const pub=DB.vehiculos.filter(v=>['disponible','reservado'].includes(v.estado));return b.map(([l,a,z,t])=>{const vs=pub.filter(v=>{const d=diasStock(v);return d>=a&&d<=z});return {l,t,n:vs.length,v:sum(vs,v=>econ(v).capital)}})};
+
+/* ============ Render principal ============ */
+let ALERTS=[];
+const VIEWS={
+  control:['Centro de control',()=>({gerencia:'Cómo está el patio hoy, cuánto capital está detenido y qué requiere tu atención.',admin:'Tomas por aprobar, liquidaciones a consignantes, entregas y transferencias.',vendedor:'Tus leads, los seguimientos del día y las alertas de tus ventas.'}[UI.role])],
+  inventario:['Inventario',()=>'Cada auto con su estado, días en patio y precio publicado. Abre una ficha para verificar, costear, reservar o vender.'],
+  consignaciones:['Consignaciones',()=>'Contratos con los dueños: plazo, precio mínimo, comisión y liquidación automática al vender.'],
+  leads:['Leads',()=>'Consultas desde portales y redes, asignadas por vendedor y seguidas por etapa hasta el cierre.'],
+  rentabilidad:['Rentabilidad por unidad',()=>'Precio menos compra, reacondicionamiento, comisión, IVA y costo del capital detenido en patio.'],
+  bitacora:['Bitácora',()=>'Quién hizo qué y cuándo. Cada cambio de estado queda registrado como evento.'],
+  config:['Configuración',()=>'Parámetros del motor de reglas, catálogos, vendedores y respaldo de datos.']};
+function navItems(){const r=UI.role;return [['control','Centro de control'],['inventario','Inventario'],r!=='vendedor'&&['consignaciones','Consignaciones'],['leads','Leads'],r!=='vendedor'&&['rentabilidad','Rentabilidad'],['sep','Registro'],['bitacora','Bitácora'],can('config')&&['config','Configuración']].filter(Boolean)}
+function render(){
+  if(!navItems().some(n=>n[0]===UI.view)&&UI.view!=='ficha')UI.view='control';
+  if(UI.view==='ficha'&&!veh(UI.id))UI.view='inventario';
+  ALERTS=evaluar();const RA=alertasRol(ALERTS);
+  const cnt={control:RA.filter(a=>SEV[a.sev][2]<=1).length,leads:RA.filter(a=>a.area==='leads').length,consignaciones:RA.filter(a=>a.area==='consig'&&SEV[a.sev][2]<=1).length};
+  const soft={inventario:DB.vehiculos.filter(v=>STOCK.includes(v.estado)).length};
+  const cur=UI.view==='ficha'?'inventario':UI.view;
+  $('#nav').innerHTML=navItems().map(([k,l])=>k==='sep'?`<div class="nav-sep">${l}</div>`:`<button data-act="nav" data-view="${k}" ${cur===k?'aria-current="page"':''}><span>${l}</span>${cnt[k]?`<span class="cnt">${cnt[k]}</span>`:soft[k]?`<span class="cnt soft">${soft[k]}</span>`:''}</button>`).join('');
+  $('#role').innerHTML=Object.entries(ROLES).map(([k,l])=>`<option value="${k}" ${UI.role===k?'selected':''}>${l}</option>`).join('');
+  $('#vend').hidden=UI.role!=='vendedor';
+  $('#vend').innerHTML=DB.vendedores.filter(u=>u.activo).map(u=>`<option value="${u.id}" ${UI.vend===u.id?'selected':''}>${esc(u.nombre)}</option>`).join('');
+  $('#demoTag').hidden=!DB.demo;$('#empresaNombre').textContent=DB.empresa.nombre||'VPAI · Automotora';
+  if(UI.view==='ficha'){const v=veh(UI.id);$('#crumb').textContent='Inventario · Ficha del vehículo';$('#title').textContent=`${nomV(v)}`;$('#fn').textContent=`${v.version||''}${v.version?' · ':''}ingresó el ${fdate(v.ingreso)} · ${ORIGEN[v.origen][0].toLowerCase()}`;$('#main').innerHTML=vFicha(v)}
+  else{const [t,f]=VIEWS[UI.view];$('#crumb').textContent=DB.empresa.nombre+' · '+(UI.role==='vendedor'?'Vendedor · '+(vend(UI.vend)?.nombre||''):ROLES[UI.role]);$('#title').textContent=t;$('#fn').textContent=f();
+    $('#main').innerHTML={control:vControl,inventario:vInventario,consignaciones:vConsig,leads:vLeads,rentabilidad:vRent,bitacora:vBitacora,config:vConfig}[UI.view](RA)}
+  saveUI();
+}
+
+/* ============ Centro de control ============ */
+function vControl(RA){
+  const mes=HOY().slice(0,7),pub=DB.vehiculos.filter(v=>['disponible','reservado'].includes(v.estado)),E=pub.map(econ);
+  const vMes=DB.vehiculos.filter(v=>v.venta&&v.venta.fecha.slice(0,7)===mes);
+  const area=UI.alertArea,areas=[...new Set(RA.map(a=>a.area))];
+  const list=area?RA.filter(a=>a.area===area):RA;
+  let strip,right;
+  if(UI.role==='vendedor'){
+    const mis=DB.leads.filter(l=>l.vendedorId===UI.vend),act=mis.filter(l=>!['ganado','perdido'].includes(l.etapa));
+    const hoy=act.filter(l=>l.prox&&dias(l.prox)>=0).sort((a,b)=>a.prox.localeCompare(b.prox));
+    const cerr=mis.filter(l=>['ganado','perdido'].includes(l.etapa)),gan=mis.filter(l=>l.etapa==='ganado');
+    const misV=vMes.filter(v=>v.venta.vendedorId===UI.vend);
+    strip=`<div><div class="eyebrow">Leads activos</div><div class="big">${act.length}</div><div class="note">${act.filter(l=>l.etapa==='negociacion').length} en negociación</div></div>
+    <div><div class="eyebrow">Seguimientos para hoy</div><div class="big" style="color:${hoy.length?'var(--high)':'inherit'}">${hoy.length}</div><div class="note">${hoy.filter(l=>dias(l.prox)>0).length} atrasados</div></div>
+    <div><div class="eyebrow">Mis ventas del mes</div><div class="big">${misV.length}</div><div class="note">${mm(sum(misV,v=>v.venta.precio))} vendidos</div></div>
+    <div><div class="eyebrow">Tasa de cierre</div><div class="big">${cerr.length?Math.round(gan.length/cerr.length*100):0}<small>%</small></div><div class="note">${gan.length} ganados de ${cerr.length} cerrados</div></div>`;
+    right=`<section class="panel"><div class="panel-h"><div><h2>Mi agenda de seguimiento</h2><p>Leads con seguimiento para hoy o atrasado.</p></div><button class="btn sm pri" data-act="new" data-tipo="lead">Nuevo lead</button></div>${tbl(['Lead','Etapa','Seguimiento'],hoy.map(l=>`<tr data-act="go" data-view="lead" data-id="${l.id}"><td>${esc(l.nombre)}<span class="sub">${l.vehiculoId?esc(nomV(veh(l.vehiculoId))):'Sin auto específico'} · ${esc(l.canal)}</span></td><td>${pill(...ETAPAS[l.etapa])}</td><td class="num">${dias(l.prox)>0?pill('Hace '+dias(l.prox)+' d','crit'):pill('Hoy','med')}</td></tr>`),'Sin seguimientos pendientes para hoy.')}</section>
+    <section class="panel"><div class="panel-h"><div><h2>Mi embudo</h2><p>Leads por etapa.</p></div></div>${bars(Object.entries(ETAPAS).map(([k,[l,t]])=>({l,t,v:mis.filter(x=>x.etapa===k).length})))}</section>`;
+  }else if(UI.role==='admin'){
+    const ev=DB.vehiculos.filter(v=>v.estado==='evaluacion');
+    const liq=DB.vehiculos.filter(v=>v.venta&&consDe(v)&&consDe(v).estado!=='liquidada').map(liquidacion);
+    const ent=DB.vehiculos.filter(v=>v.venta&&(v.estado==='vendido'||v.venta.transferencia!=='inscrita'));
+    const porV=DB.consignaciones.filter(c=>c.estado==='vigente'&&STOCK.includes(veh(c.vehiculoId)?.estado)&&dias(HOY(),vence(c))<=DB.cfg.diasAvisoConsig);
+    strip=`<div><div class="eyebrow">Tomas en evaluación</div><div class="big">${ev.length}</div><div class="note">${sum(ev,v=>legalPend(v).length)} verificaciones pendientes</div></div>
+    <div><div class="eyebrow">Por pagar a consignantes</div><div class="big">${mm(sum(liq,l=>l.aPagar))}</div><div class="note">${liq.length} liquidaciones</div></div>
+    <div><div class="eyebrow">Entregas y transferencias</div><div class="big">${ent.length}</div><div class="note">${ent.filter(v=>v.estado==='vendido').length} por entregar</div></div>
+    <div><div class="eyebrow">Consignaciones por vencer</div><div class="big">${porV.length}</div><div class="note">Aviso a ${DB.cfg.diasAvisoConsig} días</div></div>`;
+    right=`<section class="panel"><div class="panel-h"><div><h2>Tomas por aprobar</h2><p>Verificación legal antes de publicar.</p></div></div>${tbl(['Vehículo','Pendientes','Días'],ev.map(v=>`<tr data-act="go" data-view="ficha" data-id="${v.id}"><td>${plate(v.patente)} <span class="sub">${esc(nomV(v))} · ${ORIGEN[v.origen][0]}</span></td><td>${legalPend(v).length} de ${CHECKS.length}</td><td class="r">${diasStock(v)}</td></tr>`),'Sin tomas en evaluación.')}</section>
+    <section class="panel"><div class="panel-h"><div><h2>Ventas en trámite</h2><p>Entrega, crédito y transferencia.</p></div></div>${tbl(['Vehículo','Crédito','Transferencia'],ent.map(v=>`<tr data-act="go" data-view="ficha" data-id="${v.id}"><td>${plate(v.patente)}<span class="sub">${esc(nomV(v))} · ${estPill(v)}</span></td><td>${v.venta.credito?pill(...CREDITO[v.venta.credito]):'<span class="muted">Contado</span>'}</td><td>${pill(...TRANSF[v.venta.transferencia||'pendiente'])}</td></tr>`),'Sin ventas en trámite.')}</section>`;
+  }else{
+    const cap=sum(E,e=>e.capital),dia=sum(E,e=>e.porDia),dprom=pub.length?Math.round(sum(pub,diasStock)/pub.length):0;
+    const netoMes=sum(vMes.map(econ),e=>e.neto);
+    strip=`<div><div class="eyebrow">Autos en patio</div><div class="big">${pub.length}</div><div class="note">${DB.vehiculos.filter(v=>v.estado==='evaluacion').length} más en evaluación · ${pub.filter(v=>v.origen==='consignacion').length} en consignación</div></div>
+    <div><div class="eyebrow">Capital inmovilizado</div><div class="big">${mm(cap)}</div><div class="note">Esperar cuesta ${clp(dia)} por día</div></div>
+    <div><div class="eyebrow">Días promedio en stock</div><div class="big" style="color:var(--${ageTone(dprom)==='ok'?'ink':ageTone(dprom)})">${dprom}<small>días</small></div><div class="note">Alerta a los ${DB.cfg.diasStockAlerta}, crítico a los ${DB.cfg.diasStockCritico}</div></div>
+    <div><div class="eyebrow">Ventas del mes</div><div class="big">${vMes.length}<small>unid.</small></div><div class="note">Margen neto ${mm(netoMes)}</div></div>`;
+    const B=buckets();
+    right=`<section class="panel"><div class="panel-h"><div><h2>Antigüedad del stock</h2><p>Capital propio detenido por tramo de días. Las consignaciones solo suman sus gastos.</p></div></div>${bars(B.map(b=>({l:`${b.l} · ${b.n} ${b.n===1?'auto':'autos'}`,t:b.t,v:b.v})),r=>mm(r.v))}</section>
+    <section class="panel"><div class="panel-h"><div><h2>Embudo de leads</h2><p>Todos los vendedores.</p></div><button class="btn sm" data-act="nav" data-view="leads">Ver leads</button></div>${bars(Object.entries(ETAPAS).map(([k,[l,t]])=>({l,t,v:DB.leads.filter(x=>x.etapa===k).length})))}</section>`;
+  }
+  return `<section class="strip">${strip}</section>
+  <div class="grid2"><section class="panel"><div class="panel-h"><div><h2>Qué requiere atención</h2><p>Alertas del motor de reglas, de mayor a menor severidad. El código indica la regla que la generó.</p></div>
+  <div class="filters"><button class="fbtn" data-act="aarea" data-a="" aria-pressed="${!area}">Todas<b>${RA.length}</b></button>${areas.map(a=>`<button class="fbtn" data-act="aarea" data-a="${a}" aria-pressed="${area===a}">${AREAS[a]}<b>${RA.filter(x=>x.area===a).length}</b></button>`).join('')}</div></div>${alertList(list,12)}</section>
+  <div class="stack">${right}</div></div>`;
+}
+
+/* ============ Inventario ============ */
+function vcard(v){
+  const d=diasStock(v),t=ageTone(d),inS=STOCK.includes(v.estado),pr=v.venta?.precio||v.precio;
+  return `<button class="vcard" data-act="go" data-view="ficha" data-id="${v.id}"><div class="vphoto">${v.foto?`<img src="${v.foto}" alt="${esc(nomV(v))}">`:CAR}<span class="tag">${estPill(v)}</span>${pr?`<span class="price">${mm(pr)}</span>`:''}</div>
+  <div class="vbody"><div class="vfoot">${plate(v.patente)}${oriPill(v)}</div><div class="t">${esc(v.marca)} ${esc(v.modelo)} <span class="muted" style="font-weight:400">${esc(v.version)}</span></div>
+  <div class="vmeta"><span>${v.anio}</span><span>${(+v.km||0).toLocaleString('es-CL')} km</span><span>${esc(v.transmision)}</span><span>${esc(v.combustible)}</span></div>
+  ${inS?`<div class="t-${t}"><div class="vfoot"><span class="days">${d} días en patio</span><span class="days" style="color:var(--muted)">${esc(v.ubicacion)}</span></div><div class="agebar"><i style="width:${Math.min(100,d/DB.cfg.diasStockCritico*100)}%"></i></div></div>`:`<div class="days">${v.venta?'Vendido el '+fdate(v.venta.fecha)+' · '+d+' días':'Cerrado el '+fdate(v.cierre)}</div>`}</div></button>`;
+}
+function vInventario(){
+  const f=UI.inv,q=UI.q.toLowerCase();
+  const filt=v=>(f==='todos'||(f==='stock'?STOCK.includes(v.estado):v.estado===f))&&(!UI.invOrigen||v.origen===UI.invOrigen)&&(!q||[v.patente,v.marca,v.modelo,v.version,v.vin].join(' ').toLowerCase().includes(q.replace(/[·\-\s]/g,''))||[v.marca,v.modelo].join(' ').toLowerCase().includes(q));
+  const vs=DB.vehiculos.filter(filt).sort((a,b)=>FLUJO.indexOf(a.estado)-FLUJO.indexOf(b.estado)||diasStock(b)-diasStock(a));
+  const n=k=>DB.vehiculos.filter(v=>k==='todos'||(k==='stock'?STOCK.includes(v.estado):v.estado===k)).length;
+  const fl=[['stock','En patio'],...Object.entries(ESTADOS).map(([k,[l]])=>[k,l]),['todos','Todos']];
+  return `<section class="panel"><div class="panel-h"><div class="filters">${fl.map(([k,l])=>`<button class="fbtn" data-act="inv" data-f="${k}" aria-pressed="${f===k}">${l}<b>${n(k)}</b></button>`).join('')}</div>
+  <div class="actions"><input class="search" id="invQ" type="search" placeholder="Buscar patente, marca, modelo" value="${esc(UI.q)}" aria-label="Buscar"><select class="sel" id="invO" aria-label="Origen"><option value="">Todo origen</option>${Object.entries(ORIGEN).map(([k,[l]])=>`<option value="${k}" ${UI.invOrigen===k?'selected':''}>${l}</option>`).join('')}</select>
+  ${can('editVeh')?`<button class="btn" data-act="new" data-tipo="consigNueva">Ingresar consignación</button><button class="btn pri" data-act="new" data-tipo="compra">Registrar compra</button>`:''}</div></div>
+  ${vs.length?`<div class="cards">${vs.map(vcard).join('')}</div>`:'<div class="empty">No hay vehículos con este filtro.</div>'}</section>`;
+}
+
+/* ============ Ficha del vehículo ============ */
+function vFicha(v){
+  const d=diasStock(v),c=consDe(v),E=econ(v),costos=can('costos');
+  const idx=FLUJO.indexOf(v.estado);
+  const flow=v.estado==='devuelto'?`<div class="flow"><span class="on">Devuelto / rechazado</span><em>${esc(v.motivoCierre||'')}</em></div>`:`<div class="flow">${FLUJO.map((k,i)=>`<span class="${i===idx?'on':i<idx?'done':''}">${ESTADOS[k][0]}</span>${i<FLUJO.length-1?'<em>›</em>':''}`).join('')}</div>`;
+  const B=[];const T=(to,l,pri)=>B.push(`<button class="btn ${pri?'pri':''}" data-act="trans" data-to="${to}" data-id="${v.id}">${l}</button>`);
+  if(v.estado==='evaluacion'&&can('editVeh')){T('disponible','Aprobar y publicar',1);T('devuelto',v.origen==='consignacion'?'Rechazar consignación':'Rechazar toma')}
+  if(v.estado==='disponible'){if(can('venta'))T('vendido','Registrar venta',1);if(can('reserva'))T('reservado','Registrar reserva');if(can('editVeh')){T('evaluacion','Volver a evaluación');if(v.origen==='consignacion')T('devuelto','Devolver al consignante')}}
+  if(v.estado==='reservado'){if(can('venta'))T('vendido','Registrar venta',1);T('disponible','Liberar reserva')}
+  if(v.estado==='vendido'&&can('entrega'))T('entregado','Registrar entrega',1);
+  const head=`<section class="panel"><div class="ficha-h"><button class="ph" data-act="foto" data-id="${v.id}" ${can('editVeh')?'':'disabled'} title="${can('editVeh')?'Subir o cambiar foto':''}" style="cursor:${can('editVeh')?'pointer':'default'};padding:0">${v.foto?`<img src="${v.foto}" alt="${esc(nomV(v))}">`:CAR}</button>
+  <div class="info"><div class="actions">${plate(v.patente,1)}${estPill(v)}${oriPill(v)}</div><h2>${esc(v.marca)} ${esc(v.modelo)} <span class="muted" style="font-weight:500">${esc(v.version)}</span></h2>
+  <div class="vmeta" style="font-size:13px"><span>${v.anio}</span><span>${(+v.km||0).toLocaleString('es-CL')} km</span><span>${esc(v.color)}</span><span>${esc(v.transmision)}</span><span>${esc(v.combustible)}</span><span>${esc(v.ubicacion)}</span></div>
+  ${flow}</div>
+  <div style="text-align:right;display:flex;flex-direction:column;gap:6px;align-items:flex-end"><span class="eyebrow">${v.venta?'Precio de venta':'Precio publicado'}</span><span class="big">${v.venta?clp(v.venta.precio):v.precio?clp(v.precio):'Sin precio'}</span><span class="days t-${STOCK.includes(v.estado)?ageTone(d):'neutral'}" style="color:var(--tone)">${d} días ${v.venta?'hasta la venta':'en patio'}</span></div></div>
+  <div class="actions" style="margin-top:14px">${B.join('')}${can('editVeh')?`<button class="btn" data-act="edit" data-tipo="veh" data-id="${v.id}">Editar ficha</button>`:''}<button class="btn" data-act="aviso" data-id="${v.id}">Copiar aviso</button><button class="btn" data-act="nav" data-view="inventario">Volver al inventario</button></div></section>`;
+
+  const datos=`<section class="panel"><div class="panel-h"><h2>Datos del vehículo</h2></div><dl class="kv">
+    <dt>Patente</dt><dd class="mono">${esc(fmtPat(v.patente))}</dd><dt>VIN</dt><dd class="mono">${esc(v.vin)||'—'}</dd>
+    <dt>Ingreso</dt><dd>${fdate(v.ingreso)}</dd>${v.proveedorId?`<dt>${v.origen==='parte_pago'?'Entregado por':'Comprado a'}</dt><dd>${esc(per(v.proveedorId)?.nombre)}</dd>`:''}
+    ${costos&&v.origen!=='consignacion'?`<dt>${v.origen==='parte_pago'?'Tasación':'Costo de compra'}</dt><dd class="num">${clp(v.costoCompra)}</dd>`:''}
+    ${v.notas?`<dt>Notas</dt><dd>${esc(v.notas)}</dd>`:''}</dl></section>`;
+
+  const legal=`<section class="panel"><div class="panel-h"><div><h2>Verificación legal e inspección</h2><p>Las marcadas como obligatorias deben estar en OK para publicar.</p></div><span>${legalPend(v).length?pill(legalPend(v).length+' pendientes','high'):pill('Completa','ok')}</span></div>
+  ${v.obsLegal?`<div class="callout t-crit" style="margin-bottom:8px">${esc(v.obsLegal)}</div>`:''}
+  ${CHECKS.map(ch=>{const s=v.checklist?.[ch.k]||'pend';return `<div class="check"><span>${esc(ch.l)}${ch.crit?' <span class="chip">Obligatoria</span>':''}</span><span class="seg">${Object.entries(CHK_EST).map(([k,[l,t]])=>`<button class="t-${t}" data-act="chk" data-id="${v.id}" data-k="${ch.k}" data-val="${k}" aria-pressed="${s===k}" ${can('legal')?'':'disabled'}>${l}</button>`).join('')}</span></div>`}).join('')}</section>`;
+
+  const gastos=costos?`<section class="panel"><div class="panel-h"><div><h2>Reacondicionamiento y gastos</h2><p>Mecánica, pintura, detailing, trámites. ${c?'Marca los que se descuentan al consignante.':''}</p></div>${can('editVeh')?`<button class="btn sm pri" data-act="new" data-tipo="gasto" data-id="${v.id}">Agregar gasto</button>`:''}</div>
+  ${tbl(['Fecha','Tipo','Detalle','>Monto'],v.gastos.map(g=>`<tr data-act="edit" data-tipo="gasto" data-id="${v.id}" data-sub="${g.id}"><td class="num">${fdate(g.fecha)}</td><td>${esc(g.tipo)}${g.cargoConsignante?' <span class="chip">Cargo consignante</span>':''}</td><td>${esc(g.desc)}</td><td class="r">${clp(g.monto)}</td></tr>`),'Sin gastos registrados.',v.gastos.length?`<tr><td colspan="3">Total</td><td class="r">${clp(sum(v.gastos,g=>g.monto))}</td></tr>`:'')}</section>`:'';
+
+  const intLeads=DB.leads.filter(l=>l.vehiculoId===v.id);
+  const leads=`<section class="panel"><div class="panel-h"><div><h2>Leads interesados</h2><p>Consultas asociadas a este auto.</p></div><button class="btn sm" data-act="new" data-tipo="lead" data-id="${v.id}">Nuevo lead</button></div>${tbl(['Lead','Etapa','Vendedor'],intLeads.map(l=>`<tr data-act="go" data-view="lead" data-id="${l.id}"><td>${esc(l.nombre)}<span class="sub">${esc(l.canal)}</span></td><td>${pill(...ETAPAS[l.etapa])}</td><td>${esc(vend(l.vendedorId)?.nombre||'Sin asignar')}</td></tr>`),'Sin leads para este auto.')}</section>`;
+
+  const wf=costos&&(E.precio>0)?`<section class="panel"><div class="panel-h"><div><h2>Rentabilidad de la unidad</h2><p>${E.vendido?'Resultado realizado con el precio de venta.':'Proyección al precio publicado si se vende hoy.'}</p></div>${pill(pct(E.pct),v.origen==='consignacion'?'neutral':E.pct*100<DB.cfg.margenObjetivo?'high':'ok')}</div><div class="waterfall">
+  ${v.origen==='consignacion'?`<div class="ln"><span>Precio de ${E.vendido?'venta':'publicación'}</span><span>${clp(E.precio)}</span></div><div class="ln"><span>Comisión de la automotora</span><span>${clp(E.ingreso)}</span></div><div class="ln"><span>− IVA de la comisión</span><span>${clp(-E.iva)}</span></div>`
+  :`<div class="ln"><span>Precio de ${E.vendido?'venta':'publicación'}</span><span>${clp(E.precio)}</span></div><div class="ln"><span>− ${v.origen==='parte_pago'?'Tasación de parte de pago':'Costo de compra'}</span><span>${clp(-E.costoCompra)}</span></div>`}
+  <div class="ln"><span>− Reacondicionamiento y gastos</span><span>${clp(-E.gastosProp)}</span></div><div class="ln"><span>− Comisión del vendedor</span><span>${clp(-E.comVend)}</span></div>
+  ${v.origen!=='consignacion'?`${DB.cfg.ivaMargen?`<div class="ln"><span>− IVA sobre el margen</span><span>${clp(-E.iva)}</span></div>`:''}<div class="ln"><span>− Costo del capital (${E.d} días al ${DB.cfg.tasaCapital}% mensual)</span><span>${clp(-E.capitalCost)}</span></div>`:''}
+  <div class="ln tot"><span>Margen neto</span><span class="${E.neto<0?'neg':''}">${clp(E.neto)}</span></div></div>
+  ${!E.vendido&&E.porDia?`<div class="callout t-${ageTone(d)}" style="margin-top:12px">Cada día adicional en patio le resta ${clp(E.porDia)} al margen.</div>`:''}</section>`:'';
+
+  let cons='';
+  if(c){const lq=liquidacion(v),r=dias(HOY(),vence(c)),p=per(c.consignanteId);
+    cons=`<section class="panel"><div class="panel-h"><div><h2>Consignación</h2><p>Contrato con ${esc(p?.nombre)}.</p></div>${pill({vigente:'Vigente',vendida:'Vendida, por liquidar',liquidada:'Liquidada',devuelta:'Devuelta'}[c.estado],{vigente:'low',vendida:'high',liquidada:'ok',devuelta:'neutral'}[c.estado])}</div>
+    <dl class="kv"><dt>Consignante</dt><dd>${esc(p?.nombre)}<span class="sub">${esc(p?.rut)} · ${esc(p?.telefono)}</span></dd>
+    <dt>Plazo</dt><dd>${c.plazo} días desde ${fdate(c.inicio)}${c.estado==='vigente'?` · ${r<0?pill('Vencida hace '+(-r)+' d','crit'):r<=DB.cfg.diasAvisoConsig?pill('Vence en '+r+' d','high'):pill('Vence '+fdate(vence(c)),'neutral')}`:''}</dd>
+    <dt>Precio mínimo</dt><dd class="num">${clp(c.minimo)}</dd><dt>Comisión</dt><dd>${c.comTipo==='pct'?`${c.comValor}% del precio (mínimo ${clp(DB.cfg.comisionMinima)})`:`Fija ${clp(c.comValor)}`}</dd></dl>
+    <div class="eyebrow" style="margin:14px 0 6px">${v.venta?'Liquidación':'Liquidación estimada al precio publicado'}</div>
+    <div class="waterfall"><div class="ln"><span>Precio de ${v.venta?'venta':'publicación'}</span><span>${clp(lq.precio)}</span></div><div class="ln"><span>− Comisión</span><span>${clp(-lq.com)}</span></div><div class="ln"><span>− Gastos a cargo del consignante</span><span>${clp(-lq.cargos)}</span></div><div class="ln tot"><span>A pagar al consignante</span><span>${clp(lq.aPagar)}</span></div></div>
+    ${lq.bajoMinimo?`<div class="callout t-crit" style="margin-top:10px">El precio está bajo el mínimo pactado. Se necesita autorización escrita del consignante.</div>`:''}
+    ${c.liq?`<div class="callout t-ok" style="margin-top:10px">Pagado ${clp(c.liq.monto)} el ${fdate(c.liq.fecha)} por ${esc(c.liq.medio)}.</div>`:''}
+    <div class="actions" style="margin-top:12px"><button class="btn sm" data-act="contrato" data-id="${c.id}">Copiar contrato</button>${can('consig')&&c.estado==='vigente'?`<button class="btn sm" data-act="edit" data-tipo="contrato" data-id="${c.id}">Editar condiciones</button>`:''}${v.venta?`<button class="btn sm" data-act="liqTxt" data-id="${v.id}">Copiar liquidación</button>`:''}${v.venta&&c.estado==='vendida'&&can('liquidar')?`<button class="btn sm pri" data-act="new" data-tipo="liq" data-id="${v.id}">Registrar pago al consignante</button>`:''}</div></section>`}
+
+  let venta='';
+  if(v.reserva&&v.estado==='reservado'){const r=v.reserva;venta=`<section class="panel"><div class="panel-h"><div><h2>Reserva</h2><p>Hace ${dias(r.fecha)} días.</p></div>${pill('Reservado','accent')}</div><dl class="kv"><dt>Cliente</dt><dd>${esc(per(r.clienteId)?.nombre)}<span class="sub">${esc(per(r.clienteId)?.telefono||'')}</span></dd><dt>Vendedor</dt><dd>${esc(vend(r.vendedorId)?.nombre)}</dd><dt>Abono</dt><dd class="num">${clp(r.monto)}</dd><dt>Fecha</dt><dd>${fdate(r.fecha)}</dd></dl></section>`}
+  if(v.venta){const s=v.venta,pp=veh(s.parteDePagoId),ed=can('entrega');
+    venta=`<section class="panel"><div class="panel-h"><div><h2>Venta</h2><p>${fdate(s.fecha)}${s.entrega?' · entregado el '+fdate(s.entrega):''}</p></div>${estPill(v)}</div><dl class="kv">
+    <dt>Cliente</dt><dd>${esc(per(s.clienteId)?.nombre)}<span class="sub">${esc(per(s.clienteId)?.rut||'')} ${esc(per(s.clienteId)?.telefono||'')}</span></dd><dt>Vendedor</dt><dd>${esc(vend(s.vendedorId)?.nombre)}</dd>
+    <dt>Precio</dt><dd class="num">${clp(s.precio)}</dd><dt>Forma de pago</dt><dd>${PAGO[s.pago]||'—'}${s.financiera?` · ${esc(s.financiera)} por ${clp(s.montoFinanciado)}`:''}</dd>
+    ${pp?`<dt>Parte de pago</dt><dd><button class="btn sm" data-act="go" data-view="ficha" data-id="${pp.id}">${esc(fmtPat(pp.patente))} ${esc(nomV(pp))}</button></dd>`:''}</dl>
+    ${s.financiera?`<div class="check" style="margin-top:8px"><span>Crédito</span><span class="seg">${Object.entries(CREDITO).map(([k,[l,t]])=>`<button class="t-${t}" data-act="cred" data-id="${v.id}" data-val="${k}" aria-pressed="${s.credito===k}" ${ed||UI.role==='vendedor'?'':'disabled'}>${l}</button>`).join('')}</span></div>`:''}
+    <div class="check"><span>Transferencia</span><span class="seg">${Object.entries(TRANSF).map(([k,[l,t]])=>`<button class="t-${t}" data-act="transf" data-id="${v.id}" data-val="${k}" aria-pressed="${(s.transferencia||'pendiente')===k}" ${ed?'':'disabled'}>${l}</button>`).join('')}</span></div></section>`}
+
+  const pub=`<section class="panel"><div class="panel-h"><div><h2>Publicación</h2><p>Marca dónde está publicado el aviso.</p></div><button class="btn sm" data-act="aviso" data-id="${v.id}">Copiar aviso</button></div><div class="filters">${PORTALES.map(p=>`<button class="fbtn" data-act="pub" data-id="${v.id}" data-p="${p}" aria-pressed="${!!v.publicado?.[p]}" ${can('editVeh')&&STOCK.includes(v.estado)?'':'disabled'}>${p}</button>`).join('')}</div></section>`;
+  const hist=DB.bitacora.filter(b=>b.ref===v.id).slice(0,12);
+  const his=`<section class="panel"><div class="panel-h"><h2>Historial</h2></div>${hist.length?`<div class="log">${hist.map(b=>`<div class="it"><span class="mono">${fdt(b.ts)}</span><span>${esc(b.accion)}<span class="sub">${esc(b.quien)}</span></span></div>`).join('')}</div>`:'<div class="empty">Sin movimientos registrados desde que se cargó la ficha.</div>'}</section>`;
+  return head+`<div class="grid2"><div class="stack">${datos}${legal}${gastos}${leads}</div><div class="stack">${venta}${wf}${cons}${pub}${his}</div></div>`;
+}
+
+/* ============ Consignaciones ============ */
+function vConsig(){
+  const mes=HOY().slice(0,7);
+  const vig=DB.consignaciones.filter(c=>c.estado==='vigente');
+  const porV=vig.filter(c=>STOCK.includes(veh(c.vehiculoId)?.estado)&&dias(HOY(),vence(c))<=DB.cfg.diasAvisoConsig);
+  const pend=DB.consignaciones.filter(c=>c.estado==='vendida').map(c=>veh(c.vehiculoId)).filter(Boolean);
+  const comMes=sum(DB.consignaciones.map(c=>veh(c.vehiculoId)).filter(v=>v?.venta&&v.venta.fecha.slice(0,7)===mes),v=>liquidacion(v).com);
+  const EST={vigente:['Vigente','low'],vendida:['Por liquidar','high'],liquidada:['Liquidada','ok'],devuelta:['Devuelta','neutral']};
+  const rows=[...DB.consignaciones].sort((a,b)=>['vendida','vigente','liquidada','devuelta'].indexOf(a.estado)-['vendida','vigente','liquidada','devuelta'].indexOf(b.estado)).map(c=>{const v=veh(c.vehiculoId);if(!v)return '';const r=dias(HOY(),vence(c));const pr=v.venta?.precio||v.precio;
+    return `<tr data-act="go" data-view="ficha" data-id="${v.id}"><td>${plate(v.patente)}</td><td>${esc(nomV(v))}<span class="sub">${ESTADOS[v.estado][0]}</span></td><td>${esc(per(c.consignanteId)?.nombre)}</td><td class="num">${fdate(c.inicio)}</td><td>${c.estado==='vigente'?(r<0?pill('Vencida '+(-r)+' d','crit'):r<=DB.cfg.diasAvisoConsig?pill(r+' días','high'):`<span class="num">${r} días</span>`):'—'}</td><td class="r">${clp(c.minimo)}</td><td class="r">${pr?clp(pr):'—'}</td><td class="r">${pr?clp(comision(c,pr)):'—'}</td><td>${pill(...EST[c.estado])}</td></tr>`});
+  return `<section class="strip"><div><div class="eyebrow">Contratos vigentes</div><div class="big">${vig.length}</div><div class="note">${vig.filter(c=>veh(c.vehiculoId)?.estado==='evaluacion').length} en evaluación</div></div>
+  <div><div class="eyebrow">Por vencer o vencidos</div><div class="big" style="color:${porV.length?'var(--high)':'inherit'}">${porV.length}</div><div class="note">Aviso a ${DB.cfg.diasAvisoConsig} días del vencimiento</div></div>
+  <div><div class="eyebrow">Por pagar a dueños</div><div class="big">${mm(sum(pend,v=>liquidacion(v).aPagar))}</div><div class="note">${pend.length} liquidaciones</div></div>
+  <div><div class="eyebrow">Comisiones del mes</div><div class="big">${mm(comMes)}</div><div class="note">Brutas, con IVA</div></div></section>
+  <section class="panel"><div class="panel-h"><div><h2>Liquidaciones pendientes</h2><p>Se calculan solas al registrar la venta: precio menos comisión menos gastos a cargo del dueño.</p></div></div>
+  ${tbl(['Vehículo','Consignante','Venta','>Precio','>Comisión','>Cargos','>A pagar',''],pend.map(v=>{const l=liquidacion(v);return `<tr><td>${plate(v.patente)}<span class="sub">${esc(nomV(v))}</span></td><td>${esc(per(l.c.consignanteId)?.nombre)}</td><td class="num">${fdate(v.venta.fecha)}<span class="sub">hace ${dias(v.venta.fecha)} días</span></td><td class="r">${clp(l.precio)}${l.bajoMinimo?'<span class="sub neg">Bajo el mínimo</span>':''}</td><td class="r">${clp(l.com)}</td><td class="r">${clp(l.cargos)}</td><td class="r"><b>${clp(l.aPagar)}</b></td><td class="r"><div class="actions" style="justify-content:flex-end"><button class="btn sm" data-act="liqTxt" data-id="${v.id}">Copiar</button>${can('liquidar')?`<button class="btn sm pri" data-act="new" data-tipo="liq" data-id="${v.id}">Registrar pago</button>`:''}</div></td></tr>`}),'No hay liquidaciones pendientes.')}</section>
+  <section class="panel"><div class="panel-h"><div><h2>Contratos</h2><p>Todos los autos recibidos en consignación. Abre una fila para ver la ficha y la liquidación.</p></div>${can('consig')?`<button class="btn pri" data-act="new" data-tipo="consigNueva">Ingresar consignación</button>`:''}</div>
+  ${tbl(['Patente','Vehículo','Consignante','Inicio','Vence','>Mínimo','>Precio','>Comisión','Estado'],rows,'Sin contratos de consignación.')}</section>`;
+}
+
+/* ============ Leads ============ */
+function vLeads(){
+  const q=UI.q.toLowerCase();
+  const L=DB.leads.filter(esMio).filter(l=>(!UI.leadCanal||l.canal===UI.leadCanal)&&(!UI.leadVend||(UI.leadVend==='_'?!l.vendedorId:l.vendedorId===UI.leadVend))&&(!q||l.nombre.toLowerCase().includes(q)||String(l.telefono).includes(q)));
+  const card=l=>{const v=veh(l.vehiculoId),venc=l.prox&&dias(l.prox)>0&&!['ganado','perdido'].includes(l.etapa),sc=l.etapa==='nuevo'&&!l.contactos.length&&horas(l.creado)>DB.cfg.horasSinContacto;
+    const t=sc||venc||!l.vendedorId&&!['ganado','perdido'].includes(l.etapa)?'crit':l.prox&&dias(l.prox)===0?'med':'';
+    return `<button class="lcard ${t?'t-'+t:''}" data-act="go" data-view="lead" data-id="${l.id}"><b>${esc(l.nombre)}</b><span>${v?`${esc(fmtPat(v.patente))} · ${esc(nomV(v))}`:'<span class="muted">Sin auto específico</span>'}</span>
+    <div class="row"><span class="chip">${esc(l.canal)}</span><span>${esc(vend(l.vendedorId)?.nombre?.split(' ')[0]||'Sin asignar')}</span></div>
+    <div class="row">${l.etapa==='perdido'?`<span>${esc(l.motivo)}</span>`:l.etapa==='ganado'?'<span>Venta cerrada</span>':sc?`<span style="color:var(--crit)">${Math.floor(horas(l.creado))} h sin contacto</span>`:l.prox?`<span style="color:${venc?'var(--crit)':'inherit'}">Seguimiento ${dias(l.prox)===0?'hoy':venc?'atrasado '+dias(l.prox)+' d':fdate(l.prox)}</span>`:`<span>Ingresó ${fdt(l.creado)}</span>`}</div></button>`};
+  const canales=DB.canales;
+  const stat=canales.map(c=>{const x=DB.leads.filter(l=>l.canal===c),g=x.filter(l=>l.etapa==='ganado').length,cer=x.filter(l=>['ganado','perdido'].includes(l.etapa)).length;return {c,n:x.length,g,cer}}).filter(s=>s.n);
+  const vst=DB.vendedores.map(u=>{const x=DB.leads.filter(l=>l.vendedorId===u.id);return {u,act:x.filter(l=>!['ganado','perdido'].includes(l.etapa)).length,g:x.filter(l=>l.etapa==='ganado').length,atr:x.filter(l=>l.prox&&dias(l.prox)>0&&!['ganado','perdido'].includes(l.etapa)).length,v:DB.vehiculos.filter(v=>v.venta?.vendedorId===u.id&&v.venta.fecha.slice(0,7)===HOY().slice(0,7)).length}});
+  return `<section class="panel"><div class="panel-h"><div class="actions"><input class="search" id="leadQ" type="search" placeholder="Buscar nombre o teléfono" value="${esc(UI.q)}" aria-label="Buscar lead">
+  <select class="sel" id="leadC" aria-label="Canal"><option value="">Todos los canales</option>${canales.map(c=>`<option ${UI.leadCanal===c?'selected':''}>${esc(c)}</option>`).join('')}</select>
+  ${UI.role!=='vendedor'?`<select class="sel" id="leadV" aria-label="Vendedor"><option value="">Todos los vendedores</option><option value="_" ${UI.leadVend==='_'?'selected':''}>Sin asignar</option>${DB.vendedores.map(u=>`<option value="${u.id}" ${UI.leadVend===u.id?'selected':''}>${esc(u.nombre)}</option>`).join('')}</select>`:''}</div>
+  <button class="btn pri" data-act="new" data-tipo="lead">Nuevo lead</button></div>
+  <div class="kanban">${Object.entries(ETAPAS).map(([k,[l]])=>{const x=L.filter(y=>y.etapa===k).sort((a,b)=>(a.prox||'9').localeCompare(b.prox||'9'));return `<div class="col"><h3>${l}<span>${x.length}</span></h3>${x.map(card).join('')||'<span class="muted" style="font-size:12px">Sin leads</span>'}</div>`}).join('')}</div></section>
+  ${UI.role!=='vendedor'?`<div class="grid2"><section class="panel"><div class="panel-h"><div><h2>Conversión por canal</h2><p>Dónde conviene invertir en publicidad. La conversión considera solo leads cerrados.</p></div></div>${tbl(['Canal','>Leads','>Ganados','>Conversión'],stat.map(s=>`<tr><td>${esc(s.c)}</td><td class="r">${s.n}</td><td class="r">${s.g}</td><td class="r">${s.cer?Math.round(s.g/s.cer*100)+'%':'—'}</td></tr>`),'Sin datos.')}</section>
+  <section class="panel"><div class="panel-h"><div><h2>Vendedores</h2><p>Carga activa y cierres del mes.</p></div></div>${tbl(['Vendedor','>Activos','>Atrasados','>Ganados','>Ventas mes'],vst.map(s=>`<tr><td>${esc(s.u.nombre)}</td><td class="r">${s.act}</td><td class="r ${s.atr?'neg':''}">${s.atr}</td><td class="r">${s.g}</td><td class="r">${s.v}</td></tr>`),'Sin vendedores.')}</section></div>`:''}`;
+}
+
+/* ============ Rentabilidad ============ */
+function vRent(){
+  const tab=UI.rentTab,stock=tab==='stock';
+  const vs=DB.vehiculos.filter(v=>stock?['disponible','reservado'].includes(v.estado):!!v.venta);
+  const rows=vs.map(v=>({v,e:econ(v)}));const k=UI.rentSort;
+  rows.sort((a,b)=>k==='neto'?a.e.neto-b.e.neto:k==='pct'?(a.e.pct||0)-(b.e.pct||0):b.e.d-a.e.d);
+  const tot=f=>sum(rows,r=>f(r.e));
+  const bajo=rows.filter(r=>r.v.origen!=='consignacion'&&r.e.pct*100<DB.cfg.margenObjetivo).length;
+  const strip=stock?`<div><div class="eyebrow">Capital inmovilizado</div><div class="big">${mm(tot(e=>e.capital))}</div><div class="note">${rows.length} unidades publicadas</div></div>
+  <div><div class="eyebrow">Costo diario de esperar</div><div class="big">${clp(tot(e=>e.porDia))}</div><div class="note">Al ${DB.cfg.tasaCapital}% mensual</div></div>
+  <div><div class="eyebrow">Margen neto proyectado</div><div class="big">${mm(tot(e=>e.neto))}</div><div class="note">Si todo se vende hoy al precio publicado</div></div>
+  <div><div class="eyebrow">Bajo el objetivo</div><div class="big" style="color:${bajo?'var(--high)':'inherit'}">${bajo}<small>de ${rows.length}</small></div><div class="note">Unidades propias bajo el ${DB.cfg.margenObjetivo}% neto</div></div>`
+  :`<div><div class="eyebrow">Unidades vendidas</div><div class="big">${rows.length}</div><div class="note">${rows.filter(r=>r.v.origen==='consignacion').length} en consignación</div></div>
+  <div><div class="eyebrow">Margen neto realizado</div><div class="big">${mm(tot(e=>e.neto))}</div><div class="note">Sobre ventas por ${mm(tot(e=>e.precio))}</div></div>
+  <div><div class="eyebrow">Margen promedio</div><div class="big">${pct(tot(e=>e.neto)/Math.max(1,tot(e=>e.precio)))}</div><div class="note">Neto sobre precio de venta</div></div>
+  <div><div class="eyebrow">Días promedio a la venta</div><div class="big">${rows.length?Math.round(tot(e=>e.d)/rows.length):0}<small>días</small></div><div class="note">Desde el ingreso al patio</div></div>`;
+  const byO=Object.entries(ORIGEN).map(([k,[l,t]])=>{const x=rows.filter(r=>r.v.origen===k);return {l:`${l} · ${x.length} unid.`,t,v:Math.max(0,sum(x,r=>r.e.neto)),real:sum(x,r=>r.e.neto)}}).filter(r=>r.l);
+  return `<div class="filters"><button class="fbtn" data-act="rtab" data-t="stock" aria-pressed="${stock}">Stock actual (proyectado)</button><button class="fbtn" data-act="rtab" data-t="vendidos" aria-pressed="${!stock}">Vendidos (realizado)</button></div>
+  <section class="strip">${strip}</section>
+  <section class="panel"><div class="panel-h"><div><h2>${stock?'Unidades en patio':'Unidades vendidas'}</h2><p>Margen neto = precio − compra − gastos − comisión del vendedor − IVA − costo del capital. En consignación el ingreso es la comisión.</p></div>
+  <select class="sel" id="rSort" aria-label="Ordenar"><option value="dias" ${k==='dias'?'selected':''}>Más días primero</option><option value="neto" ${k==='neto'?'selected':''}>Menor margen primero</option><option value="pct" ${k==='pct'?'selected':''}>Menor % primero</option></select></div>
+  ${tbl(['Vehículo','Origen','>Días','>Precio','>Costo + gastos','>IVA','>Capital','>Margen neto','>%'],rows.map(({v,e})=>`<tr data-act="go" data-view="ficha" data-id="${v.id}"><td>${plate(v.patente)}<span class="sub">${esc(nomV(v))}</span></td><td>${oriPill(v)}</td><td class="r"><span class="days t-${stock?ageTone(e.d):'neutral'}" style="color:var(--tone)">${e.d}</span></td><td class="r">${clp(e.precio)}</td><td class="r">${clp(e.costoCompra+e.gastosProp+e.comVend)}</td><td class="r">${clp(e.iva)}</td><td class="r">${clp(e.capitalCost)}</td><td class="r ${e.neto<0?'neg':''}"><b>${clp(e.neto)}</b></td><td class="r">${pill(pct(e.pct),v.origen==='consignacion'?'neutral':e.pct*100<DB.cfg.margenObjetivo?'high':'ok')}</td></tr>`),stock?'No hay unidades publicadas.':'Aún no hay ventas.',rows.length?`<tr><td colspan="3">Total</td><td class="r">${clp(tot(e=>e.precio))}</td><td class="r">${clp(tot(e=>e.costoCompra+e.gastosProp+e.comVend))}</td><td class="r">${clp(tot(e=>e.iva))}</td><td class="r">${clp(tot(e=>e.capitalCost))}</td><td class="r">${clp(tot(e=>e.neto))}</td><td class="r">${pct(tot(e=>e.neto)/Math.max(1,tot(e=>e.precio)))}</td></tr>`:'')}</section>
+  <div class="grid2">${stock?`<section class="panel"><div class="panel-h"><div><h2>Capital por antigüedad</h2><p>Dónde está detenido el dinero.</p></div></div>${bars(buckets().map(b=>({l:`${b.l} · ${b.n} ${b.n===1?'auto':'autos'}`,t:b.t,v:b.v})),r=>mm(r.v))}</section>`:`<section class="panel"><div class="panel-h"><div><h2>Margen neto por origen</h2><p>Compra propia frente a consignación y parte de pago.</p></div></div>${bars(byO,r=>mm(r.real))}</section>`}
+  <section class="panel"><div class="panel-h"><div><h2>Supuestos del cálculo</h2><p>Se ajustan en Configuración.</p></div></div><dl class="kv"><dt>Costo del capital</dt><dd>${DB.cfg.tasaCapital}% mensual sobre compra más gastos</dd><dt>Comisión vendedor</dt><dd>${clp(DB.cfg.comisionVendedor)} por unidad</dd><dt>IVA compra propia</dt><dd>${DB.cfg.ivaMargen?'19% sobre la diferencia entre venta y compra (régimen de margen para usados)':'No se descuenta'}</dd><dt>IVA consignación</dt><dd>19% sobre la comisión, que es el servicio facturado</dd><dt>Montos</dt><dd>Con IVA incluido, tal como se pagan y cobran</dd></dl><div class="callout t-low" style="margin-top:12px">El tratamiento tributario es referencial. Valídalo con tu contador antes de usarlo para declarar.</div></section></div>`;
+}
+
+/* ============ Bitácora y configuración ============ */
+function vBitacora(){const q=UI.q.toLowerCase();const L=DB.bitacora.filter(b=>!q||(b.accion+' '+b.quien).toLowerCase().includes(q));
+  return `<section class="panel"><div class="panel-h"><div><h2>Registro de cambios</h2><p>${DB.bitacora.length} movimientos. Los cambios de estado se registran como eventos (por ejemplo VEHICULO_VENDIDO).</p></div><input class="search" id="logQ" type="search" placeholder="Filtrar" value="${esc(UI.q)}" aria-label="Filtrar bitácora"></div>
+  ${L.length?`<div class="log">${L.slice(0,300).map(b=>{const v=veh(b.ref);return `<div class="it"><span class="mono">${fdt(b.ts)}</span><span>${esc(b.accion)}${v?` · <button class="btn sm" data-act="go" data-view="ficha" data-id="${v.id}">${esc(fmtPat(v.patente))}</button>`:''}<span class="sub">${esc(b.quien)}</span></span></div>`}).join('')}</div>`:'<div class="empty">Sin movimientos.</div>'}</section>`}
+const CFGF=[['diasStockAlerta','Días en stock para alerta','días'],['diasStockCritico','Días en stock críticos','días'],['margenObjetivo','Margen neto objetivo','%'],['tasaCapital','Costo del capital','% mensual'],['comisionVendedor','Comisión del vendedor por unidad','$'],['comPctDef','Comisión de consignación por defecto','%'],['comisionMinima','Comisión mínima de consignación','$'],['plazoDef','Plazo de consignación por defecto','días'],['diasAvisoConsig','Aviso antes del vencimiento','días'],['diasLiquidacion','Plazo para liquidar al consignante','días'],['diasEvalMax','Días máximos en evaluación','días'],['horasSinContacto','Horas para el primer contacto','horas'],['diasReservaMax','Días máximos de reserva','días'],['diasEntregaMax','Días para entregar tras la venta','días'],['diasCreditoMax','Días de espera de crédito','días']];
+function vConfig(){
+  return `<div class="grid2"><div class="stack"><section class="panel"><div class="panel-h"><div><h2>Parámetros del motor</h2><p>Configuración antes que código: cada umbral cambia las alertas y los cálculos sin tocar la aplicación.</p></div></div>
+  <div class="dialog" style="box-shadow:none;border:none;width:100%"><div class="body" style="padding:0">${CFGF.map(([k,l,u])=>`<div class="fld"><label for="cfg_${k}">${l} <span class="muted">(${u})</span></label><input id="cfg_${k}" type="number" min="0" step="any" data-cfg="${k}" value="${DB.cfg[k]}"></div>`).join('')}
+  <div class="fld chk full"><input type="checkbox" id="cfg_ivaMargen" data-cfg="ivaMargen" ${DB.cfg.ivaMargen?'checked':''}><label for="cfg_ivaMargen">Descontar IVA sobre el margen en autos de compra propia</label></div></div></div></section>
+  <section class="panel"><div class="panel-h"><div><h2>Catálogo de reglas</h2><p>Reglas deterministas que generan las alertas del centro de control.</p></div></div>${tbl(['Código','Regla','Área'],RULES.map(r=>`<tr><td class="mono">${r[0]}</td><td><b style="font-weight:600">${r[1]}</b><span class="sub">${r[2]}</span></td><td>${AREAS[r[3]]}</td></tr>`),'')}</section></div>
+  <div class="stack"><section class="panel"><div class="panel-h"><div><h2>Empresa</h2><p>Aparece en contratos, avisos y liquidaciones.</p></div></div><div class="dialog" style="box-shadow:none;border:none;width:100%"><div class="body" style="padding:0">${[['nombre','Nombre'],['rut','RUT'],['direccion','Dirección'],['ciudad','Ciudad'],['telefono','Teléfono de ventas']].map(([k,l])=>`<div class="fld"><label for="emp_${k}">${l}</label><input id="emp_${k}" data-emp="${k}" value="${esc(DB.empresa[k])}"></div>`).join('')}</div></div></section>
+  <section class="panel"><div class="panel-h"><div><h2>Vendedores</h2><p>Los inactivos no reciben leads nuevos.</p></div></div>${DB.vendedores.map(u=>`<div class="check"><input aria-label="Nombre" data-vn="${u.id}" value="${esc(u.nombre)}" style="padding:5px 8px;border:1px solid var(--line);border-radius:5px;background:var(--surface);min-width:0"><label class="actions" style="font-size:12.5px"><input type="checkbox" data-va="${u.id}" ${u.activo?'checked':''}> Activo</label></div>`).join('')}
+  <div class="actions" style="margin-top:10px"><input id="newVend" class="search" placeholder="Nombre del nuevo vendedor" aria-label="Nuevo vendedor"><button class="btn sm" data-act="addVend">Agregar</button></div></section>
+  <section class="panel"><div class="panel-h"><div><h2>Catálogos</h2><p>Uno por línea.</p></div></div><div class="grid3" style="gap:12px">${[['canales','Canales de leads'],['ubicaciones','Ubicaciones'],['financieras','Financieras']].map(([k,l])=>`<div class="fld"><label for="cat_${k}">${l}</label><textarea id="cat_${k}" data-cat="${k}" rows="6" style="padding:7px 9px;border:1px solid var(--line);border-radius:5px;background:var(--surface);font-size:13px">${esc(DB[k].join('\n'))}</textarea></div>`).join('')}</div></section>
+  <section class="panel"><div class="panel-h"><div><h2>Respaldo de datos</h2><p>Los datos viven en este navegador. Guarda un respaldo con regularidad o úsalo para pasar la información a otro equipo.</p></div></div>
+  <div class="actions"><button class="btn" data-act="exportCopy">Copiar respaldo</button><button class="btn" data-act="exportFile">Descargar respaldo</button><button class="btn" data-act="importFile">Importar archivo</button><button class="btn" data-act="importPaste">Pegar respaldo</button></div>
+  <div class="actions" style="margin-top:12px"><button class="btn danger" data-act="reset" data-mode="demo">Restaurar datos de ejemplo</button><button class="btn danger" data-act="reset" data-mode="blank">Empezar sin datos</button></div></section></div></div>`;
+}
+</script>
+<script>
+/* ============ Formularios ============ */
+let FORM=null;
+const o2=a=>a.map(x=>Array.isArray(x)?x:[x,x]);
+const perOpts=()=>[['','Elegir…'],['__new','+ Persona nueva'],...DB.personas.map(p=>[p.id,p.nombre+(p.rut?' · '+p.rut:'')])];
+const vendOpts=(blank)=>[...(blank?[['','Sin asignar']]:[]),...DB.vendedores.filter(u=>u.activo).map(u=>[u.id,u.nombre])];
+function perFields(px,l,req){return [{k:px+'Id',l,t:'sel',opts:perOpts(),req},{k:px+'Nom',l:'Nombre o razón social',t:'text',show:o=>o[px+'Id']==='__new',req:true},{k:px+'Rut',l:'RUT',t:'text',show:o=>o[px+'Id']==='__new'},{k:px+'Tel',l:'Teléfono',t:'text',show:o=>o[px+'Id']==='__new'}]}
+function resolvePer(o,px){const id=o[px+'Id'];if(id!=='__new')return id;const p={id:uid('p'),nombre:o[px+'Nom'],rut:o[px+'Rut']||'',telefono:o[px+'Tel']||'',email:''};DB.personas.push(p);return p.id}
+const vehFields=()=>[{k:'patente',l:'Patente',t:'text',req:true,hint:'Formato BBBB10 o AB1234'},{k:'vin',l:'VIN / chasis',t:'text'},{k:'marca',l:'Marca',t:'text',req:true},{k:'modelo',l:'Modelo',t:'text',req:true},{k:'version',l:'Versión',t:'text'},{k:'anio',l:'Año',t:'num',req:true},{k:'km',l:'Kilometraje',t:'num'},{k:'color',l:'Color',t:'text'},{k:'combustible',l:'Combustible',t:'sel',opts:o2(['Bencina','Diésel','Híbrido','Eléctrico','GLP'])},{k:'transmision',l:'Transmisión',t:'sel',opts:o2(['Manual','Automática'])},{k:'ubicacion',l:'Ubicación',t:'sel',opts:o2(DB.ubicaciones)}];
+const normPat=p=>String(p||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+function patErr(p,selfId){p=normPat(p);if(!/^([A-Z]{4}\d{2}|[A-Z]{2}\d{4})$/.test(p))return 'La patente debe tener 4 letras y 2 números, o 2 letras y 4 números.';if(DB.vehiculos.some(v=>v.id!==selfId&&normPat(v.patente)===p&&!['entregado','devuelto'].includes(v.estado)))return 'Ya hay un vehículo activo con esa patente.'}
+const nuevoV=o=>({id:uid('v'),patente:normPat(o.patente),vin:o.vin,marca:o.marca,modelo:o.modelo,version:o.version,anio:+o.anio,km:+o.km||0,color:o.color,combustible:o.combustible,transmision:o.transmision,ubicacion:o.ubicacion,estado:'evaluacion',ingreso:o.ingreso||HOY(),precio:+o.precio||0,costoCompra:0,proveedorId:'',checklist:Object.fromEntries(CHECKS.map(c=>[c.k,'pend'])),obsLegal:'',gastos:[],foto:'',publicado:{},notas:o.notas||'',reserva:null,venta:null,creado:new Date().toISOString()});
+
+const FORMS={
+  compra:{eb:'Inventario',t:'Registrar compra o toma',btn:'Registrar compra',
+    fields:()=>[{t:'sec',l:'Vehículo'},...vehFields(),{t:'sec',l:'Compra'},...perFields('prov','Comprado a',true),{k:'costoCompra',l:'Precio de compra',t:'money',req:true},{k:'ingreso',l:'Fecha de ingreso',t:'date',req:true},{k:'precio',l:'Precio de publicación objetivo',t:'money',hint:'Puedes definirlo después'},{k:'notas',l:'Notas de la tasación',t:'area'}],
+    init:()=>({combustible:'Bencina',transmision:'Manual',ubicacion:DB.ubicaciones[0],ingreso:HOY()}),
+    save(o){const e=patErr(o.patente);if(e)return e;const v=nuevoV(o);v.origen='compra';v.costoCompra=+o.costoCompra;v.proveedorId=resolvePer(o,'prov');DB.vehiculos.push(v);log(`VEHICULO_INGRESADO: compra por ${clp(v.costoCompra)}`,v.id);return {go:v.id}}},
+  consigNueva:{eb:'Consignación',t:'Ingresar auto en consignación',btn:'Crear contrato',
+    fields:()=>[{t:'sec',l:'Consignante'},...perFields('cons','Dueño del vehículo',true),{t:'sec',l:'Vehículo'},...vehFields(),{t:'sec',l:'Condiciones'},{k:'inicio',l:'Inicio del contrato',t:'date',req:true},{k:'plazo',l:'Plazo',t:'num',req:true,hint:'Días corridos'},{k:'minimo',l:'Precio mínimo acordado',t:'money',req:true,hint:'Lo que el dueño acepta como piso'},{k:'precio',l:'Precio de publicación',t:'money',req:true},{k:'comTipo',l:'Tipo de comisión',t:'sel',opts:[['pct','Porcentaje del precio'],['fija','Monto fijo']]},{k:'comValor',l:'Comisión',t:'num',req:true,hint:'% o $ según el tipo'}],
+    init:()=>({combustible:'Bencina',transmision:'Manual',ubicacion:DB.ubicaciones[0],inicio:HOY(),plazo:DB.cfg.plazoDef,comTipo:'pct',comValor:DB.cfg.comPctDef}),
+    save(o){const e=patErr(o.patente);if(e)return e;if(+o.precio<+o.minimo)return 'El precio de publicación no puede ser menor al mínimo acordado.';const v=nuevoV({...o,ingreso:o.inicio});v.origen='consignacion';const pid=resolvePer(o,'cons');v.proveedorId='';DB.vehiculos.push(v);
+      DB.consignaciones.push({id:uid('c'),vehiculoId:v.id,consignanteId:pid,inicio:o.inicio,plazo:+o.plazo,minimo:+o.minimo,comTipo:o.comTipo,comValor:+o.comValor,estado:'vigente',liq:null});log(`CONSIGNACION_CREADA: mínimo ${clp(o.minimo)}, ${o.comTipo==='pct'?o.comValor+'%':clp(o.comValor)}`,v.id);return {go:v.id}}},
+  veh:{eb:'Ficha',t:'Editar ficha del vehículo',btn:'Guardar',
+    fields:id=>{const v=veh(id);return [...vehFields(),{k:'ingreso',l:'Fecha de ingreso',t:'date',req:true},{k:'precio',l:'Precio publicado',t:'money'},...(v.origen!=='consignacion'?[{k:'costoCompra',l:v.origen==='parte_pago'?'Valor de tasación':'Costo de compra',t:'money',req:true}]:[]),{k:'obsLegal',l:'Observación legal',t:'area',hint:'Se muestra destacada en la ficha'},{k:'notas',l:'Notas',t:'area'}]},
+    init:id=>({...veh(id),patente:fmtPat(veh(id).patente)}),
+    save(o,F){const v=veh(F.id),e=patErr(o.patente,v.id);if(e)return e;const cambios=[];if(+o.precio!==+v.precio)cambios.push(`precio ${clp(v.precio)} → ${clp(o.precio)}`);
+      Object.assign(v,{...o,patente:normPat(o.patente),anio:+o.anio,km:+o.km||0,precio:+o.precio||0,costoCompra:v.origen!=='consignacion'?+o.costoCompra:0});log('Ficha actualizada'+(cambios.length?': '+cambios.join(', '):''),v.id)}},
+  contrato:{eb:'Consignación',t:'Condiciones del contrato',btn:'Guardar',
+    fields:()=>[{k:'inicio',l:'Inicio',t:'date',req:true},{k:'plazo',l:'Plazo (días)',t:'num',req:true},{k:'minimo',l:'Precio mínimo',t:'money',req:true},{k:'comTipo',l:'Tipo de comisión',t:'sel',opts:[['pct','Porcentaje del precio'],['fija','Monto fijo']]},{k:'comValor',l:'Comisión',t:'num',req:true}],
+    init:id=>({...DB.consignaciones.find(c=>c.id===id)}),
+    save(o,F){const c=DB.consignaciones.find(x=>x.id===F.id);Object.assign(c,{inicio:o.inicio,plazo:+o.plazo,minimo:+o.minimo,comTipo:o.comTipo,comValor:+o.comValor});log(`Contrato de consignación actualizado: ${c.plazo} días, mínimo ${clp(c.minimo)}`,c.vehiculoId)}},
+  gasto:{eb:'Reacondicionamiento',t:'Gasto del vehículo',btn:'Guardar gasto',
+    fields:(id)=>[{k:'fecha',l:'Fecha',t:'date',req:true},{k:'tipo',l:'Tipo',t:'sel',opts:o2(GASTOS)},{k:'desc',l:'Detalle',t:'text',req:true,full:true},{k:'monto',l:'Monto con IVA',t:'money',req:true},...(veh(id).origen==='consignacion'?[{k:'cargoConsignante',l:'Se descuenta al consignante en la liquidación',t:'chk'}]:[])],
+    init:(id,ctx)=>ctx?.sub?{...veh(id).gastos.find(g=>g.id===ctx.sub)}:{fecha:HOY(),tipo:GASTOS[0]},
+    save(o,F){const v=veh(F.id);if(F.ctx?.sub){Object.assign(v.gastos.find(g=>g.id===F.ctx.sub),{...o,monto:+o.monto});log(`Gasto editado: ${o.tipo} ${clp(o.monto)}`,v.id)}else{v.gastos.push({id:uid('g'),...o,monto:+o.monto,cargoConsignante:!!o.cargoConsignante});log(`Gasto agregado: ${o.tipo}, ${o.desc}, ${clp(o.monto)}`,v.id)}},
+    del(F){const v=veh(F.id),g=v.gastos.find(x=>x.id===F.ctx?.sub);if(!g)return;v.gastos=v.gastos.filter(x=>x!==g);log(`Gasto eliminado: ${g.tipo} ${clp(g.monto)}`,v.id)}},
+  reservado:{eb:'Flujo del vehículo',t:'Registrar reserva',btn:'Reservar',
+    fields:()=>[...perFields('cli','Cliente',true),{k:'vendedorId',l:'Vendedor',t:'sel',opts:vendOpts(),req:true},{k:'fecha',l:'Fecha',t:'date',req:true},{k:'monto',l:'Abono de reserva',t:'money',req:true}],
+    init:(id,ctx)=>{const l=ctx?.leadId&&DB.leads.find(x=>x.id===ctx.leadId);return {vendedorId:UI.role==='vendedor'?UI.vend:(l?.vendedorId||''),fecha:HOY(),...cliDeLead(l)}},
+    save(o,F){const v=veh(F.id);const cli=resolvePer(o,'cli');ligarLead(F,cli);const err=transicion(v,'reservado',{fecha:o.fecha,clienteId:cli,vendedorId:o.vendedorId,monto:+o.monto});if(err)return err.join(' ');log(`Reserva de ${clp(o.monto)} por ${per(v.reserva.clienteId).nombre}`,v.id)}},
+  vendido:{eb:'Flujo del vehículo',t:'Registrar venta',btn:'Registrar venta',
+    fields:id=>{const v=veh(id),c=consDe(v);return [{t:'sec',l:'Venta'},...perFields('cli','Cliente',true),{k:'vendedorId',l:'Vendedor',t:'sel',opts:vendOpts(),req:true},{k:'fecha',l:'Fecha de venta',t:'date',req:true},{k:'precio',l:'Precio de venta',t:'money',req:true,hint:c?`Mínimo pactado con el dueño: ${clp(c.minimo)}`:`Publicado: ${clp(v.precio)}`},
+      ...(c?[{k:'autMin',l:'El consignante autorizó por escrito vender bajo el mínimo',t:'chk',full:true}]:[]),
+      {t:'sec',l:'Pago y financiamiento'},{k:'pago',l:'Forma de pago',t:'sel',opts:Object.entries(PAGO)},{k:'financiera',l:'Financiera',t:'sel',opts:o2(DB.financieras),show:o=>o.pago!=='contado'},{k:'montoFinanciado',l:'Monto financiado',t:'money',show:o=>o.pago!=='contado'},{k:'credito',l:'Estado del crédito',t:'sel',opts:Object.entries(CREDITO).map(([k,[l]])=>[k,l]),show:o=>o.pago!=='contado'},
+      {t:'sec',l:'Parte de pago'},{k:'pp',l:'El cliente entrega un auto en parte de pago',t:'chk',full:true},{k:'ppPat',l:'Patente',t:'text',show:o=>o.pp,req:true},{k:'ppMarca',l:'Marca',t:'text',show:o=>o.pp,req:true},{k:'ppModelo',l:'Modelo',t:'text',show:o=>o.pp,req:true},{k:'ppAnio',l:'Año',t:'num',show:o=>o.pp,req:true},{k:'ppKm',l:'Kilometraje',t:'num',show:o=>o.pp},{k:'ppValor',l:'Valor de tasación',t:'money',show:o=>o.pp,req:true,hint:'Entra al inventario en evaluación'}]},
+    init:(id,ctx)=>{const v=veh(id),l=ctx?.leadId&&DB.leads.find(x=>x.id===ctx.leadId);return {...cliDeLead(l),...(v.reserva?{cliId:v.reserva.clienteId}:{}),vendedorId:v.reserva?.vendedorId||(UI.role==='vendedor'?UI.vend:l?.vendedorId||''),fecha:HOY(),precio:v.precio,pago:'contado',credito:'evaluacion',financiera:DB.financieras[0]}},
+    save(o,F){const v=veh(F.id),c=consDe(v),ve=validar(v,'vendido').err;if(ve.length)return ve.join(' ');if(c&&+o.precio<c.minimo&&!o.autMin)return `El precio está bajo el mínimo de ${clp(c.minimo)}. Marca la autorización escrita del consignante o ajusta el precio.`;
+      if(o.pp){const e=patErr(o.ppPat);if(e)return 'Parte de pago: '+e}
+      if(o.pago!=='contado'&&!(+o.montoFinanciado>0))return 'Indica el monto financiado.';
+      const cli=resolvePer(o,'cli');ligarLead(F,cli);let ppId='';
+      if(o.pp){const n=nuevoV({patente:o.ppPat,marca:o.ppMarca,modelo:o.ppModelo,anio:o.ppAnio,km:o.ppKm,combustible:'Bencina',transmision:'Manual',ubicacion:DB.ubicaciones[0],notas:`Recibido en parte de pago de ${fmtPat(v.patente)} ${nomV(v)}.`});n.origen='parte_pago';n.costoCompra=+o.ppValor;n.proveedorId=cli;DB.vehiculos.push(n);ppId=n.id;log(`VEHICULO_INGRESADO: parte de pago tasada en ${clp(o.ppValor)}`,n.id)}
+      const cont=o.pago==='contado';
+      const err=transicion(v,'vendido',{fecha:o.fecha,clienteId:cli,vendedorId:o.vendedorId,precio:+o.precio,pago:o.pago,financiera:cont?'':o.financiera,montoFinanciado:cont?0:+o.montoFinanciado,credito:cont?'':o.credito,creditoFecha:o.fecha,transferencia:'pendiente',parteDePagoId:ppId,leadId:F.ctx?.leadId||'',abono:v.reserva?.monto||0});
+      if(err)return err.join(' ');log(`Venta por ${clp(o.precio)} a ${per(cli).nombre}${c&&+o.precio<c.minimo?' (bajo el mínimo, con autorización)':''}`,v.id);return {go:v.id}}},
+  entregado:{eb:'Flujo del vehículo',t:'Registrar entrega',btn:'Registrar entrega',
+    fields:()=>[{k:'entrega',l:'Fecha de entrega',t:'date',req:true},{k:'transferencia',l:'Estado de la transferencia',t:'sel',opts:Object.entries(TRANSF).map(([k,[l]])=>[k,l])},{k:'docs',l:'Contrato de compraventa firmado y documentos entregados al cliente',t:'chk',full:true}],
+    init:id=>({entrega:HOY(),transferencia:veh(id).venta.transferencia==='pendiente'?'firmada':veh(id).venta.transferencia}),
+    save(o,F){const v=veh(F.id);if(!o.docs)return 'Confirma que el contrato está firmado y los documentos entregados.';if(v.venta.financiera&&!['aprobado','cursado'].includes(v.venta.credito))return 'El crédito aún no está aprobado. No se puede entregar el auto.';v.venta.transferencia=o.transferencia;const err=transicion(v,'entregado',{entrega:o.entrega});if(err)return err.join(' ')}},
+  devuelto:{eb:'Flujo del vehículo',t:'Cerrar sin venta',btn:'Confirmar cierre',
+    fields:()=>[{k:'motivo',l:'Motivo',t:'area',req:true,hint:'Por ejemplo: prenda sin alzar, dueño retira el auto, falla mecánica mayor'}],init:()=>({}),
+    save(o,F){const err=transicion(veh(F.id),'devuelto',{},o.motivo);if(err)return err.join(' ')}},
+  disponible:{eb:'Flujo del vehículo',t:'Liberar reserva',btn:'Liberar',
+    fields:()=>[{k:'motivo',l:'Motivo',t:'area',req:true,hint:'El abono se gestiona según la política de reservas'}],init:()=>({}),
+    save(o,F){const err=transicion(veh(F.id),'disponible',{},o.motivo);if(err)return err.join(' ')}},
+  liq:{eb:'Consignación',t:'Registrar pago al consignante',btn:'Registrar pago',
+    fields:id=>[{t:'html',html:`<div class="callout t-low">Monto calculado: <b>${clp(liquidacion(veh(id)).aPagar)}</b> a ${esc(per(consDe(veh(id)).consignanteId)?.nombre)}.</div>`},{k:'fecha',l:'Fecha de pago',t:'date',req:true},{k:'monto',l:'Monto pagado',t:'money',req:true},{k:'medio',l:'Medio de pago',t:'sel',opts:o2(['Transferencia bancaria','Vale vista','Cheque','Efectivo'])}],
+    init:id=>({fecha:HOY(),monto:Math.round(liquidacion(veh(id)).aPagar)}),
+    save(o,F){const v=veh(F.id),c=consDe(v);c.liq={fecha:o.fecha,monto:+o.monto,medio:o.medio};c.estado='liquidada';log(`CONSIGNACION_LIQUIDADA: ${clp(o.monto)} por ${o.medio}`,v.id)}},
+  lead:{eb:'Lead',t:'Lead',btn:'Guardar',
+    fields:id=>{const l=id&&DB.leads.find(x=>x.id===id);return [{k:'nombre',l:'Nombre',t:'text',req:true},{k:'telefono',l:'Teléfono',t:'text'},{k:'email',l:'Correo',t:'text'},{k:'canal',l:'Canal',t:'sel',opts:o2(DB.canales)},
+      {k:'vehiculoId',l:'Auto de interés',t:'sel',full:true,opts:[['','Sin auto específico'],...DB.vehiculos.filter(v=>['disponible','reservado'].includes(v.estado)||v.id===l?.vehiculoId).map(v=>[v.id,`${fmtPat(v.patente)} · ${nomV(v)} · ${mm(v.precio)}`])]},
+      {k:'vendedorId',l:'Vendedor',t:'sel',opts:UI.role==='vendedor'?[['','Sin asignar'],[UI.vend,vend(UI.vend)?.nombre]]:vendOpts(true)},{k:'etapa',l:'Etapa',t:'sel',opts:Object.entries(ETAPAS).map(([k,[x]])=>[k,x])},
+      {k:'motivo',l:'Motivo de pérdida',t:'sel',opts:o2(['','Precio sobre mercado','Compró en otra automotora','No calificó al crédito','Desistió de comprar','No responde','Otro']),show:o=>o.etapa==='perdido',req:true},
+      {k:'prox',l:'Próximo seguimiento',t:'date',show:o=>!['ganado','perdido'].includes(o.etapa)},{k:'notas',l:'Notas',t:'area'},...(l?[{t:'html',html:leadHist(l)}]:[])]},
+    init:(id,ctx)=>id?{...DB.leads.find(x=>x.id===id)}:{canal:DB.canales[0],etapa:'nuevo',vehiculoId:ctx?.vid||'',vendedorId:UI.role==='vendedor'?UI.vend:'',prox:addD(1)},
+    save(o,F){if(o.etapa==='perdido'&&!o.motivo)return 'Indica el motivo de pérdida.';
+      if(F.id){const l=DB.leads.find(x=>x.id===F.id);if(l.etapa!==o.etapa)log(`LEAD_${o.etapa.toUpperCase()}: ${l.nombre} pasa a ${ETAPAS[o.etapa][0]}`,l.vehiculoId);if(l.vendedorId!==o.vendedorId&&o.vendedorId)log(`Lead ${l.nombre} asignado a ${vend(o.vendedorId)?.nombre}`,l.vehiculoId);Object.assign(l,o);if(['ganado','perdido'].includes(o.etapa))l.prox=''}
+      else{const l={id:uid('l'),...o,creado:new Date().toISOString(),contactos:[]};DB.leads.push(l);log(`LEAD_CREADO: ${l.nombre} desde ${l.canal}`,l.vehiculoId)}}}
+};
+const cliDeLead=l=>!l?{}:l.personaId?{cliId:l.personaId}:{cliId:'__new',cliNom:l.nombre,cliTel:l.telefono};
+function ligarLead(F,cli){const l=F.ctx?.leadId&&DB.leads.find(x=>x.id===F.ctx.leadId);if(l&&!l.personaId)l.personaId=cli}
+function leadHist(l){const v=veh(l.vehiculoId);const canSell=v&&['disponible','reservado'].includes(v.estado)&&!['ganado','perdido'].includes(l.etapa);
+  return `<div class="fsec" style="margin-bottom:6px">Contactos</div>${l.contactos.length?`<div class="log">${[...l.contactos].reverse().map(c=>`<div class="it"><span class="mono">${fdt(c.ts)}</span><span><b style="font-weight:600">${esc(c.tipo)}</b> · ${esc(c.nota)}</span></div>`).join('')}</div>`:'<div class="empty">Sin contactos registrados.</div>'}
+  <div class="actions" style="margin-top:10px"><select class="sel" id="cTipo" aria-label="Tipo de contacto">${['WhatsApp','Llamada','Correo','Visita'].map(t=>`<option>${t}</option>`).join('')}</select><input class="search" id="cNota" placeholder="Qué se conversó" aria-label="Nota del contacto" style="flex:1"><button class="btn sm" data-act="addContact" data-id="${l.id}">Registrar contacto</button></div>
+  ${canSell?`<div class="actions" style="margin-top:12px">${v.estado==='disponible'?`<button class="btn sm" data-act="leadTo" data-to="reservado" data-id="${l.id}">Reservar ${esc(fmtPat(v.patente))}</button>`:''}<button class="btn sm pri" data-act="leadTo" data-to="vendido" data-id="${l.id}">Convertir en venta</button></div>`:''}`}
+function fieldHtml(f,val){
+  if(f.t==='sec')return `<div class="fsec">${f.l}</div>`;
+  if(f.t==='html')return `<div class="fld full">${f.html}</div>`;
+  const id='f_'+f.k,w=(inner,cls='')=>`<div class="fld ${cls} ${f.full||f.t==='area'?'full':''}" data-k="${f.k}">${inner}</div>`;
+  if(f.t==='chk')return w(`<input type="checkbox" id="${id}" ${val?'checked':''}><label for="${id}">${f.l}</label>`,'chk');
+  const lab=`<label for="${id}">${f.l}${f.req?' *':''}</label>`,hint=f.hint?`<span class="hint">${esc(f.hint)}</span>`:'';
+  if(f.t==='sel')return w(lab+`<select id="${id}">${f.opts.map(([k,l])=>`<option value="${esc(k)}" ${String(val??'')===String(k)?'selected':''}>${esc(l||'—')}</option>`).join('')}</select>`+hint);
+  if(f.t==='area')return w(lab+`<textarea id="${id}">${esc(val)}</textarea>`+hint);
+  const type=f.t==='date'?'date':(f.t==='num'||f.t==='money')?'number':'text';
+  return w(lab+`<input id="${id}" type="${type}" ${type==='number'?'min="0" step="any" inputmode="numeric"':''} value="${esc(val??'')}">`+hint);
+}
+function openForm(tipo,id,ctx){
+  const F=FORMS[tipo];const fields=F.fields(id);const o=F.init(id,ctx)||{};
+  FORM={tipo,id,ctx,fields};
+  $('#mEyebrow').textContent=F.eb;$('#mTitle').textContent=tipo==='lead'&&id?o.nombre:(id&&veh(id)&&tipo!=='veh'?`${F.t} · ${fmtPat(veh(id).patente)}`:F.t);
+  $('#mBody').innerHTML=fields.map(f=>fieldHtml(f,o[f.k])).join('')+`<div class="ferr" id="fErr" hidden></div>`;
+  const del=F.del&&ctx?.sub;
+  $('#mFoot').innerHTML=`<div>${del?`<button class="btn danger" data-act="del">Eliminar</button>`:''}</div><div class="actions"><button class="btn" data-act="close">Cancelar</button><button class="btn pri" data-act="saveForm">${F.btn}</button></div>`;
+  $('#modal').hidden=false;deps();const first=$('#mBody input:not([type=checkbox]),#mBody select');if(first&&!id)first.focus();
+}
+function readForm(){const o={};for(const f of FORM.fields){if(!f.k||f.t==='sec'||f.t==='html')continue;const el=document.getElementById('f_'+f.k);if(!el)continue;o[f.k]=f.t==='chk'?el.checked:(f.t==='num'||f.t==='money')?(el.value===''?'':+el.value):el.value.trim()}return o}
+function deps(){if(!FORM)return;const o=readForm();FORM.fields.forEach(f=>{if(f.show&&f.k){const w=document.querySelector(`#mBody [data-k="${f.k}"]`);if(w)w.hidden=!f.show(o)}})}
+function saveForm(){
+  const o=readForm(),F=FORMS[FORM.tipo];
+  const miss=FORM.fields.filter(f=>f.req&&f.k&&(!f.show||f.show(o))&&(o[f.k]===''||o[f.k]==null)).map(f=>f.l);
+  const e=$('#fErr');if(miss.length){e.textContent='Completa: '+miss.join(', ')+'.';e.hidden=false;return}
+  const r=F.save(o,FORM);if(typeof r==='string'){e.textContent=r;e.hidden=false;return}
+  save();closeModal();if(r?.go){UI.view='ficha';UI.id=r.go}render();toast('Guardado');
+}
+function closeModal(){$('#modal').hidden=true;FORM=null}
+
+/* ============ Textos para copiar ============ */
+function avisoTxt(v){const e=DB.empresa;return `${v.marca} ${v.modelo} ${v.version} ${v.anio}
+${clp(v.precio)}
+
+· ${(+v.km||0).toLocaleString('es-CL')} km
+· Transmisión ${v.transmision.toLowerCase()} · ${v.combustible}
+· Color ${v.color||'—'}
+${v.checklist?.prenda==='ok'&&v.checklist?.multas==='ok'?'· Papeles al día, sin multas ni prendas':'· Consulta por la documentación'}${CHECKS.some(c=>c.k==='informe'&&v.checklist?.[c.k]==='ok')?' · Informe de historial disponible':''}
+· ${v.origen==='consignacion'?'Auto en consignación':'Unidad propia, revisada por nuestro equipo'}
+· Recibimos tu auto en parte de pago · Financiamiento con ${DB.financieras.slice(0,2).join(' y ')}
+
+${e.nombre} · ${e.direccion}, ${e.ciudad}
+Ventas: ${e.telefono}
+Patente ${fmtPat(v.patente)}`}
+function contratoTxt(c){const v=veh(c.vehiculoId),p=per(c.consignanteId),e=DB.empresa;return `CONTRATO DE CONSIGNACIÓN DE VEHÍCULO (borrador)
+
+En ${e.ciudad}, a ${fdate(c.inicio)}, entre ${e.nombre}, RUT ${e.rut}, domiciliada en ${e.direccion}, en adelante "la Automotora", y ${p?.nombre}, RUT ${p?.rut||'__________'}, en adelante "el Consignante", se acuerda:
+
+PRIMERO. El Consignante entrega en consignación el vehículo marca ${v.marca}, modelo ${v.modelo} ${v.version}, año ${v.anio}, patente ${fmtPat(v.patente)}, VIN ${v.vin||'__________'}, con ${(+v.km||0).toLocaleString('es-CL')} km, declarando ser su dueño y que se encuentra libre de prendas, prohibiciones y embargos.
+
+SEGUNDO. La Automotora publicará y exhibirá el vehículo a un precio de ${clp(v.precio)}. El precio mínimo de venta es ${clp(c.minimo)}. Toda venta bajo ese valor requiere autorización escrita del Consignante.
+
+TERCERO. La Automotora cobrará una comisión de ${c.comTipo==='pct'?`${c.comValor}% del precio de venta, con un mínimo de ${clp(DB.cfg.comisionMinima)}`:clp(c.comValor)}, IVA incluido, que se descontará al momento de la liquidación.
+
+CUARTO. Los gastos de preparación que el Consignante autorice por escrito se descontarán de la liquidación, con respaldo de boleta o factura.
+
+QUINTO. El plazo de consignación es de ${c.plazo} días corridos, hasta el ${fdate(vence(c))}. Vencido el plazo, las partes podrán renovarlo o el Consignante retirará el vehículo.
+
+SEXTO. Vendido el vehículo, la Automotora pagará al Consignante el precio de venta menos la comisión y los gastos autorizados, dentro de ${DB.cfg.diasLiquidacion} días hábiles desde que reciba el pago total.
+
+SÉPTIMO. La Automotora custodiará el vehículo con la debida diligencia mientras permanezca en sus dependencias.
+
+_____________________          _____________________
+${e.nombre}                     ${p?.nombre}
+
+Texto referencial. Revísalo con tu abogado antes de firmarlo.`}
+function liqTxt(v){const l=liquidacion(v),p=per(l.c.consignanteId);return `LIQUIDACIÓN DE CONSIGNACIÓN
+${DB.empresa.nombre} · ${fdate(HOY())}
+
+Consignante: ${p?.nombre} (${p?.rut||''})
+Vehículo: ${nomV(v)} ${v.version}, patente ${fmtPat(v.patente)}
+Fecha de venta: ${fdate(v.venta?.fecha)}
+
+Precio de venta ............ ${clp(l.precio)}
+Comisión ................... ${clp(-l.com)}
+${v.gastos.filter(g=>g.cargoConsignante).map(g=>`${g.tipo}: ${g.desc} ... ${clp(-g.monto)}`).join('\n')||'Sin gastos a cargo del consignante'}
+-----------------------------------------
+Total a pagar .............. ${clp(l.aPagar)}
+${l.c.liq?`\nPagado el ${fdate(l.c.liq.fecha)} por ${l.c.liq.medio}: ${clp(l.c.liq.monto)}`:''}`}
+
+/* ============ Eventos ============ */
+function go(view,id){if(view==='lead'){UI.view='leads';UI.q='';render();openForm('lead',id);return}UI.view=view;UI.id=id||null;if(view!=='ficha')UI.q='';render();window.scrollTo(0,0)}
+let FOTO_V=null,RESET_T=null;
+document.addEventListener('click',ev=>{
+  const b=ev.target.closest('[data-act]');if(!b||b.disabled)return;const a=b.dataset.act,id=b.dataset.id;
+  if(a==='close')return closeModal();
+  if(a==='nav')return go(b.dataset.view);
+  if(a==='go')return go(b.dataset.view,id);
+  if(a==='aarea'){UI.alertArea=b.dataset.a;return render()}
+  if(a==='inv'){UI.inv=b.dataset.f;return render()}
+  if(a==='rtab'){UI.rentTab=b.dataset.t;return render()}
+  if(a==='new')return openForm(b.dataset.tipo,b.dataset.tipo==='lead'?null:id,b.dataset.tipo==='lead'?{vid:id}:null);
+  if(a==='edit')return openForm(b.dataset.tipo,id,{sub:b.dataset.sub});
+  if(a==='saveForm')return saveForm();
+  if(a==='del'){FORMS[FORM.tipo].del(FORM);save();closeModal();render();return toast('Eliminado')}
+  if(a==='trans'){const v=veh(id),to=b.dataset.to;
+    if(to==='disponible'&&v.estado==='reservado')return openForm('disponible',id);
+    if(['reservado','vendido','entregado','devuelto'].includes(to))return openForm(to,id);
+    const {err,av}=validar(v,to);if(err.length)return showMsg('Aún no se puede publicar',err,'Resuelve lo siguiente en la ficha:');
+    transicion(v,to);save();render();return toast(to==='disponible'?(av.length?`Publicado con ${av.length} verificaciones no obligatorias pendientes`:'Publicado como disponible'):'Estado actualizado')}
+  if(a==='chk'){const v=veh(id);v.checklist[b.dataset.k]=b.dataset.val;log(`Verificación ${CHECKS.find(c=>c.k===b.dataset.k).s}: ${CHK_EST[b.dataset.val][0]}`,v.id);save();return render()}
+  if(a==='pub'){const v=veh(id),p=b.dataset.p;v.publicado=v.publicado||{};v.publicado[p]=!v.publicado[p];log(`${v.publicado[p]?'Publicado en':'Retirado de'} ${p}`,v.id);save();return render()}
+  if(a==='cred'){const v=veh(id);v.venta.credito=b.dataset.val;v.venta.creditoFecha=HOY();log(`Crédito ${v.venta.financiera}: ${CREDITO[b.dataset.val][0]}`,v.id);save();return render()}
+  if(a==='transf'){const v=veh(id);v.venta.transferencia=b.dataset.val;log(`Transferencia: ${TRANSF[b.dataset.val][0]}`,v.id);save();return render()}
+  if(a==='foto'){FOTO_V=id;return $('#filePhoto').click()}
+  if(a==='aviso'){const v=veh(id);if(!v.precio)return toast('Define un precio antes de generar el aviso');return showText('Publicación','Aviso para portales',avisoTxt(v))}
+  if(a==='contrato')return showText('Consignación','Contrato de consignación',contratoTxt(DB.consignaciones.find(c=>c.id===id)));
+  if(a==='liqTxt')return showText('Consignación','Liquidación',liqTxt(veh(id)));
+  if(a==='copyTxt')return copiar(TXT);
+  if(a==='addContact'){const l=DB.leads.find(x=>x.id===id),n=$('#cNota').value.trim();if(!n)return toast('Escribe qué se conversó');l.contactos.push({ts:new Date().toISOString(),tipo:$('#cTipo').value,nota:n});if(l.etapa==='nuevo'){l.etapa='contactado';log(`LEAD_CONTACTADO: ${l.nombre}`,l.vehiculoId)}if(!l.prox||dias(l.prox)>=0)l.prox=addD(2);save();render();openForm('lead',id);return toast('Contacto registrado')}
+  if(a==='leadTo'){const l=DB.leads.find(x=>x.id===id);closeModal();return openForm(b.dataset.to,l.vehiculoId,{leadId:l.id})}
+  if(a==='addVend'){const n=$('#newVend').value.trim();if(!n)return toast('Escribe el nombre');DB.vendedores.push({id:uid('u'),nombre:n,activo:true});log('Vendedor agregado: '+n);save();render();return toast('Vendedor agregado')}
+  if(a==='exportCopy')return copiar(JSON.stringify(DB),'Respaldo copiado. Pégalo en un archivo de texto.');
+  if(a==='exportFile'){try{const u=URL.createObjectURL(new Blob([JSON.stringify(DB,null,1)],{type:'application/json'}));const x=document.createElement('a');x.href=u;x.download=`patio-respaldo-${HOY()}.json`;document.body.appendChild(x);x.click();x.remove();setTimeout(()=>URL.revokeObjectURL(u),2000);toast('Si no se descargó, usa Copiar respaldo')}catch(e){toast('Usa Copiar respaldo')}return}
+  if(a==='importFile')return $('#fileImport').click();
+  if(a==='importPaste'){FORM=null;$('#mEyebrow').textContent='Respaldo';$('#mTitle').textContent='Pegar respaldo';$('#mBody').innerHTML=`<div class="fld full"><label for="pasteTxt">Contenido del respaldo (JSON)</label><textarea id="pasteTxt" style="min-height:200px;font-family:var(--f-mono);font-size:12px"></textarea><span class="hint">Reemplaza todos los datos actuales de este navegador.</span></div>`;$('#mFoot').innerHTML=`<span></span><div class="actions"><button class="btn" data-act="close">Cancelar</button><button class="btn pri" data-act="doPaste">Importar</button></div>`;$('#modal').hidden=false;return}
+  if(a==='doPaste'){if(importar($('#pasteTxt').value))closeModal();return}
+  if(a==='reset'){if(RESET_T!==b.dataset.mode){RESET_T=b.dataset.mode;b.textContent='Confirmar: se reemplazan todos los datos';setTimeout(()=>{if(RESET_T===b.dataset.mode){RESET_T=null;render()}},4000);return}
+    RESET_T=null;DB=seed();if(b.dataset.mode==='blank'){Object.assign(DB,{demo:false,personas:[],vehiculos:[],consignaciones:[],leads:[],bitacora:[]});DB.empresa={nombre:'Mi automotora',rut:'',ciudad:'',telefono:'',direccion:''};log('Datos iniciados en blanco')}save();UI.view='control';render();return toast('Datos reemplazados')}
+});
+function importar(txt){try{const d=JSON.parse(txt);if(!d.vehiculos||!d.cfg)throw 0;DB=d;save();render();toast('Respaldo importado');return true}catch(e){toast('El archivo no es un respaldo válido de Patio');return false}}
+document.addEventListener('input',ev=>{
+  const t=ev.target;
+  if(t.id==='invQ'||t.id==='leadQ'||t.id==='logQ'){UI.q=t.value;const pos=t.selectionStart;render();const n=$('#'+t.id);if(n){n.focus();n.setSelectionRange(pos,pos)}return}
+});
+document.addEventListener('change',ev=>{
+  const t=ev.target;
+  if(t.closest('#mBody'))return deps();
+  if(t.id==='role'){UI.role=t.value;UI.alertArea='';UI.leadVend='';return render()}
+  if(t.id==='vend'){UI.vend=t.value;return render()}
+  if(t.id==='invO'){UI.invOrigen=t.value;return render()}
+  if(t.id==='leadC'){UI.leadCanal=t.value;return render()}
+  if(t.id==='leadV'){UI.leadVend=t.value;return render()}
+  if(t.id==='rSort'){UI.rentSort=t.value;return render()}
+  if(t.dataset.cfg){const k=t.dataset.cfg;DB.cfg[k]=t.type==='checkbox'?t.checked:+t.value;log(`Parámetro ${k} = ${DB.cfg[k]}`);save();return toast('Parámetro guardado')}
+  if(t.dataset.emp){DB.empresa[t.dataset.emp]=t.value.trim();save();$('#empresaNombre').textContent=DB.empresa.nombre;return toast('Datos de la empresa guardados')}
+  if(t.dataset.cat){DB[t.dataset.cat]=t.value.split('\n').map(s=>s.trim()).filter(Boolean);log('Catálogo actualizado: '+t.dataset.cat);save();return toast('Catálogo guardado')}
+  if(t.dataset.vn){vend(t.dataset.vn).nombre=t.value.trim();save();return toast('Vendedor actualizado')}
+  if(t.dataset.va){vend(t.dataset.va).activo=t.checked;save();return render()}
+  if(t.id==='fileImport'&&t.files[0]){const r=new FileReader();r.onload=()=>importar(r.result);r.readAsText(t.files[0]);t.value='';return}
+  if(t.id==='filePhoto'&&t.files[0]&&FOTO_V){const f=t.files[0],r=new FileReader();r.onload=()=>{const img=new Image();img.onload=()=>{const W=640,s=Math.min(1,W/img.width),c=document.createElement('canvas');c.width=Math.round(img.width*s);c.height=Math.round(img.height*s);c.getContext('2d').drawImage(img,0,0,c.width,c.height);const v=veh(FOTO_V),prev=v.foto;v.foto=c.toDataURL('image/jpeg',.72);if(!save()){v.foto=prev;return}log('Foto actualizada',v.id);render();toast('Foto guardada')};img.src=r.result};r.readAsDataURL(f);t.value=''}
+});
+document.addEventListener('keydown',ev=>{if(ev.key==='Escape'&&!$('#modal').hidden)closeModal()});
+$('#modal').addEventListener('click',ev=>{if(ev.target.id==='modal')closeModal()});
+
+load();render();
+</script>
