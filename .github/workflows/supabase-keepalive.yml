@@ -1,7 +1,7 @@
 name: Supabase keep-alive
 
 # Consulta liviana cada 3 días para que el proyecto Supabase (plan Free) no se pause por inactividad.
-# Tabla consultada: variable de repo SUPABASE_KEEPALIVE_TABLE (si no existe, usa "keepalive").
+# Tabla consultada: variable de repo SUPABASE_KEEPALIVE_TABLE (si no existe, usa "papelera_clientes").
 on:
   schedule:
     - cron: "0 12 */3 * *"
@@ -16,7 +16,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          TABLE: ${{ vars.SUPABASE_KEEPALIVE_TABLE || 'keepalive' }}
+          TABLE: ${{ vars.SUPABASE_KEEPALIVE_TABLE || 'papelera_clientes' }}
         run: |
           if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
             echo "::error::Faltan los secrets SUPABASE_URL o SUPABASE_ANON_KEY"
