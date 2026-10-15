@@ -1,6 +1,7 @@
 name: Supabase keep-alive
 
 # Consulta liviana cada 3 días para que el proyecto Supabase (plan Free) no se pause por inactividad.
+# Tabla consultada: variable de repo SUPABASE_KEEPALIVE_TABLE (si no existe, usa "keepalive").
 on:
   schedule:
     - cron: "0 12 */3 * *"
@@ -15,18 +16,20 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          TABLE: ${{ vars.SUPABASE_KEEPALIVE_TABLE || 'keepalive' }}
         run: |
           if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
             echo "::error::Faltan los secrets SUPABASE_URL o SUPABASE_ANON_KEY"
             exit 1
           fi
           status=$(curl -sS -o body.txt -w "%{http_code}" --max-time 30 --retry 3 --retry-delay 10 \
-            "${SUPABASE_URL%/}/rest/v1/" \
+            "${SUPABASE_URL%/}/rest/v1/${TABLE}?select=*&limit=1" \
             -H "apikey: $SUPABASE_ANON_KEY" \
             -H "Authorization: Bearer $SUPABASE_ANON_KEY")
-          echo "Supabase respondió HTTP $status"
+          echo "Supabase respondió HTTP $status (tabla: $TABLE)"
           head -c 300 body.txt; echo
-          if [ "$status" = "401" ] || [ "$status" -ge 500 ] || [ "$status" = "000" ]; then
+          # 404 = la API respondió con clave válida pero la tabla no existe: el proyecto igual queda activo.
+          if [ "$status" != "200" ] && [ "$status" != "206" ] && [ "$status" != "404" ]; then
             echo "::error::Supabase no respondió correctamente (HTTP $status)"
             exit 1
           fi
