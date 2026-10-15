@@ -20,11 +20,12 @@ jobs:
             echo "::error::Faltan los secrets SUPABASE_URL o SUPABASE_ANON_KEY"
             exit 1
           fi
-          status=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 30 --retry 3 --retry-delay 10 \
+          status=$(curl -sS -o body.txt -w "%{http_code}" --max-time 30 --retry 3 --retry-delay 10 \
             "${SUPABASE_URL%/}/rest/v1/" \
             -H "apikey: $SUPABASE_ANON_KEY" \
             -H "Authorization: Bearer $SUPABASE_ANON_KEY")
           echo "Supabase respondió HTTP $status"
+          head -c 300 body.txt; echo
           if [ "$status" = "401" ] || [ "$status" -ge 500 ] || [ "$status" = "000" ]; then
             echo "::error::Supabase no respondió correctamente (HTTP $status)"
             exit 1
